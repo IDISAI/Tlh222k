@@ -20,9 +20,12 @@
     "@graphql-typed-document-node/core": "^3.2.0",
     "@liveblocks/client": "^3.21.0",
     "@liveblocks/react": "^3.21.0",
+    "@liveblocks/react-blocknote": "^3.21.0",
     "@liveblocks/yjs": "^3.21.0",
+    "@workspace/ui": "workspace:*",
     "graphql": "^16.14.2",
     "lucide-react": "^1.23.0",
+    "uploadthing": "^7.7.4",
     "yjs": "^13.6.31"
   },
   "peerDependencies": {

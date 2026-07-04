@@ -2,11 +2,19 @@
   "$schema": "https://turbo.build/schema.json",
   "ui": "tui",
   "globalEnv": [
+    "ADMIN_URL",
+    "AUTH_SECRET",
+    "AUTH_TRUST_HOST",
     "CORS_ORIGINS",
     "DATABASE_URL",
+    "LIVEBLOCKS_SECRET_KEY",
+    "NEXT_PUBLIC_LIVEBLOCKS_AUTH_URL",
     "NEXT_PUBLIC_NOTION_API_URL",
+    "NEXT_PUBLIC_UPLOADTHING_URL",
     "NODE_ENV",
-    "PORT"
+    "PORT",
+    "SUPER_ADMIN_URL",
+    "UPLOADTHING_TOKEN"
   ],
   "tasks": {
     "build": {
