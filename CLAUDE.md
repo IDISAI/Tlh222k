@@ -72,3 +72,22 @@ Deploys cover **web + admin + super-admin** (matrix job per app) and require Git
 App env vars (`.env.local`, Vercel dashboard) are separate from CI secrets — see [docs/onboarding/env.md](docs/onboarding/env.md). Current app code consumes none yet.
 
 Because `packages/ui` and the `core` features are **private submodules**, every workflow checks out with `submodules: recursive` and `token: ${{ secrets.SUBMODULE_PAT || github.token }}` — set `SUBMODULE_PAT` (a PAT with read access to the `IDISAI/*` submodule repos) or the build fails to fetch them.
+
+## Skill routing
+
+When the user's request matches an available skill, invoke it via the Skill tool. When in doubt, invoke the skill.
+
+Key routing rules:
+- Product ideas/brainstorming → invoke /office-hours
+- Strategy/scope → invoke /plan-ceo-review
+- Architecture → invoke /plan-eng-review
+- Design system/plan review → invoke /design-consultation or /plan-design-review
+- Full review pipeline → invoke /autoplan
+- Bugs/errors → invoke /investigate
+- QA/testing site behavior → invoke /qa or /qa-only
+- Code review/diff check → invoke /review
+- Visual polish → invoke /design-review
+- Ship/deploy/PR → invoke /ship or /land-and-deploy
+- Save progress → invoke /context-save
+- Resume context → invoke /context-restore
+- Author a backlog-ready spec/issue → invoke /spec
