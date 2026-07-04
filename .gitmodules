@@ -1,0 +1,6 @@
+[submodule "packages/ui"]
+	path = packages/ui
+	url = git@github.com:IDISAI/ui.git
+[submodule "packages/core/src/roadmap"]
+	path = packages/core/src/roadmap
+	url = git@github.com:IDISAI/roadmap.git
