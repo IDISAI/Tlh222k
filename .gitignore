@@ -48,3 +48,6 @@ packages/db/generated/
 next-env.d.ts
 # CocoIndex Code (ccc)
 /.cocoindex_code/
+
+# playwright mcp debug artifacts
+.playwright-mcp/
