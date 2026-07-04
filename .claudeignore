@@ -1,0 +1,65 @@
+# Build outputs
+**/.next/
+**/dist/
+**/build/
+**/.turbo/
+**/coverage/
+**/.nyc_output/
+
+# Dependencies (never read these)
+**/node_modules/
+pnpm-lock.yaml
+
+# Generated files
+**/generated/
+**/*.generated.ts
+**/*.generated.js
+
+
+
+# Understand-anything cache
+.understand-anything/cache/
+.understand-anything/tmp/
+.understand-anything/intermediate/
+.understand-anything/fingerprints.json
+.understand-anything/knowledge-graph.json
+
+
+# Codegraph
+.codegraph/
+
+# Logs
+**/*.log
+**/logs/
+
+# Docker & infra
+.env
+.env.local
+.env.*.local
+
+# Assets (binaries, images)
+assets/
+**/*.png
+**/*.jpg
+**/*.jpeg
+**/*.gif
+**/*.svg
+**/*.ico
+**/*.woff
+**/*.woff2
+**/*.ttf
+**/*.eot
+
+# Lock files
+pnpm-lock.yaml
+yarn.lock
+package-lock.json
+
+# IDE
+.vscode/
+.idea/
+
+# Rust/Python services (unless explicitly needed)
+services/svc-rust/target/
+services/svc-python/__pycache__/
+services/svc-python/.venv/

@@ -29,6 +29,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@workspace/core':
+        specifier: workspace:*
+        version: link:../../packages/core
       '@workspace/ui':
         specifier: workspace:*
         version: link:../../packages/ui
@@ -69,6 +72,27 @@ importers:
       eslint:
         specifier: ^9
         version: 9.39.4(jiti@2.7.0)
+      typescript:
+        specifier: ^5
+        version: 5.9.3
+
+  packages/core:
+    devDependencies:
+      '@types/react':
+        specifier: ^19
+        version: 19.2.15
+      '@workspace/eslint-config':
+        specifier: workspace:*
+        version: link:../eslint-config
+      '@workspace/typescript-config':
+        specifier: workspace:*
+        version: link:../typescript-config
+      eslint:
+        specifier: ^9
+        version: 9.39.4(jiti@2.7.0)
+      react:
+        specifier: 19.2.4
+        version: 19.2.4
       typescript:
         specifier: ^5
         version: 5.9.3
