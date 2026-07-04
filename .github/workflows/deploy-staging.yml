@@ -9,14 +9,20 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  deploy-web-staging:
+  deploy:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        app: [web, admin] # each maps to secret VERCEL_PROJECT_ID_<APP> (case-insensitive)
     env:
       VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
       VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID_WEB }}
+      VERCEL_PROJECT_ID: ${{ secrets[format('VERCEL_PROJECT_ID_{0}', matrix.app)] }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          token: ${{ secrets.SUBMODULE_PAT || github.token }}
 
       - uses: pnpm/action-setup@v4
 

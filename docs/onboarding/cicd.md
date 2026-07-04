@@ -174,8 +174,11 @@ Vào **GitHub repo → Settings → Secrets and variables → Actions** để c�
 | `VERCEL_ORG_ID` | Vercel Dashboard → Team/Account → General → Team ID | Tất cả deploy jobs |
 | `VERCEL_PROJECT_ID_WEB` | Vercel project `web` → Settings → General → Project ID | Web deploy jobs |
 | `VERCEL_PROJECT_ID_ADMIN` | Vercel project `admin` → Settings → General → Project ID | Admin deploy jobs |
+| `SUBMODULE_PAT` | GitHub → Settings → Developer settings → PAT có quyền đọc repo `IDISAI/*` | Tất cả job (checkout submodule) |
 
 **Lưu ý:** `VERCEL_PROJECT_ID_WEB` ≠ `VERCEL_PROJECT_ID` — tên phải khớp chính xác với tên secret trong workflow.
+
+**Submodule trong CI:** `packages/ui` và các feature trong `packages/core/src` là submodule private. Mọi workflow checkout với `submodules: recursive` và `token: ${{ secrets.SUBMODULE_PAT || github.token }}`. Thiếu `SUBMODULE_PAT` → không clone được submodule → build fail (`github.token` mặc định chỉ đọc repo hiện tại). Deploy jobs dùng **matrix** `app: [web, admin]`, mỗi app map tới `VERCEL_PROJECT_ID_<APP>`.
 
 ---
 

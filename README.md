@@ -35,8 +35,8 @@ Chưa có test runner. Chuỗi CI = `install --frozen-lockfile → lint → type
 
 ```
 apps/
-  web/          Next.js app (đang hoạt động)
-  admin/        placeholder
+  web/          Next.js app — public (mount RoadmapView)
+  admin/        Next.js app — quản trị, port 3002 (mount NotionView + GraphView)
   super-admin/  placeholder
 packages/
   core/         @workspace/core — domain logic (feature-first)

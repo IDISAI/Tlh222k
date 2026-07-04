@@ -1,5 +1,16 @@
 # admin
 
-Placeholder — app quản trị (CMS + graph editor) theo kiến trúc mục tiêu, **chưa được xây**. Xem [../../docs/onboarding/architecture.md](../../docs/onboarding/architecture.md).
+Next.js app quản trị (nhân bản cấu hình từ [../web](../web)). Dev trên port **3002**. Tiêu thụ `@workspace/ui` và `@workspace/core`; [app/page.tsx](app/page.tsx) mount `NotionView` + `GraphView` từ core.
 
-Khi khởi tạo: theo mẫu của [../web](../web) (Next.js), import từ `@workspace/ui` / `@workspace/core`, tuân [rules/packages.md](../../rules/packages.md).
+## Chạy
+
+```bash
+pnpm --filter admin dev      # http://localhost:3002
+pnpm --filter admin build
+```
+
+## Deploy
+
+Deploy lên Vercel qua workflow `deploy-staging.yml` / `release.yml` (matrix job `admin`). Cần secret `VERCEL_PROJECT_ID_ADMIN` và Vercel project có Root Directory = `apps/admin`. Xem [../../docs/onboarding/cicd.md](../../docs/onboarding/cicd.md).
+
+> Next.js là bản đã chỉnh sửa — xem [../../AGENTS.md](../../AGENTS.md) trước khi viết code Next.

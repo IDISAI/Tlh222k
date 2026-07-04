@@ -5,14 +5,20 @@ on:
     tags: ["v*"]
 
 jobs:
-  deploy-web-production:
+  deploy:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        app: [web, admin]
     env:
       VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
       VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID_WEB }}
+      VERCEL_PROJECT_ID: ${{ secrets[format('VERCEL_PROJECT_ID_{0}', matrix.app)] }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          token: ${{ secrets.SUBMODULE_PAT || github.token }}
 
       - uses: pnpm/action-setup@v4
 
@@ -32,7 +38,7 @@ jobs:
       - run: pnpm dlx vercel@latest deploy --prebuilt --prod --token="$VERCEL_TOKEN"
 
   github-release:
-    needs: [deploy-web-production]
+    needs: [deploy] # waits for all matrix legs (web + admin)
     runs-on: ubuntu-latest
     permissions:
       contents: write

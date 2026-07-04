@@ -14,6 +14,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          # SUBMODULE_PAT: PAT with read access to the submodule repos (IDISAI/*).
+          # Falls back to github.token, which only works if the submodules are public.
+          token: ${{ secrets.SUBMODULE_PAT || github.token }}
 
       - uses: pnpm/action-setup@v4 # version read from "packageManager" in package.json
 
