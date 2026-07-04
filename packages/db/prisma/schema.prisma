@@ -1,0 +1,236 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../generated"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ───────────────────────── Auth (Auth.js v5 Prisma adapter) ─────────────────
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  image         String?
+  passwordHash  String? // credentials provider; null for OAuth users
+
+  accounts    Account[]
+  sessions    Session[]
+  memberships WorkspaceMember[]
+  pages       Page[]
+  comments    Comment[]
+  favorites   Favorite[]
+  versions    PageVersion[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String
+  expires    DateTime
+
+  @@id([identifier, token])
+}
+
+// ───────────────────────────────── Workspace ────────────────────────────────
+
+enum Role {
+  OWNER
+  ADMIN
+  MEMBER
+  GUEST
+}
+
+model Workspace {
+  id   String  @id @default(cuid())
+  name String
+  icon String?
+
+  members WorkspaceMember[]
+  pages   Page[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model WorkspaceMember {
+  id          String @id @default(cuid())
+  workspaceId String
+  userId      String
+  role        Role   @default(MEMBER)
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([workspaceId, userId])
+}
+
+// ─────────────────────────────────── Pages ──────────────────────────────────
+// Page content = BlockNote document JSON in `content` (block ids are stable,
+// so comments anchor to them via Comment.blockId).
+// ponytail: no Block table — add one when block-level backlinks/synced blocks
+// or partial updates become necessary.
+
+enum Visibility {
+  WORKSPACE // visible to every workspace member
+  PRIVATE // only the creator
+}
+
+model Page {
+  id          String  @id @default(cuid())
+  workspaceId String
+  parentId    String?
+
+  title      String     @default("")
+  icon       String?
+  coverUrl   String?
+  content    Json? // BlockNote blocks
+  properties Json? // property values when this page is a row of a parent database
+  rank       String // fractional index for sibling ordering
+  visibility Visibility @default(WORKSPACE)
+  isPublic   Boolean    @default(false) // public share link
+
+  createdById String
+  deletedAt   DateTime? // trash (restore = null it; purge later)
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  parent    Page?     @relation("PageTree", fields: [parentId], references: [id], onDelete: Cascade)
+  children  Page[]    @relation("PageTree")
+  createdBy User      @relation(fields: [createdById], references: [id])
+
+  database  Database?
+  comments  Comment[]
+  versions  PageVersion[]
+  favorites Favorite[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([workspaceId, parentId])
+  @@index([workspaceId, deletedAt])
+}
+
+// ──────────────────────── Databases (Notion-style) ──────────────────────────
+// A database IS a Page with an attached Database record; rows are child Pages
+// (parentId = the database's pageId) carrying `properties` values.
+// ponytail: relation/rollup/formula property values live in Json and are
+// computed app-side — promote to real tables if integrity/perf demands it.
+
+model Database {
+  id             String @id @default(cuid())
+  pageId         String @unique
+  propertySchema Json // [{ id, name, type: text|number|select|multiSelect|date|person|checkbox|url|relation|rollup|formula, options? }]
+
+  page  Page           @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  views DatabaseView[]
+}
+
+enum ViewType {
+  TABLE
+  BOARD
+  LIST
+  CALENDAR
+  GALLERY
+}
+
+model DatabaseView {
+  id         String   @id @default(cuid())
+  databaseId String
+  type       ViewType @default(TABLE)
+  name       String
+  config     Json // { filters, sorts, groupBy, hiddenProperties }
+  rank       String
+
+  database Database @relation(fields: [databaseId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+}
+
+// ────────────────────────────── Collaboration ───────────────────────────────
+
+model Comment {
+  id       String  @id @default(cuid())
+  pageId   String
+  blockId  String? // BlockNote block id the comment anchors to
+  parentId String? // threaded replies
+  authorId String
+  body     String
+
+  resolvedAt DateTime?
+
+  page    Page      @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  parent  Comment?  @relation("CommentThread", fields: [parentId], references: [id], onDelete: Cascade)
+  replies Comment[] @relation("CommentThread")
+  author  User      @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([pageId])
+}
+
+// ponytail: snapshot-based history (whole doc per version, saved on a debounce
+// cadence) — switch to diffs only if storage actually hurts.
+model PageVersion {
+  id          String @id @default(cuid())
+  pageId      String
+  title       String
+  content     Json?
+  createdById String
+
+  page      Page @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  createdBy User @relation(fields: [createdById], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([pageId, createdAt])
+}
+
+model Favorite {
+  id     String @id @default(cuid())
+  userId String
+  pageId String
+  rank   String
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  page Page @relation(fields: [pageId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([userId, pageId])
+}

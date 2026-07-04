@@ -5,7 +5,9 @@ export default function Page() {
     <div className="flex min-h-svh flex-col gap-6 p-6">
       <h1 className="font-medium">Admin</h1>
       {/* Features mounted from @workspace/core */}
-      <NotionView />
+      <div className="h-[85svh]">
+        <NotionView />
+      </div>
       <GraphView />
     </div>
   )

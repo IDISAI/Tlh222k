@@ -37,7 +37,9 @@ Two working paths are git submodules, each its own repo:
 
 ## Architecture
 
-**What exists today:** two Next.js frontends (`apps/web`, `apps/admin`) plus shared `packages/*`. `apps/admin` (port 3002) and `apps/super-admin` (port 3003) mirror `apps/web` and mount core features; `web` mounts `RoadmapView`, `admin` mounts `NotionView` + `GraphView`, `super-admin` mounts `RoadmapView` + `NotionView`. The docs under [docs/onboarding/](docs/onboarding/) describe a larger **target** system (NestJS `api-gateway`, Prisma `packages/db`, admin CMS, Playwright e2e) that is **not built yet** — treat those as roadmap, not current state.
+**What exists today:** three Next.js frontends (`apps/web`, `apps/admin` port 3002, `apps/super-admin` port 3003) that mount core features (`web` → `RoadmapView`, `admin` → `NotionView` + `GraphView`, `super-admin` → both), **`apps/svc-notion`** (port 3004) — the Notion feature backend (Hono, Clean Architecture: `domain → application → infrastructure → interface`, REST + auto-generated Swagger at `/docs`, GraphQL + GraphiQL at `/graphql`), and `packages/db` (Prisma 7, PostgreSQL). Backend services are **one per feature** in `apps/svc-*`; they must not use gRPC or self-hosted WebSockets (not supported on Vercel). Older docs under [docs/onboarding/](docs/onboarding/) describing a NestJS `api-gateway` are outdated roadmap.
+
+Manual API testing guide: [docs/onboarding/svc-notion-testing.md](docs/onboarding/svc-notion-testing.md).
 
 **Dependency direction** (enforced by convention, see [rules/packages.md](rules/packages.md)):
 ```
@@ -67,7 +69,7 @@ Three workflows in `.github/workflows/` (see [docs/onboarding/cicd.md](docs/onbo
 - `deploy-staging.yml` — push `develop`/`release/**`: Vercel preview (web).
 - `release.yml` — tag `v*`: Vercel production (web) + GitHub Release.
 
-Deploys cover **web + admin + super-admin** (matrix job per app) and require GitHub secrets `VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID_WEB`, `VERCEL_PROJECT_ID_ADMIN`, `VERCEL_PROJECT_ID_SUPER_ADMIN` (note underscore — hyphens are invalid in secret names, so the matrix maps `super-admin` → `SUPER_ADMIN`); each Vercel project's Root Directory = the app dir.
+Deploys cover **web + admin + super-admin + svc-notion** (matrix job per app) and require GitHub secrets `VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID_WEB`, `VERCEL_PROJECT_ID_ADMIN`, `VERCEL_PROJECT_ID_SUPER_ADMIN`, `VERCEL_PROJECT_ID_SVC_NOTION` (note underscore — hyphens are invalid in secret names, so the matrix maps `super-admin` → `SUPER_ADMIN`); each Vercel project's Root Directory = the app dir. `svc-notion` additionally needs `DATABASE_URL` (+ optional `CORS_ORIGINS`) set in its Vercel project env.
 
 App env vars (`.env.local`, Vercel dashboard) are separate from CI secrets — see [docs/onboarding/env.md](docs/onboarding/env.md). Current app code consumes none yet.
 

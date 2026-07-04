@@ -1,0 +1,3 @@
+[     218ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://localhost:3000/admin/_next/static/chunks/0kic_next_dist_0z41kha._.js:2477
+[     246ms] [LOG] [HMR] connected @ http://localhost:3000/admin/_next/static/chunks/0kic_next_dist_0z41kha._.js:2477
+[     713ms] [LOG] For syntax highlighting of code blocks, you must provide a `createCodeBlockSpec({ createHighlighter: () => ... })` function @ http://localhost:3000/admin/_next/static/chunks/0kic_next_dist_0z41kha._.js:2477

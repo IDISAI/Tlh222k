@@ -1,0 +1,163 @@
+# svc-notion GraphQL schema — the single source of truth for client & server
+# types (codegen: typed resolvers + typed client documents).
+
+scalar JSON
+
+enum ViewType {
+  TABLE
+  BOARD
+  LIST
+  CALENDAR
+  GALLERY
+}
+
+enum Visibility {
+  WORKSPACE
+  PRIVATE
+}
+
+type User {
+  id: ID!
+  email: String!
+  name: String
+  image: String
+}
+
+type Workspace {
+  id: ID!
+  name: String!
+  icon: String
+  createdAt: String!
+}
+
+type Page {
+  id: ID!
+  workspaceId: ID!
+  parentId: ID
+  title: String!
+  icon: String
+  coverUrl: String
+  content: JSON
+  properties: JSON
+  rank: String!
+  visibility: Visibility!
+  isPublic: Boolean!
+  createdById: ID!
+  deletedAt: String
+  createdAt: String!
+  updatedAt: String!
+}
+
+"Lightweight page for trees/search results — no content."
+type PageSummary {
+  id: ID!
+  workspaceId: ID!
+  parentId: ID
+  title: String!
+  icon: String
+  rank: String!
+  updatedAt: String!
+}
+
+type Database {
+  id: ID!
+  pageId: ID!
+  propertySchema: JSON!
+  views: [DatabaseView!]!
+}
+
+type DatabaseView {
+  id: ID!
+  databaseId: ID!
+  type: ViewType!
+  name: String!
+  config: JSON!
+  rank: String!
+}
+
+type Comment {
+  id: ID!
+  pageId: ID!
+  blockId: ID
+  parentId: ID
+  authorId: ID!
+  body: String!
+  resolvedAt: String
+  createdAt: String!
+}
+
+type Favorite {
+  id: ID!
+  pageId: ID!
+  rank: String!
+}
+
+type PageVersion {
+  id: ID!
+  pageId: ID!
+  title: String!
+  content: JSON
+  createdById: ID!
+  createdAt: String!
+}
+
+type Query {
+  me: User
+  workspaces: [Workspace!]!
+  pages(workspaceId: ID!): [PageSummary!]!
+  page(id: ID!): Page
+  "Public share link — no auth, returns the page only when isPublic."
+  publicPage(id: ID!): Page
+  trash(workspaceId: ID!): [PageSummary!]!
+  search(workspaceId: ID!, query: String!): [PageSummary!]!
+  database(id: ID!): Database
+  databaseByPage(pageId: ID!): Database
+  databaseRows(databaseId: ID!, viewId: ID): [Page!]!
+  comments(pageId: ID!): [Comment!]!
+  favorites: [Favorite!]!
+  versions(pageId: ID!): [PageVersion!]!
+}
+
+type Mutation {
+  createWorkspace(name: String!): Workspace!
+
+  createPage(
+    workspaceId: ID!
+    parentId: ID
+    title: String
+    content: JSON
+    properties: JSON
+  ): Page!
+  updatePage(
+    id: ID!
+    title: String
+    icon: String
+    coverUrl: String
+    content: JSON
+    properties: JSON
+    parentId: ID
+    isPublic: Boolean
+    visibility: Visibility
+  ): Page
+  trashPage(id: ID!): Page
+  restorePage(id: ID!): Page
+  purgePage(id: ID!): Boolean!
+  duplicatePage(id: ID!): Page
+
+  createDatabase(pageId: ID!, propertySchema: JSON!): Database
+  updateDatabaseSchema(id: ID!, propertySchema: JSON!): Database
+  addDatabaseRow(databaseId: ID!, title: String, properties: JSON): Page
+  addView(databaseId: ID!, type: ViewType!, name: String!, config: JSON): DatabaseView
+  updateView(id: ID!, type: ViewType, name: String, config: JSON): DatabaseView
+  deleteView(id: ID!): Boolean!
+
+  createComment(pageId: ID!, body: String!, blockId: ID, parentId: ID): Comment!
+  updateComment(id: ID!, body: String, resolved: Boolean): Comment
+  deleteComment(id: ID!): Boolean!
+
+  addFavorite(pageId: ID!): Favorite!
+  removeFavorite(pageId: ID!): Boolean!
+
+  snapshotPage(pageId: ID!): PageVersion
+  restoreVersion(id: ID!): Page
+}

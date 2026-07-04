@@ -1,0 +1,8 @@
+[     315ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://localhost:3000/admin/_next/static/chunks/0kic_next_dist_0z41kha._.js:2477
+[     432ms] [LOG] [HMR] connected @ http://localhost:3000/admin/_next/static/chunks/0kic_next_dist_0z41kha._.js:2477
+[    1077ms] [LOG] For syntax highlighting of code blocks, you must provide a `createCodeBlockSpec({ createHighlighter: () => ... })` function @ http://localhost:3000/admin/_next/static/chunks/0kic_next_dist_0z41kha._.js:2477
+[   37756ms] [WARNING] TextSelection endpoint not pointing into a node with inline content (blockGroup) @ http://localhost:3000/admin/_next/static/chunks/0kic_next_dist_0z41kha._.js:2477
+[   37881ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/admin/_next/static/chunks/0kic_next_dist_0z41kha._.js:2477
+[   37964ms] [LOG] [Fast Refresh] done in 192ms @ http://localhost:3000/admin/_next/static/chunks/0kic_next_dist_0z41kha._.js:2477
+[  121069ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/admin/_next/static/chunks/0kic_next_dist_0z41kha._.js:2477
+[  121242ms] [LOG] [Fast Refresh] done in 195ms @ http://localhost:3000/admin/_next/static/chunks/0kic_next_dist_0z41kha._.js:2477
