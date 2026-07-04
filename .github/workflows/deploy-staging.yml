@@ -13,11 +13,14 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        app: [web, admin] # each maps to secret VERCEL_PROJECT_ID_<APP> (case-insensitive)
+        include: # project = suffix of secret VERCEL_PROJECT_ID_<PROJECT> (hyphens not allowed in secret names)
+          - { app: web, project: WEB }
+          - { app: admin, project: ADMIN }
+          - { app: super-admin, project: SUPER_ADMIN }
     env:
       VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
       VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-      VERCEL_PROJECT_ID: ${{ secrets[format('VERCEL_PROJECT_ID_{0}', matrix.app)] }}
+      VERCEL_PROJECT_ID: ${{ secrets[format('VERCEL_PROJECT_ID_{0}', matrix.project)] }}
     steps:
       - uses: actions/checkout@v4
         with:

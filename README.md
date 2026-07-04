@@ -37,7 +37,7 @@ Chưa có test runner. Chuỗi CI = `install --frozen-lockfile → lint → type
 apps/
   web/          Next.js app — public (mount RoadmapView)
   admin/        Next.js app — quản trị, port 3002 (mount NotionView + GraphView)
-  super-admin/  placeholder
+  super-admin/  Next.js app — port 3003 (mount RoadmapView + NotionView)
 packages/
   core/         @workspace/core — domain logic (feature-first)
     src/roadmap/  ← submodule: IDISAI/roadmap
@@ -60,5 +60,5 @@ Dùng: `import { Button } from "@workspace/ui/components/button"`
 ## Tài liệu
 
 - [Kiến trúc](docs/onboarding/architecture.md) · [Bắt đầu](docs/onboarding/getting-started.md) · [Quy trình ngày](docs/onboarding/daily-workflow.md)
-- [CI/CD](docs/onboarding/cicd.md) · [Submodules](docs/onboarding/submodules.md) · [Git hooks](docs/onboarding/git-hooks.md)
+- [CI/CD](docs/onboarding/cicd.md) · [Biến môi trường (.env)](docs/onboarding/env.md) · [Submodules](docs/onboarding/submodules.md) · [Git hooks](docs/onboarding/git-hooks.md)
 - [CLAUDE.md](CLAUDE.md) / [AGENTS.md](AGENTS.md) — hướng dẫn cho AI agent
