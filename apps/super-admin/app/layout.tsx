@@ -1,5 +1,7 @@
 import { Geist, Geist_Mono, Inter } from "next/font/google"
 
+import { PlatformSwitch } from "@workspace/core"
+
 import "@workspace/ui/globals.css"
 import { ThemeProvider } from "@/components/theme-provider"
 import { cn } from "@workspace/ui/lib/utils";
@@ -23,7 +25,12 @@ export default function RootLayout({
       className={cn("antialiased", fontMono.variable, "font-sans", inter.variable)}
     >
       <body>
-        <ThemeProvider>{children}</ThemeProvider>
+        <ThemeProvider>
+          <header className="flex items-center border-b p-3">
+            <PlatformSwitch current="super-admin" />
+          </header>
+          {children}
+        </ThemeProvider>
       </body>
     </html>
   )
