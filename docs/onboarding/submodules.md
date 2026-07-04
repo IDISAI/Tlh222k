@@ -13,6 +13,8 @@ Repo này tách một số phần code ra **repo riêng** và tham chiếu bằn
 
 Định nghĩa nằm trong [`.gitmodules`](../../.gitmodules).
 
+> ⚠️ **URL submodule PHẢI dùng HTTPS** (`https://github.com/IDISAI/...`), không dùng SSH (`git@github.com:`). Vercel chỉ clone submodule qua HTTPS; SSH sẽ khiến submodule rỗng → build vỡ (`export not found`, `module has no exports`). GitHub Actions checkout bằng PAT cũng cần HTTPS.
+
 ---
 
 ## Clone repo (lần đầu)
@@ -89,8 +91,8 @@ rm -rf "$tmp"
 git rm -r --cached packages/ui
 rm -rf packages/ui
 
-# 3. Thêm submodule — nó clone lại đúng nội dung vừa push
-git submodule add git@github.com:IDISAI/ui.git packages/ui
+# 3. Thêm submodule — nó clone lại đúng nội dung vừa push (HTTPS, KHÔNG dùng git@)
+git submodule add https://github.com/IDISAI/ui.git packages/ui
 
 # 4. Cài lại + verify build không vỡ, rồi commit
 pnpm install
