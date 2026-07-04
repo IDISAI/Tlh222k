@@ -1,103 +1,74 @@
-# svc-notion — Hướng dẫn kiểm tra thủ công (manual testing)
+# Notion clone — Hướng dẫn kiểm tra thủ công (toàn bộ tính năng)
 
-Backend service của feature Notion: `apps/svc-notion` (Hono, Clean Architecture).
-REST là bề mặt API đầy đủ (Swagger tự sinh từ zod), GraphQL phủ các flow chính.
+Kiến trúc: **GraphQL là đường data thật duy nhất** (`apps/svc-notion`, Apollo Server, Clean Architecture 4 layers) · REST/Swagger chỉ là **contract trả mock** · frontend `packages/core/src/notion` (Apollo Client + typed documents từ codegen) mount trong `apps/admin`.
 
 ## 0. Chuẩn bị
 
 ```bash
-# Postgres local phải chạy trên :5432 (DB vizteckstack, user vizteck)
-cp .env.example  # xem section svc-notion → tạo apps/svc-notion/.env
 pnpm install
-pnpm --filter @workspace/db db:push   # sync schema vào Postgres (schema "notion")
-pnpm --filter svc-notion dev          # http://localhost:3004
+pnpm --filter @workspace/db db:push        # sync schema vào Postgres (schema "notion")
+# env: apps/admin/.env.local + apps/svc-notion/.env — xem .env.example
+# (AUTH_SECRET phải GIỐNG NHAU ở cả hai; LIVEBLOCKS_SECRET_KEY + UPLOADTHING_TOKEN trong admin)
+pnpm --filter svc-notion dev               # terminal 1 — :3004
+pnpm --filter admin dev                    # terminal 2 — :3002
 ```
 
-Sanity check: mở `http://localhost:3004/` → JSON `{ service: "svc-notion", ... }`.
+Sanity: `http://localhost:3004/` trả JSON mô tả service.
 
-## 1. Kiểm tra qua Swagger UI (không cần curl)
-
-Mở **http://localhost:3004/docs** — mọi endpoint đều "Try it out" được.
-Thứ tự test một vòng đầy đủ:
-
-| # | Endpoint | Làm gì | Kết quả mong đợi |
-|---|----------|--------|------------------|
-| 1 | `POST /workspaces` | body `{"name":"Test"}` | 201, có `id` → **copy `wsid`** |
-| 2 | `POST /pages` | `{"workspaceId":"<wsid>","title":"Docs"}` | 201, `rank:"a0"` → copy `p1` |
-| 3 | `POST /pages` | thêm `"parentId":"<p1>"`, title "Guide" | 201, `parentId` = p1 → copy `p2` |
-| 4 | `GET /workspaces/{id}/pages` | id = wsid | mảng 2 page, không có `content` |
-| 5 | `PATCH /pages/{id}` | id = p1, body `{"content":[{"id":"b1","type":"paragraph","content":"Hi"}],"icon":"📘"}` | 200, `content` lưu nguyên vẹn |
-| 6 | `GET /pages/{id}` | id = p1 | 200, thấy `content` + `icon` |
-| 7 | `POST /pages/{id}/database` | id = p2, body `{"propertySchema":[{"id":"status","name":"Status","type":"select","options":["Todo","Done"]}]}` | 201 → copy `dbid` |
-| 8 | `POST /databases/{id}/rows` | 2 lần: `{"title":"A","properties":{"status":"Todo"}}` và `{"title":"B","properties":{"status":"Done"}}` | 201 mỗi lần |
-| 9 | `POST /databases/{id}/views` | `{"type":"BOARD","name":"Done","config":{"filters":[{"propertyId":"status","op":"eq","value":"Done"}]}}` | 201 → copy `viewId` |
-| 10 | `GET /databases/{id}/rows?viewId=<viewId>` | | **chỉ còn row B** (filter chạy) |
-| 11 | `POST /pages/{id}/comments` | id = p1, `{"body":"Note","blockId":"b1"}` | 201 → copy `cmid` |
-| 12 | `PATCH /comments/{id}` | `{"resolved":true}` | 200, `resolvedAt` khác null |
-| 13 | `PUT /favorites/{id}` | id = p1 (pageId) | 200; `GET /favorites` thấy 1 item |
-| 14 | `POST /pages/{id}/versions` | id = p1 | 201 → copy `vid` |
-| 15 | `PATCH /pages/{id}` | đổi `{"title":"CHANGED"}` | 200 |
-| 16 | `POST /versions/{id}/restore` | id = vid | 200, **title quay về "Docs"** |
-| 17 | `GET /workspaces/{id}/search?q=guide` | id = wsid | tìm thấy page "Guide" |
-| 18 | `DELETE /pages/{id}` | id = p2 | 200 (soft delete) |
-| 19 | `GET /workspaces/{id}/trash` | | thấy "Guide" trong trash |
-| 20 | `POST /pages/{id}/restore` | id = p2 | 200, biến mất khỏi trash |
-| 21 | `POST /workspaces` | body `{"name":""}` | **400** (validation chặn) |
-
-## 2. Kiểm tra GraphQL sandbox
-
-Mở **http://localhost:3004/graphql** (GraphiQL). Chạy:
-
-```graphql
-{ workspaces { id name } }
-
-mutation { createPage(workspaceId: "<wsid>", title: "Từ GraphQL") { id title rank } }
-
-{ search(workspaceId: "<wsid>", query: "docs") { title } favorites { pageId } }
-```
-
-Kỳ vọng: data trả về khớp những gì đã tạo bên REST (cùng một DB, cùng use-cases).
-
-## 3. Kiểm tra CORS (cho frontend gọi từ admin :3002)
-
-```bash
-curl -s -D - -o /dev/null -H "Origin: http://localhost:3002" http://localhost:3004/workspaces | grep -i access-control
-# Kỳ vọng: access-control-allow-origin: http://localhost:3002
-```
-
-## 4. Những gì CHƯA có (đừng báo bug)
-
-- **Auth chưa có** — mọi write gán cho user `demo@local`. Không promote service này lên
-  production công khai trước khi gắn Auth.js (phase kế tiếp).
-- GraphQL không phủ database views CRUD (REST phủ đủ).
-- Search chỉ match title (chưa full-text vào content).
-- `prisma migrate` chưa chạy được trên Postgres local (user thiếu quyền CREATEDB) —
-  dùng `db:push`; migration files sẽ tạo khi có DB đủ quyền (vd Neon).
-
-## 5. Kiểm tra UI (admin — NotionView)
-
-```bash
-pnpm --filter svc-notion dev   # terminal 1 — backend :3004
-pnpm --filter admin dev        # terminal 2 — frontend :3002
-```
-
-Mở **http://localhost:3002/admin** và click theo:
+## 1. Auth
 
 | # | Thao tác | Kỳ vọng |
 |---|----------|---------|
-| 1 | Đợi trang load | Sidebar hiện "My Workspace" (tự tạo lần đầu) + page đầu tiên tự mở trong editor |
-| 2 | Nút `+` cạnh "Pages" | Page mới xuất hiện trong tree và được chọn, editor trống với placeholder "Enter text or type '/'" |
-| 3 | Gõ title + gõ nội dung vào editor | Sau ~1s indicator chuyển "Đang lưu…" → "Đã lưu"; F5 lại trang nội dung vẫn còn |
-| 4 | Gõ `/` trong editor | Slash menu của BlockNote hiện (heading, list, todo, code…) |
-| 5 | Hover page trong tree → icon `+` | Tạo sub-page, tree expand |
-| 6 | Hover → icon ngôi sao | Page hiện trong section Favorites |
-| 7 | Hover → icon thùng rác | Page biến khỏi tree; mở "Trash" thấy nó, bấm restore quay lại |
-| 8 | Nút "Search" → gõ từ khoá | Kết quả hiện sau ~300ms, click mở đúng page |
-| 9 | (Persist check bằng API) `curl http://localhost:3004/pages/<id>` | `content` chứa đúng blocks vừa gõ |
+| 1 | Mở `http://localhost:3002/admin` khi chưa đăng nhập | Redirect 307 → `/admin/login` |
+| 2 | Vào `/admin/register`, tạo tài khoản (email + mật khẩu ≥ 8 ký tự) | Tự đăng nhập, về `/admin`, header hiện tên + nút Đăng xuất |
+| 3 | Workspace | "My Workspace" tự tạo lần đầu; user mới KHÔNG thấy pages của user khác |
+| 4 | `curl -X POST :3004/graphql` query `workspaces` không cookie | Lỗi `UNAUTHENTICATED` |
 
-## 6. Deploy checklist (Vercel)
+## 2. Pages & Editor (BlockNote + realtime)
 
-1. Tạo Vercel project mới, Root Directory = `apps/svc-notion`.
-2. Set env trong project: `DATABASE_URL` (Neon/Postgres có `?schema=notion` nếu dùng chung DB), `CORS_ORIGINS` = domain các frontend.
-3. Thêm GitHub secret `VERCEL_PROJECT_ID_SVC_NOTION` (matrix đã có sẵn trong workflows).
-4. Push `develop` → preview deploy; verify `https://<deploy-url>/docs` mở được Swagger.
+| # | Thao tác | Kỳ vọng |
+|---|----------|---------|
+| 5 | `+` cạnh PAGES → page mới | Page hiện trong tree, editor mở, avatar presence của bạn hiện cạnh editor |
+| 6 | Gõ title + nội dung; đợi ~1s | "Đang lưu…" → "Đã lưu"; F5 nội dung còn nguyên |
+| 7 | Gõ `/` trong editor | Slash menu BlockNote (heading, todo, code…) |
+| 8 | Mở tab thứ 2 cùng page, gõ ở tab 1 | Tab 2 thấy text NGAY không reload; badge "2 người đang xem" |
+| 9 | Hover page trong tree: `+` / ⭐ / 🗑 | Sub-page / Favorites section / vào Trash (mở Trash → Restore quay lại) |
+| 10 | `Ctrl/⌘ + K` | Command palette; gõ từ khoá → kết quả sau ~300ms; Enter mở page |
+| 11 | Nút mặt trăng/mặt trời trên header | Dark mode toàn cục, kể cả editor |
+
+## 3. Database (table + board + filter/sort/group)
+
+| # | Thao tác | Kỳ vọng |
+|---|----------|---------|
+| 12 | Page menu (⋯) → **Turn into database** | Table view: Name / Status / Points / Due |
+| 13 | `New row` ×3, set Status (Todo/Done/…) qua dropdown từng row | Giá trị lưu ngay (refetch) |
+| 14 | **Filter / Sort** → property Status, op `eq`, value `Done` → Apply | Table chỉ còn đúng row Done |
+| 15 | `+` cạnh tabs → **Board view** → tab Board | Cột theo Status (Todo/In progress/Done/No Status) + card đếm đúng |
+| 16 | **Properties** → thêm/sửa/xoá cột, đổi type, options | Schema lưu, table render lại theo schema mới |
+| 17 | Click tên row | Mở row như một page đầy đủ (row = page con) |
+
+## 4. Share / Comments / History / Cover / Export / Templates
+
+| # | Thao tác | Kỳ vọng |
+|---|----------|---------|
+| 18 | **Share** → bật "Công khai trên web" → Copy | Link `/admin/p/<id>`; mở cửa sổ ẨN DANH (hoặc curl) → 200, trang read-only; page không public → 404 |
+| 19 | **Comments** → viết → Gửi → ✓ resolve | Comment hiện kèm thời gian; resolve mờ đi; reply bằng ô "Trả lời…" |
+| 20 | Page menu → **History** → Save version now → đổi title → History → Restore | Title quay về giá trị lúc snapshot |
+| 21 | Page menu → **Add cover** → chọn ảnh | Ảnh upload lên UploadThing, cover hiện trên page, F5 còn |
+| 22 | Page menu → **Export Markdown** / **Export PDF** | Tải file `.md` / mở hộp thoại print (sidebar/toolbar ẩn khi in) |
+| 23 | Page menu → Templates → Meeting notes/Todo/Project plan | Page mới với nội dung template |
+| 24 | Page menu → **Duplicate** | Bản sao "(copy)" được chọn ngay |
+
+## 5. API surfaces
+
+| # | URL | Kỳ vọng |
+|---|-----|---------|
+| 25 | `http://localhost:3004/graphql` (browser) | **Apollo Sandbox** — chạy query thật (đính cookie nếu gọi từ origin admin; trong Sandbox chỉ query `publicPage` chạy được không cần auth) |
+| 26 | `http://localhost:3004/docs` | Swagger UI — mọi endpoint Try-it-out trả **mock data** (contract only) |
+| 27 | Sửa 1 field trong `schema.graphql` → `pnpm codegen` | Codegen **fail ngay** vì client documents lệch schema (bằng chứng type-sync); revert bằng git |
+
+## 6. Deploy checklist (chưa làm — chờ credentials)
+
+1. Neon Postgres → `DATABASE_URL` cho svc-notion (Vercel env) + chạy `prisma migrate deploy` (migration files tạo trên DB có CREATEDB).
+2. Vercel project cho svc-notion (Root Directory `apps/svc-notion`) + GitHub secret `VERCEL_PROJECT_ID_SVC_NOTION`.
+3. Env production: `AUTH_SECRET` (chung admin+svc), `CORS_ORIGINS`, `LIVEBLOCKS_SECRET_KEY`, `UPLOADTHING_TOKEN`, `UPLOADTHING_CALLBACK_URL`, `NEXT_PUBLIC_NOTION_API_URL`; admin và svc cần chung parent domain để cookie same-site.

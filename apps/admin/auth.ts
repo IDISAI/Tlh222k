@@ -9,7 +9,7 @@ import { prisma } from "@workspace/db"
 const nextAuth = NextAuth({
   basePath: "/admin/api/auth", // Multi-Zones: app lives under /admin
   session: { strategy: "jwt" },
-  pages: { signIn: "/login" },
+  pages: { signIn: "/admin/login" },
   providers: [
     Credentials({
       credentials: { email: {}, password: {} },

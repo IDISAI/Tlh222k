@@ -14,7 +14,7 @@ export async function loginAction(formData: FormData) {
     await signIn("credentials", {
       email: formData.get("email"),
       password: formData.get("password"),
-      redirectTo: "/",
+      redirectTo: "/admin", // Auth.js redirects are origin-relative — include basePath
     })
   } catch (error) {
     if (error instanceof AuthError) redirect("/login?error=invalid")
@@ -40,7 +40,7 @@ export async function registerAction(formData: FormData) {
   })
 
   try {
-    await signIn("credentials", { email, password, redirectTo: "/" })
+    await signIn("credentials", { email, password, redirectTo: "/admin" })
   } catch (error) {
     if (error instanceof AuthError) redirect("/login")
     throw error
@@ -48,5 +48,5 @@ export async function registerAction(formData: FormData) {
 }
 
 export async function logoutAction() {
-  await signOut({ redirectTo: "/login" })
+  await signOut({ redirectTo: "/admin/login" })
 }

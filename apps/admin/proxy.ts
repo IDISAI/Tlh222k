@@ -22,6 +22,6 @@ export function proxy(request: NextRequest) {
 }
 
 export const config = {
-  // skip static assets & uploads webhook
-  matcher: ["/((?!_next|favicon.ico|api/uploadthing).*)"],
+  // skip static assets & uploads webhook; "/" needs its own entry
+  matcher: ["/", "/((?!_next|favicon.ico|api/uploadthing).*)"],
 }
