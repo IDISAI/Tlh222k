@@ -282,6 +282,9 @@ importers:
       '@blocknote/react':
         specifier: ^0.47.2
         version: 0.47.3(@floating-ui/dom@1.7.6)(@types/hast@3.0.4)(@types/react-dom@19.2.3(@types/react@19.2.15))(@types/react@19.2.15)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+      '@graphql-typed-document-node/core':
+        specifier: ^3.2.0
+        version: 3.2.0(graphql@16.14.2)
       '@liveblocks/client':
         specifier: ^3.21.0
         version: 3.21.0(@types/json-schema@7.0.15)
