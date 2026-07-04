@@ -4,3 +4,6 @@
 [submodule "packages/core/src/roadmap"]
 	path = packages/core/src/roadmap
 	url = git@github.com:IDISAI/roadmap.git
+[submodule "packages/core/src/notion"]
+	path = packages/core/src/notion
+	url = git@github.com:IDISAI/notion.git
