@@ -3,14 +3,16 @@
   "applications": {
     "tlh222k-web": {
       "packageName": "web",
-      "development": { "fallback": "tlh222k-web-five.vercel.app" }
+      "development": { "local": 3520, "fallback": "tlh222k-web-five.vercel.app" }
     },
     "tlh222k-admin": {
       "packageName": "admin",
+      "development": { "local": 5851 },
       "routing": [{ "paths": ["/admin/:path*"] }]
     },
     "tlh222k-super-admin": {
       "packageName": "super-admin",
+      "development": { "local": 4831 },
       "routing": [{ "paths": ["/super-admin/:path*"] }]
     }
   }
