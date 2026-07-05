@@ -1,15 +1,21 @@
-# API Rules (NestJS)
+# API Rules
 
-## REST endpoints
+> **Trạng thái:** Chưa build. NestJS api-gateway, Prisma, PostgreSQL là hệ thống mục tiêu (target) — xem [docs/onboarding/architecture.md](../docs/onboarding/architecture.md) để biết thiết kế dự kiến.
+>
+> Hiện tại: apps giao tiếp trực tiếp qua Next.js (no separate backend). File này sẽ được cập nhật khi api-gateway được triển khai.
 
-- Lesson fields are patched individually: `PATCH /api/nodes/:id/content|title|cover|icon`
-- Never use `POST /api/roadmaps/:id/graph` (UpsertGraph) to save lesson data — it deletes all nodes and re-inserts
+## Thiết kế dự kiến (planned)
 
-## GraphQL
+### REST endpoints
 
-- Apollo Server at `/graphql` — playground enabled
-- Swagger at `/api-docs`
+- Lesson fields sẽ được patch riêng lẻ: `PATCH /api/nodes/:id/content|title|cover|icon`
+- Không dùng `POST /api/roadmaps/:id/graph` (UpsertGraph) để save lesson data — nó xóa toàn bộ nodes và insert lại
 
-## Computed fields
+### GraphQL
 
-- `Node.targetRoadmapSlug` is NOT stored in DB — computed on the fly from full roadmap list in the REST controller
+- Apollo Server tại `/graphql`
+- Swagger tại `/api-docs`
+
+### Computed fields
+
+- `Node.targetRoadmapSlug` sẽ không lưu trong DB — tính on-the-fly từ danh sách roadmaps trong REST controller

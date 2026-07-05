@@ -5,8 +5,8 @@ Domain logic dùng chung, tổ chức **feature-first**. Apps import từ đây;
 ## Cấu trúc
 
 ```
-src/<feature>/            roadmap/ (submodule), notion/
-  <sub-feature>/          roadmap/graph · notion/{content-editor,sidebar,search}
+src/<feature>/            roadmap/ (submodule), navigation/
+  <sub-feature>/          roadmap/graph
 ```
 
 Mỗi feature/sub-feature cùng một khuôn:

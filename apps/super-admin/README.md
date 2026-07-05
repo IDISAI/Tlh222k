@@ -1,6 +1,6 @@
 # super-admin
 
-Next.js app super-admin (nhân bản cấu hình từ [../web](../web)). Dev trên port **3003**. Tiêu thụ `@workspace/{ui,core}`; [app/page.tsx](app/page.tsx) mount `RoadmapView` + `NotionView`.
+Next.js app super-admin (nhân bản cấu hình từ [../web](../web)). Dev trên port **3003**. Tiêu thụ `@workspace/{ui,core}`; [app/page.tsx](app/page.tsx) mount `RoadmapView`.
 
 ## Chạy
 

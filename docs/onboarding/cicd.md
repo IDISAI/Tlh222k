@@ -21,11 +21,11 @@ Developer push feature/xxx
         ↓
     Mở PR → develop
         ↓
-    [ci.yml] lint → test → build       ← phải PASS mới merge được
+    [ci.yml] lint → typecheck → build   ← phải PASS mới merge được
         ↓
     Merge vào develop
         ↓
-    [ci.yml] lint → test → build       ← chạy lần nữa trên develop
+    [ci.yml] lint → typecheck → build   ← chạy lần nữa trên develop
     [deploy-staging.yml] → Vercel Staging (web + admin song song)
         ↓
     Team test trên staging
@@ -50,29 +50,29 @@ Developer push feature/xxx
 **Các bước (theo thứ tự):**
 
 ```
-1. Checkout code
-2. Cài pnpm 10.30.2
+1. Checkout code (bao gồm submodules: packages/ui, packages/core/src/roadmap)
+2. Cài pnpm (version đọc từ packageManager trong package.json)
 3. Cài Node.js 20 (với pnpm cache)
 4. pnpm install --frozen-lockfile
    → lockfile phải khớp chính xác — nếu ai thêm package mà quên commit lockfile, bước này sẽ fail
 5. pnpm lint
-   → thực chất là TypeScript type check (tsc --noEmit), không phải style lint
-6. pnpm test
-   → chạy Vitest (admin, core) + Jest (api-gateway) — KHÔNG chạy E2E Playwright
+   → ESLint trên toàn bộ codebase (style, unused vars, turbo env vars...)
+6. pnpm typecheck
+   → tsc --noEmit — TypeScript type check (task riêng với lint)
 7. pnpm build
    → build toàn bộ monorepo qua Turborepo
 ```
 
-**Ý nghĩa thực tế:**
+**Lưu ý quan trọng:**
+- `pnpm lint` và `pnpm typecheck` là **hai task riêng biệt** — lint = ESLint, typecheck = tsc
+- Chưa có test runner (`pnpm test` không tồn tại). CI không chạy unit test.
 - PR không thể merge vào `develop` khi CI chưa pass
-- `pnpm lint` fail = TypeScript có lỗi type — không phải lỗi dấu phẩy hay khoảng trắng
-- `pnpm test` KHÔNG bao gồm E2E — Playwright cần apps đang chạy, không thể chạy trong CI thông thường
 
 **Chạy CI locally trước khi push:**
 ```bash
-pnpm lint    # TypeScript type check
-pnpm test    # unit tests
-pnpm build   # đảm bảo build không lỗi
+pnpm lint       # ESLint
+pnpm typecheck  # TypeScript
+pnpm build      # đảm bảo build không lỗi
 ```
 
 ---
@@ -81,18 +81,18 @@ pnpm build   # đảm bảo build không lỗi
 
 **Kích hoạt:** Push vào `develop` hoặc `release/**`
 
-**Chạy song song 2 job độc lập:**
+**Chạy song song 3 job độc lập (matrix):**
 
 ```
-deploy-web-staging                    deploy-admin-staging
-──────────────────                    ────────────────────
-checkout + pnpm install               checkout + pnpm install
-pnpm build (toàn bộ monorepo)         pnpm build (toàn bộ monorepo)
-vercel pull                           vercel pull
-vercel build                          vercel build
-vercel deploy --prebuilt              vercel deploy --prebuilt
-      ↓                                     ↓
-Vercel Staging (web)              Vercel Staging (admin)
+deploy web              deploy admin            deploy super-admin
+──────────────────      ────────────────────    ──────────────────────
+checkout + install      checkout + install      checkout + install
+pnpm build              pnpm build              pnpm build
+vercel pull             vercel pull             vercel pull
+vercel build            vercel build            vercel build
+vercel deploy --pre..   vercel deploy --pre..   vercel deploy --pre..
+      ↓                       ↓                       ↓
+Vercel Staging (web)  Vercel Staging (admin)  Vercel Staging (super-admin)
 ```
 
 **3 bước deploy Vercel:**
@@ -116,9 +116,10 @@ Cách prebuilt (đang dùng):
        Build xảy ra trên CI runner nơi pnpm đã được cài sẵn
 ```
 
-**Cách phân biệt web vs admin:** Mỗi job dùng biến `VERCEL_PROJECT_ID` khác nhau:
-- Web job: `VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID_WEB }}`
-- Admin job: `VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID_ADMIN }}`
+**Cách phân biệt 3 apps:** Mỗi job dùng biến `VERCEL_PROJECT_ID` khác nhau, map từ matrix:
+- `web` → `VERCEL_PROJECT_ID_WEB`
+- `admin` → `VERCEL_PROJECT_ID_ADMIN`
+- `super-admin` → `VERCEL_PROJECT_ID_SUPER_ADMIN` (dấu gạch dưới, không phải gạch ngang)
 
 Vercel sẽ tự biết cần build app nào dựa vào project ID.
 
@@ -149,12 +150,12 @@ git push origin main v1.2.0    # push cả branch và tag cùng lúc
 **Job dependency:**
 
 ```
-deploy-web-production ──┐
-                        ├──→ (cả hai thành công) ──→ github-release
-deploy-admin-production─┘
+deploy web ──┐
+deploy admin ─┼──→ (tất cả thành công) ──→ github-release
+deploy super-admin ──┘
 ```
 
-`github-release` chạy SAU KHI cả hai deploy thành công (`needs: [deploy-web-production, deploy-admin-production]`). Nó tự tạo GitHub Release với release notes được generate từ commit messages.
+`github-release` chạy SAU KHI cả ba deploy thành công (`needs: [deploy]`). Nó tự tạo GitHub Release với release notes được generate từ commit messages.
 
 **Khác với staging:** Production dùng `--prod` flag:
 ```
@@ -220,10 +221,10 @@ CI runner không có database và không khởi động apps trước khi chạy
 Ai đó thêm dependency mà không commit `pnpm-lock.yaml`. Chạy `pnpm install` local và commit lockfile.
 
 **CI fail tại `pnpm lint`**
-TypeScript type error. Chạy `pnpm lint` local để xem lỗi cụ thể.
+ESLint error. Chạy `pnpm lint` local để xem lỗi cụ thể.
 
-**CI fail tại `pnpm test`**
-Test fail. Chạy `pnpm test` local hoặc `pnpm --filter @vizteck/<package> test` để debug.
+**CI fail tại `pnpm typecheck`**
+TypeScript type error. Chạy `pnpm typecheck` local để xem chi tiết.
 
 **CI fail tại `pnpm build`**
 Build error. Chạy `pnpm build` local — Turborepo sẽ chỉ ra package nào fail.

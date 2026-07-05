@@ -2,26 +2,47 @@
 
 ## Dependency direction
 
-- `apps/*` → `packages/*` ✓
-- `packages/core` → `packages/graphql-client`, `@xyflow/react`, `packages/ui` ✓
-- `packages/graph`, `packages/lesson` → `packages/core` only ✓
-- `packages/*` → `apps/*` ✗ never
+```
+apps/*       →  packages/*   ✓
+packages/*   →  apps/*       ✗ never
+```
 
-## Shim packages (graph, lesson)
+Ví dụ hợp lệ:
+```ts
+// apps/web/app/page.tsx
+import { RoadmapView } from "@workspace/core"   // ✓
+import { Button } from "@workspace/ui/components/button"  // ✓
+```
 
-- `packages/graph` and `packages/lesson` are re-export shims only
-- Do NOT add source files to them — all logic goes in `packages/core`
+Ví dụ vi phạm:
+```ts
+// packages/core/src/roadmap/...
+import something from "../../apps/web/..."  // ✗
+```
+
+## Packages hiện có
+
+| Package | Scope | Vai trò |
+|---------|-------|---------|
+| `packages/core` | `@workspace/core` | Toàn bộ domain logic — feature-first |
+| `packages/ui` | `@workspace/ui` | React components (shadcn/ui + Tailwind v4) |
+| `packages/eslint-config` | `@workspace/eslint-config` | Shared ESLint config |
+| `packages/typescript-config` | `@workspace/typescript-config` | Shared tsconfig |
 
 ## Core package layout
 
 ```
 packages/core/src/
-  roadmap/          <- This is a feature
-    graph/          <- This is a sub-feature
-  lesson/             <- This is a feature
-    content-editor/ ← This is a sub-feature
-    page-tree/      <- This is a sub-feature
-    search/         <- This is a sub-feature
+  roadmap/          ← feature (git submodule: IDISAI/roadmap)
+    graph/          ← sub-feature
+  navigation/       ← feature
+  index.ts          ← barrel, re-export tất cả features
 ```
 
-Each feature/sub-feature: `types.ts`, `*.service.ts`, `hooks/`, `components/`, `utils/`
+Mỗi feature/sub-feature: `types.ts`, `*.service.ts`, `hooks/`, `components/`, `utils/`, `index.ts`
+
+## Thêm feature mới vào core
+
+1. Tạo `src/<feature>/` với đúng khuôn trên
+2. Thêm `export * from "./<feature>"` vào `src/index.ts`
+3. Feature là submodule riêng → tạo repo, thêm submodule, rồi bước 1-2 trong submodule đó
