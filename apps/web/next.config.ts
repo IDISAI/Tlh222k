@@ -1,8 +1,15 @@
 import type { NextConfig } from "next"
 
-// Multi-Zones host: proxy child zones. URLs from env in prod; localhost in dev.
-const ADMIN_URL = process.env.ADMIN_URL ?? "http://localhost:3002"
-const SUPER_ADMIN_URL = process.env.SUPER_ADMIN_URL ?? "http://localhost:3003"
+// Native Next.js Multi-Zones: this (default/host) app proxies the child zones by
+// path. Local dev defaults to the child dev servers; production uses the child
+// domains. Override with ADMIN_URL / SUPER_ADMIN_URL if the domains change.
+const isProd = process.env.NODE_ENV === "production"
+const ADMIN_URL =
+  process.env.ADMIN_URL ??
+  (isProd ? "https://tlh222k-admin.vercel.app" : "http://localhost:3002")
+const SUPER_ADMIN_URL =
+  process.env.SUPER_ADMIN_URL ??
+  (isProd ? "https://tlh222k-super-admin.vercel.app" : "http://localhost:3003")
 
 const nextConfig: NextConfig = {
   transpilePackages: ["@workspace/ui", "@workspace/core"],

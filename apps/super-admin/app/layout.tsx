@@ -1,6 +1,6 @@
 import { Geist_Mono, Inter } from "next/font/google"
 
-import { PlatformSwitch } from "@workspace/core"
+import { PlatformSwitch, ThemeToggle } from "@workspace/core"
 
 import "@workspace/ui/globals.css"
 import { ThemeProvider } from "@/components/theme-provider"
@@ -31,8 +31,9 @@ export default function RootLayout({
     >
       <body>
         <ThemeProvider>
-          <header className="flex items-center border-b p-3">
+          <header className="flex items-center justify-between border-b p-3">
             <PlatformSwitch current="super-admin" />
+            <ThemeToggle />
           </header>
           {children}
         </ThemeProvider>

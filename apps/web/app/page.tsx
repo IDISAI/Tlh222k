@@ -13,9 +13,6 @@ export default function Page() {
         </div>
         {/* Feature mounted from @workspace/core */}
         <RoadmapView />
-        <div className="font-mono text-xs text-muted-foreground">
-          (Press <kbd>d</kbd> to toggle dark mode)
-        </div>
       </div>
     </div>
   )
