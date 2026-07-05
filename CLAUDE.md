@@ -26,9 +26,9 @@ Note: [docs/onboarding/cicd.md](docs/onboarding/cicd.md) says "`pnpm lint` = Typ
 
 Two working paths are git submodules, each its own repo:
 
-| Path | Repo |
-|------|------|
-| `packages/ui` | `git@github.com:IDISAI/ui.git` |
+| Path                        | Repo                                |
+| --------------------------- | ----------------------------------- |
+| `packages/ui`               | `git@github.com:IDISAI/ui.git`      |
 | `packages/core/src/roadmap` | `git@github.com:IDISAI/roadmap.git` |
 
 - Clone with `git clone --recurse-submodules`, or after clone run `git submodule update --init --recursive`. A missing submodule means empty dirs and a broken build (`web` needs `@workspace/ui`; `packages/core/src/index.ts` re-exports `./roadmap`).
@@ -40,16 +40,19 @@ Two working paths are git submodules, each its own repo:
 **What exists today:** two Next.js frontends (`apps/web`, `apps/admin`) plus shared `packages/*`. `apps/admin` (port 3002) and `apps/super-admin` (port 3003) mirror `apps/web` and mount core features; `web` mounts `RoadmapView`, `admin` mounts `NotionView` + `GraphView`, `super-admin` mounts `RoadmapView` + `NotionView`. The docs under [docs/onboarding/](docs/onboarding/) describe a larger **target** system (NestJS `api-gateway`, Prisma `packages/db`, admin CMS, Playwright e2e) that is **not built yet** — treat those as roadmap, not current state.
 
 **Dependency direction** (enforced by convention, see [rules/packages.md](rules/packages.md)):
+
 ```
 apps/*  →  packages/*        ✓
 packages/* → apps/*          ✗ never
 ```
 
 **`packages/core` (`@workspace/core`)** — all domain logic lives here, organized feature-first:
+
 ```
 src/<feature>/            e.g. roadmap/ (submodule), notion/
   <sub-feature>/          e.g. roadmap/graph, notion/{content-editor,sidebar,search}
 ```
+
 Every feature/sub-feature follows the same shape: `types.ts`, `<slug>.service.ts`, `hooks/`, `components/`, `utils/`, and an `index.ts` barrel that re-exports them (parent features also re-export their sub-features up to `src/index.ts`). `core` uses `moduleResolution: Bundler` so barrels can `export *` without file extensions.
 
 **Consuming a package from an app:** add `"@workspace/<pkg>": "workspace:*"` to the app's deps, add it to `transpilePackages` in `next.config.ts`, and map it under `paths` in the app's `tsconfig.json` (see `apps/web`). `apps/web/lib/core.ts` is the reference example of importing core and customizing per-app.
@@ -63,6 +66,7 @@ This repo pins a modified Next.js (see [AGENTS.md](AGENTS.md)) with breaking cha
 ## CI/CD
 
 Three workflows in `.github/workflows/` (see [docs/onboarding/cicd.md](docs/onboarding/cicd.md)):
+
 - `ci.yml` — PRs + push to `main`/`develop`/`release/**`: lint → typecheck → build.
 - `deploy-staging.yml` — push `develop`/`release/**`: Vercel preview (web).
 - `release.yml` — tag `v*`: Vercel production (web) + GitHub Release.
@@ -72,3 +76,23 @@ Deploys cover **web + admin + super-admin** (matrix job per app) and require Git
 App env vars (`.env.local`, Vercel dashboard) are separate from CI secrets — see [docs/onboarding/env.md](docs/onboarding/env.md). Current app code consumes none yet.
 
 Because `packages/ui` and the `core` features are **private submodules**, every workflow checks out with `submodules: recursive` and `token: ${{ secrets.SUBMODULE_PAT || github.token }}` — set `SUBMODULE_PAT` (a PAT with read access to the `IDISAI/*` submodule repos) or the build fails to fetch them.
+
+## Skill routing
+
+When the user's request matches an available skill, invoke it via the Skill tool. When in doubt, invoke the skill.
+
+Key routing rules:
+
+- Product ideas/brainstorming → invoke /office-hours
+- Strategy/scope → invoke /plan-ceo-review
+- Architecture → invoke /plan-eng-review
+- Design system/plan review → invoke /design-consultation or /plan-design-review
+- Full review pipeline → invoke /autoplan
+- Bugs/errors → invoke /investigate
+- QA/testing site behavior → invoke /qa or /qa-only
+- Code review/diff check → invoke /review
+- Visual polish → invoke /design-review
+- Ship/deploy/PR → invoke /ship or /land-and-deploy
+- Save progress → invoke /context-save
+- Resume context → invoke /context-restore
+- Author a backlog-ready spec/issue → invoke /spec
