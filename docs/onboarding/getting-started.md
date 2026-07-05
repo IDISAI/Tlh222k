@@ -1,5 +1,15 @@
 # Bắt đầu với lh222k
 
+> **⚠️ Lưu ý:** Hướng dẫn này mô tả setup đầy đủ hệ thống target (Docker, PostgreSQL, NestJS api-gateway). **Trạng thái hiện tại:** chỉ cần Node ≥ 20, pnpm, và `git clone --recurse-submodules`. Bỏ qua các bước Docker/database.
+>
+> **Quick start thực tế:**
+> ```bash
+> git clone --recurse-submodules <repo-url>
+> cd lh222k
+> pnpm install
+> pnpm dev   # web :3000, admin :3002, super-admin :3003
+> ```
+
 Hướng dẫn này đưa bạn từ zero đến một môi trường local đang chạy đầy đủ — ba service, database có dữ liệu demo, và admin panel sẵn sàng để khám phá.
 
 **Thời gian ước tính:** 15–20 phút (lần đầu tiên)

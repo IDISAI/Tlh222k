@@ -1,5 +1,7 @@
 # Cheat Sheet cho Developer
 
+> **⚠️ Lưu ý:** Cheat sheet này được viết cho hệ thống target (NestJS, Prisma, test runner, apps/e2e). **Phần hiện đang hoạt động:** lệnh pnpm (mục 1 — bỏ `pnpm test`), naming conventions (mục 7, 8), CI/CD triggers (mục 12).
+
 Tham chiếu nhanh hàng ngày: lệnh, ports, biến môi trường, nhánh, commit, packages, data model, auth, CI/CD và xử lý lỗi.
 
 ---
@@ -11,8 +13,10 @@ Tham chiếu nhanh hàng ngày: lệnh, ports, biến môi trường, nhánh, co
 ```bash
 pnpm dev              # Khởi động tất cả apps ở chế độ watch
 pnpm build            # Build tất cả packages (theo thứ tự dependency Turborepo)
-pnpm test             # Chạy tất cả unit tests (bỏ qua e2e)
-pnpm lint             # Lint + type-check tất cả packages
+pnpm lint             # ESLint toàn monorepo
+pnpm typecheck        # tsc --noEmit (task riêng với lint)
+pnpm format           # Prettier --write
+# pnpm test           # Chưa có test runner
 ```
 
 ### Theo từng package
@@ -189,12 +193,11 @@ Authorization: Bearer supersecret
 
 ## 12. CI/CD triggers
 
-| Trigger                       | Pipeline                                               | Deploy tới      |
-| ----------------------------- | ------------------------------------------------------ | --------------- |
-| PR hoặc push lên bất kỳ nhánh | `lint → test → build`                                  | —               |
-| Push vào `develop`            | `lint → test → build → Vercel deploy`                  | Staging         |
-| Push vào `release/*`          | `lint → test → build → Vercel deploy`                  | Staging preview |
-| Push tag `v*`                 | `lint → test → build → Vercel deploy + GitHub Release` | Production      |
+| Trigger                            | Pipeline                                                    | Deploy tới      |
+| ---------------------------------- | ----------------------------------------------------------- | --------------- |
+| PR hoặc push vào main/develop/release | `lint → typecheck → build`                               | —               |
+| Push vào `develop` / `release/**`  | `lint → typecheck → build → Vercel deploy (3 apps)`         | Staging         |
+| Push tag `v*`                      | `lint → typecheck → build → Vercel deploy + GitHub Release` | Production      |
 
 PR không được merge cho đến khi CI pass.
 

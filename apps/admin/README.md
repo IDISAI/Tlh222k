@@ -1,6 +1,6 @@
 # admin
 
-Next.js app quản trị (nhân bản cấu hình từ [../web](../web)). Dev trên port **3002**. Tiêu thụ `@workspace/ui` và `@workspace/core`; [app/page.tsx](app/page.tsx) mount `NotionView` + `GraphView` từ core.
+Next.js app quản trị (nhân bản cấu hình từ [../web](../web)). Dev trên port **3002**. Tiêu thụ `@workspace/ui` và `@workspace/core`; [app/page.tsx](app/page.tsx) mount `GraphView` từ core.
 
 ## Chạy
 

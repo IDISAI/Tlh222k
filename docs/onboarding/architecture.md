@@ -1,5 +1,11 @@
 # Tổng quan kiến trúc
 
+> **⚠️ Lưu ý trạng thái:** Tài liệu này mô tả **hệ thống mục tiêu (target architecture)** — bao gồm NestJS api-gateway, Prisma, PostgreSQL, packages/db, packages/graph, packages/lesson, apps/e2e. Các thành phần đó **chưa được build**.
+>
+> **Trạng thái hiện tại:** ba Next.js apps (`web`, `admin`, `super-admin`) + shared packages (`@workspace/core`, `@workspace/ui`). Xem [CLAUDE.md](../../CLAUDE.md) để biết trạng thái thực.
+>
+> Scope package là `@workspace/*` (không phải `@vizteck/*` như đề cập trong tài liệu này).
+
 Tài liệu này giải thích **tại sao** lh222k được thiết kế theo cách hiện tại — không chỉ liệt kê công nghệ mà còn giải thích lý do lựa chọn, các phương án đã xem xét và sự đánh đổi.
 
 ---
