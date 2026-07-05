@@ -5,13 +5,15 @@
     "build": {
       "dependsOn": ["^build"],
       "inputs": ["$TURBO_DEFAULT$", ".env*"],
-      "outputs": [".next/**", "!.next/cache/**"]
+      "outputs": [".next/**", "!.next/cache/**"],
+      "env": ["ADMIN_URL", "SUPER_ADMIN_URL"]
     },
     "lint": {
       "dependsOn": ["^lint"]
     },
     "format": {
-      "dependsOn": ["^format"]
+      "dependsOn": ["^format"],
+      "cache": false
     },
     "typecheck": {
       "dependsOn": ["^typecheck"]
