@@ -12,6 +12,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@vercel/microfrontends": "^2.3.6",
     "@workspace/core": "workspace:*",
     "@workspace/ui": "workspace:*",
     "lucide-react": "^1.23.0",

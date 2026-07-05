@@ -1,0 +1,17 @@
+{
+  "$schema": "https://openapi.vercel.sh/microfrontends.json",
+  "applications": {
+    "tlh222k-web": {
+      "packageName": "web",
+      "development": { "fallback": "tlh222k-web-five.vercel.app" }
+    },
+    "tlh222k-admin": {
+      "packageName": "admin",
+      "routing": [{ "paths": ["/admin/:path*"] }]
+    },
+    "tlh222k-super-admin": {
+      "packageName": "super-admin",
+      "routing": [{ "paths": ["/super-admin/:path*"] }]
+    }
+  }
+}
