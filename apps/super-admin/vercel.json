@@ -2,5 +2,12 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "nextjs",
   "installCommand": "pnpm install --frozen-lockfile",
-  "buildCommand": "pnpm build"
+  "buildCommand": "pnpm build",
+  "redirects": [
+    {
+      "source": "/",
+      "destination": "https://tlh222k-web-five.vercel.app/super-admin",
+      "permanent": false
+    }
+  ]
 }
