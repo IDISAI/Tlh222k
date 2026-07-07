@@ -9,7 +9,9 @@ const isAuthPage = createRouteMatcher(["/sign-in(.*)", "/sign-up(.*)"])
 // Dev-only auth bypass for headless QA / the localhost-only preview (can't open
 // Clerk's hosted sign-in). Set DEV_AUTH_ROLE in .env.local; off in production.
 const DEV_AUTH_ROLE =
-  process.env.NODE_ENV !== "production" ? process.env.NEXT_PUBLIC_DEV_AUTH_ROLE : undefined
+  process.env.NODE_ENV !== "production"
+    ? process.env.NEXT_PUBLIC_DEV_AUTH_ROLE
+    : undefined
 
 // In dev bypass mode, skip Clerk entirely. clerkMiddleware still runs its
 // dev-browser handshake (a 307 to the external Clerk domain) even when the
