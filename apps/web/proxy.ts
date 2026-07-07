@@ -6,8 +6,13 @@ import { NextResponse } from "next/server"
 const isProtected = createRouteMatcher(["/dashboard(.*)"])
 const isAuthPage = createRouteMatcher(["/sign-in(.*)", "/sign-up(.*)"])
 
+// Dev-only auth bypass for headless QA / the localhost-only preview (can't open
+// Clerk's hosted sign-in). Set DEV_AUTH_ROLE in .env.local; off in production.
+const DEV_AUTH_ROLE =
+  process.env.NODE_ENV !== "production" ? process.env.NEXT_PUBLIC_DEV_AUTH_ROLE : undefined
+
 export default clerkMiddleware(async (auth, req) => {
-  const { userId } = await auth()
+  const userId = DEV_AUTH_ROLE ? "dev-bypass" : (await auth()).userId
 
   // Already signed in and visiting the auth pages → /roadmaps (Req 4.6).
   if (userId && isAuthPage(req)) {

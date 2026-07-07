@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import {
   InteractiveRoadmap,
   NodeDrawer,
@@ -19,11 +19,16 @@ export function RoadmapDetailClient({
   graph: RoadmapGraph
   isAuthenticated: boolean
 }) {
-  // Guests stay all-locked (Property 4); viewers overlay persisted progress.
-  const [statuses, setStatuses] = useState<Record<string, NodeStatus>>(() =>
-    isAuthenticated ? progress.getAll() : {}
-  )
+  // Start empty so the first client render matches the server's all-locked HTML
+  // (localStorage is client-only; reading it during the initial render would
+  // diverge and break hydration — Lock vs Clock icon mismatch).
+  const [statuses, setStatuses] = useState<Record<string, NodeStatus>>({})
   const [selectedId, setSelectedId] = useState<string | null>(null)
+
+  // Overlay persisted progress after mount (Property 4: guests stay all-locked).
+  useEffect(() => {
+    if (isAuthenticated) setStatuses(progress.getAll())
+  }, [isAuthenticated])
 
   const nodes = useMemo<RoadmapNode[]>(
     () =>
