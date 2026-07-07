@@ -40,7 +40,11 @@ export default async function RootLayout({
         <body>
           <ThemeProvider>
             <header className="flex items-center justify-between border-b p-3">
-              <PlatformSwitch current="web" role={role} />
+              <PlatformSwitch
+                current="web"
+                role={role}
+                baseUrl={process.env.NEXT_PUBLIC_HOST_URL ?? ""}
+              />
               <div className="flex items-center gap-2">
                 <ThemeToggle />
                 {isAuthed ? (

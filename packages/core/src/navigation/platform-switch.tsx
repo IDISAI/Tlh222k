@@ -23,12 +23,22 @@ export function getAllowedPlatforms(role?: UserRole): PlatformKey[] {
   return ["web"]
 }
 
-export const PlatformSwitch: FC<{ current?: PlatformKey; role?: UserRole }> = ({
-  current,
-  role,
-}) => {
+export const PlatformSwitch: FC<{
+  current?: PlatformKey
+  role?: UserRole
+  /**
+   * Origin of the Multi-Zone host (the `web` app). Only the host has the
+   * rewrites that route `/admin` and `/super-admin` to their child zones, so
+   * every switch link must resolve against it. Leave empty when the browser is
+   * already on the host (prod, or dev on :3000); set it to the host origin
+   * (e.g. `http://localhost:3000`) when a child zone is served on its own port
+   * so the links don't hit the child's own non-existent routes.
+   */
+  baseUrl?: string
+}> = ({ current, role, baseUrl }) => {
   const allowed = getAllowedPlatforms(role)
   const visible = platforms.filter((p) => allowed.includes(p.key))
+  const base = (baseUrl ?? "").replace(/\/$/, "")
 
   // Invalid `current` (outside the union) → warn, leave nothing active (Req 6.5).
   if (current && !platforms.some((p) => p.key === current)) {
@@ -42,7 +52,7 @@ export const PlatformSwitch: FC<{ current?: PlatformKey; role?: UserRole }> = ({
         return (
           <a
             key={p.key}
-            href={p.href}
+            href={`${base}${p.href}`}
             aria-current={active ? "page" : undefined}
             className={
               "rounded-md px-3 py-1 transition-colors " +
