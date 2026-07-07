@@ -1,10 +1,12 @@
 import { Geist_Mono, Inter } from "next/font/google"
+import { ClerkProvider, UserButton } from "@clerk/nextjs"
 
 import { PlatformSwitch, ThemeToggle } from "@workspace/core"
 
 import "@workspace/ui/globals.css"
 import { ThemeProvider } from "@/components/theme-provider"
 import { cn } from "@workspace/ui/lib/utils"
+import { getIsAuthenticated, getRole } from "@/lib/auth"
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-sans" })
 
@@ -13,31 +15,45 @@ const fontMono = Geist_Mono({
   variable: "--font-mono",
 })
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode
 }>) {
+  const [role, isAuthed] = await Promise.all([
+    getRole(),
+    getIsAuthenticated(),
+  ])
+
   return (
-    <html
-      lang="en"
-      suppressHydrationWarning
-      className={cn(
-        "antialiased",
-        fontMono.variable,
-        "font-sans",
-        inter.variable
-      )}
-    >
-      <body>
-        <ThemeProvider>
-          <header className="flex items-center justify-between border-b p-3">
-            <PlatformSwitch current="admin" />
-            <ThemeToggle />
-          </header>
-          {children}
-        </ThemeProvider>
-      </body>
-    </html>
+    <ClerkProvider>
+      <html
+        lang="en"
+        suppressHydrationWarning
+        className={cn(
+          "antialiased",
+          fontMono.variable,
+          "font-sans",
+          inter.variable
+        )}
+      >
+        <body>
+          <ThemeProvider>
+            <header className="flex items-center justify-between border-b p-3">
+              <PlatformSwitch
+                current="admin"
+                role={role}
+                baseUrl={process.env.NEXT_PUBLIC_HOST_URL ?? ""}
+              />
+              <div className="flex items-center gap-2">
+                <ThemeToggle />
+                {isAuthed && <UserButton />}
+              </div>
+            </header>
+            {children}
+          </ThemeProvider>
+        </body>
+      </html>
+    </ClerkProvider>
   )
 }

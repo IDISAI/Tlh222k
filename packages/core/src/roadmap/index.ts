@@ -6,3 +6,6 @@ export * from "./utils"
 
 // sub-features
 export * from "./graph"
+export * from "./drawer"
+export * from "./progress"
+export * from "./dashboard"
