@@ -6,45 +6,29 @@ import { NextResponse } from "next/server"
 const isProtected = createRouteMatcher(["/dashboard(.*)"])
 const isAuthPage = createRouteMatcher(["/sign-in(.*)", "/sign-up(.*)"])
 
-// Dev-only auth bypass for headless QA / the localhost-only preview (can't open
-// Clerk's hosted sign-in). Set DEV_AUTH_ROLE in .env.local; off in production.
-const DEV_AUTH_ROLE =
-  process.env.NODE_ENV !== "production"
-    ? process.env.NEXT_PUBLIC_DEV_AUTH_ROLE
-    : undefined
+export default clerkMiddleware(async (auth, req) => {
+  const { userId } = await auth()
 
-// In dev bypass mode, skip Clerk entirely. clerkMiddleware still runs its
-// dev-browser handshake (a 307 to the external Clerk domain) even when the
-// callback returns early, which stalls every matched request — including
-// /api/* calls like the Notion content fetch. A plain pass-through removes
-// Clerk from the request path completely.
-const proxy = DEV_AUTH_ROLE
-  ? () => NextResponse.next()
-  : clerkMiddleware(async (auth, req) => {
-      const { userId } = await auth()
+  // Already signed in and visiting the auth pages → /roadmaps (Req 4.6).
+  if (userId && isAuthPage(req)) {
+    const url = req.nextUrl.clone()
+    url.pathname = "/roadmaps"
+    url.search = ""
+    return NextResponse.redirect(url)
+  }
 
-      // Already signed in and visiting the auth pages → /roadmaps (Req 4.6).
-      if (userId && isAuthPage(req)) {
-        const url = req.nextUrl.clone()
-        url.pathname = "/roadmaps"
-        url.search = ""
-        return NextResponse.redirect(url)
-      }
-
-      // Guest hitting a protected route → sign-in, preserving return path
-      // (Req 4.5 / 8.6). Clerk's <SignIn> honours the `redirect_url` query
-      // param → round-trip (A2).
-      if (!userId && isProtected(req)) {
-        const url = req.nextUrl.clone()
-        const returnTo = url.pathname + url.search
-        url.pathname = "/sign-in"
-        url.search = ""
-        url.searchParams.set("redirect_url", returnTo)
-        return NextResponse.redirect(url)
-      }
-    })
-
-export default proxy
+  // Guest hitting a protected route → sign-in, preserving return path
+  // (Req 4.5 / 8.6). Clerk's <SignIn> honours the `redirect_url` query
+  // param → round-trip (A2).
+  if (!userId && isProtected(req)) {
+    const url = req.nextUrl.clone()
+    const returnTo = url.pathname + url.search
+    url.pathname = "/sign-in"
+    url.search = ""
+    url.searchParams.set("redirect_url", returnTo)
+    return NextResponse.redirect(url)
+  }
+})
 
 export const config = {
   matcher: [

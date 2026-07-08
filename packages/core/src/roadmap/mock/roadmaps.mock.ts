@@ -33,4 +33,15 @@ export const MOCK_ROADMAPS: Roadmap[] = [
     isPublished: true,
     nodeCount: MOCK_NODES.devops?.length ?? 0,
   },
+  {
+    // Unpublished draft — only visible in the admin builder list (Req 1.1);
+    // `list()` filters it out for viewers.
+    id: "rm-ai",
+    slug: "ai-engineer",
+    title: "AI Engineer",
+    description: "Bản nháp lộ trình AI Engineer — chưa xuất bản.",
+    thumbnailUrl: null,
+    isPublished: false,
+    nodeCount: MOCK_NODES["ai-engineer"]?.length ?? 0,
+  },
 ]
