@@ -2,7 +2,7 @@ import Link from "next/link"
 import { Geist_Mono, Inter } from "next/font/google"
 import { ClerkProvider, UserButton } from "@clerk/nextjs"
 
-import { ThemeToggle } from "@workspace/core"
+import { RoadmapApolloProvider, ThemeToggle } from "@workspace/core"
 
 import "@workspace/ui/globals.css"
 import { Toaster } from "@workspace/ui/components/sonner"
@@ -50,7 +50,7 @@ export default async function RootLayout({
                 {isAuthed && <UserButton />}
               </div>
             </header>
-            {children}
+            <RoadmapApolloProvider>{children}</RoadmapApolloProvider>
             <Toaster richColors closeButton />
           </ThemeProvider>
         </body>

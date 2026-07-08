@@ -44,6 +44,31 @@ export function subscribeRoadmapUpdates(
 ): () => void {
   if (typeof window === "undefined") return () => {}
 
+  // Backend on → subscribe to the svc-roadmap SSE stream (real cross-origin
+  // transport: an admin save on :3002 reaches a viewer on :3000). Falls back
+  // to BroadcastChannel + storage for the offline mock.
+  const backendUrl = process.env.NEXT_PUBLIC_SVC_ROADMAP_URL
+  if (backendUrl) {
+    const qs = roadmapId ? `?id=${encodeURIComponent(roadmapId)}` : ""
+    const url = `${backendUrl.replace(/\/$/, "")}/roadmap-updates${qs}`
+    let source: EventSource | null = null
+    try {
+      source = new EventSource(url)
+      source.onmessage = (event: MessageEvent<string>) => {
+        if (event.data === "updated") {
+          onUpdate({ roadmapId: roadmapId ?? "", at: Date.now() })
+        }
+      }
+      source.onerror = () => {
+        source?.close()
+        onConnectionLost?.()
+      }
+    } catch {
+      onConnectionLost?.()
+    }
+    return () => source?.close()
+  }
+
   const matches = (signal: RoadmapUpdateSignal) =>
     !roadmapId || signal.roadmapId === roadmapId
 

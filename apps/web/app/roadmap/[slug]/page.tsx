@@ -1,8 +1,11 @@
 import { notFound } from "next/navigation"
-import { RoadmapService } from "@workspace/core"
+import { RoadmapService, RoadmapViewer } from "@workspace/core"
 
 import { getIsAuthenticated } from "@/lib/auth"
-import { RoadmapDetailClient } from "./roadmap-detail-client"
+
+// Always render fresh: the roadmap's published state and nodes are edited in
+// the admin CMS, so this route must never be served from a stale cache.
+export const dynamic = "force-dynamic"
 
 const service = new RoadmapService()
 
@@ -20,6 +23,11 @@ export default async function RoadmapDetailPage({
   if (!graph) notFound()
 
   return (
-    <RoadmapDetailClient graph={graph} isAuthenticated={isAuthenticated} />
+    <RoadmapViewer
+      slug={slug}
+      isAuthenticated={isAuthenticated}
+      initialGraph={graph}
+      backHref="/roadmaps"
+    />
   )
 }

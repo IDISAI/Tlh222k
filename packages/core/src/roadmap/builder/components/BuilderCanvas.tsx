@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   Background,
   Controls,
+  MiniMap,
   ReactFlow,
   ReactFlowProvider,
   useEdgesState,
@@ -20,8 +21,7 @@ import "@xyflow/react/dist/style.css"
 
 import { toast } from "@workspace/ui/components/sonner"
 
-import { MAX_CHILDREN, type NodeType, type RoadmapNode } from "../../types"
-import { validateHierarchy } from "../../utils/validate-hierarchy"
+import { type NodeType, type RoadmapNode } from "../../types"
 import type { BuilderCanvasApi } from "../hooks/use-builder-canvas"
 import type {
   BuilderFlowNode,
@@ -29,10 +29,7 @@ import type {
   ChildCountEdge,
 } from "../types"
 import { NODE_DND_MIME } from "../types"
-import {
-  TOAST_MESSAGES,
-  invalidHierarchyMessage,
-} from "../utils/toast-messages"
+import { TOAST_MESSAGES } from "../utils/toast-messages"
 import { BuilderCanvasContext } from "./builder-context"
 import { BuilderNodeComponent } from "./BuilderNodeComponent"
 import { ChildCountEdgeComponent } from "./ChildCountEdge"
@@ -46,7 +43,6 @@ const edgeTypes = { childCount: ChildCountEdgeComponent }
 
 interface BuilderCanvasProps {
   canvas: BuilderCanvasApi
-  webBaseUrl: string
   className?: string
 }
 
@@ -65,12 +61,28 @@ function buildBuilderEdges(nodes: RoadmapNode[]): ChildCountEdge[] {
       source: n.parentId as string,
       target: n.id,
       type: "childCount" as const,
+      animated: true, // flowing edge animation
       // Badge shows the TARGET node's direct-children count (Req 3.9).
       data: { count: counts.get(n.id) ?? 0 },
     }))
 }
 
-function BuilderCanvasInner({ canvas, webBaseUrl, className }: BuilderCanvasProps) {
+/** Solid hex per NodeType for the minimap dots (tailwind-500 equivalents). */
+const MINIMAP_COLORS: Record<NodeType, string> = {
+  role: "#3b82f6",
+  skill: "#a855f7",
+  chapter: "#f97316",
+  article: "#10b981",
+}
+
+function minimapNodeColor(node: Node): string {
+  const domain = (node.data as { node?: RoadmapNode })?.node
+  if (!domain) return "#94a3b8"
+  if (domain.isDeleted) return "#cbd5e1"
+  return MINIMAP_COLORS[domain.nodeType] ?? "#94a3b8"
+}
+
+function BuilderCanvasInner({ canvas, className }: BuilderCanvasProps) {
   const { resolvedTheme } = useTheme()
   const colorMode: ColorMode = resolvedTheme === "dark" ? "dark" : "light"
   const { screenToFlowPosition, setCenter } = useReactFlow()
@@ -148,7 +160,11 @@ function BuilderCanvasInner({ canvas, webBaseUrl, className }: BuilderCanvasProp
 
   // ── Interactions ──────────────────────────────────────────────────────────
 
-  /** Edge draw with hierarchy validation (Req 2.4/3.8). */
+  /**
+   * Edge draw — any node may link to any node now (the hierarchy rule and the
+   * children cap were removed on request). We only refuse links to/from a node
+   * that was deleted from the system.
+   */
   const onConnect = useCallback(
     (connection: Connection) => {
       const nodes = canvas.nodesRef.current
@@ -157,22 +173,6 @@ function BuilderCanvasInner({ canvas, webBaseUrl, className }: BuilderCanvasProp
       if (!source || !target) return
       if (source.isDeleted || target.isDeleted) {
         toast.warning(TOAST_MESSAGES.NODE_DELETED_FROM_SYSTEM)
-        return
-      }
-      if (!validateHierarchy(source.nodeType, target.nodeType)) {
-        toast.error(
-          invalidHierarchyMessage(
-            source.nodeType as NodeType,
-            target.nodeType as NodeType
-          )
-        )
-        return
-      }
-      const childCount = nodes.filter(
-        (n) => n.parentId === source.id && !n.isDeleted
-      ).length
-      if (childCount >= MAX_CHILDREN) {
-        toast.error(TOAST_MESSAGES.CHILDREN_LIMIT_EXCEEDED)
         return
       }
       canvas.reparent(target.id, source.id)
@@ -295,7 +295,7 @@ function BuilderCanvasInner({ canvas, webBaseUrl, className }: BuilderCanvasProp
         x: event.clientX,
         y: event.clientY,
       })
-      canvas.addExistingToCanvas(node, position)
+      void canvas.addExistingToCanvas(node, position)
     },
     [canvas, screenToFlowPosition, setCenter, setRfNodes]
   )
@@ -370,6 +370,13 @@ function BuilderCanvasInner({ canvas, webBaseUrl, className }: BuilderCanvasProp
         >
           <Background />
           <Controls />
+          <MiniMap
+            pannable
+            zoomable
+            nodeColor={minimapNodeColor}
+            nodeStrokeWidth={2}
+            className="!bg-background"
+          />
         </ReactFlow>
       </div>
 
@@ -395,7 +402,6 @@ function BuilderCanvasInner({ canvas, webBaseUrl, className }: BuilderCanvasProp
       <NodeDetailDialog
         node={detailNode}
         nodes={canvas.nodes}
-        webBaseUrl={webBaseUrl}
         onClose={() => setDetailNode(null)}
         onEdit={setEditNode}
         onRemoveFromCanvas={(node) => canvas.removeFromCanvas([node.id])}

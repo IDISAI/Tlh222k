@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { ArrowLeft, Redo2, Save, Trash2, Undo2 } from "lucide-react"
+import { ArrowLeft, PanelLeftOpen, Redo2, Save, Trash2, Undo2 } from "lucide-react"
 import { Button } from "@workspace/ui/components/button"
 import { Skeleton } from "@workspace/ui/components/skeleton"
 import { cn } from "@workspace/ui/lib/utils"
@@ -15,8 +15,6 @@ import { NodeSidebar } from "./NodeSidebar"
 interface BuilderPageProps {
   roadmapId: string
   role: CallerRole
-  /** Web_App origin for "Điều hướng" links ("" = same origin). */
-  webBaseUrl?: string
   /** Back link target — the admin roadmap list. */
   listHref?: string
 }
@@ -29,11 +27,11 @@ interface BuilderPageProps {
 export function BuilderPage({
   roadmapId,
   role,
-  webBaseUrl = "",
   listHref = "/roadmaps",
 }: BuilderPageProps) {
   const canvas = useBuilderCanvas(roadmapId, role)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [sidebarOpen, setSidebarOpen] = useState(true)
 
   const canvasNodeIds = useMemo(
     () => new Set(canvas.nodes.map((n) => n.id)),
@@ -148,19 +146,30 @@ export function BuilderPage({
       </div>
 
       <div className="flex min-h-0 flex-1">
-        {/* Sidebar on the LEFT (item: Kho Node bên trái). */}
-        <NodeSidebar
-          allNodes={canvas.allNodes}
-          canvasNodeIds={canvasNodeIds}
-          onDeletePermanent={async (node) => {
-            await canvas.deleteNodePermanent(node.id)
-          }}
-        />
-        <BuilderCanvas
-          canvas={canvas}
-          webBaseUrl={webBaseUrl}
-          className="h-full min-w-0 flex-1"
-        />
+        {/* Sidebar on the LEFT with collapse toggle (item: nút toggle). */}
+        {sidebarOpen ? (
+          <NodeSidebar
+            allNodes={canvas.allNodes}
+            canvasNodeIds={canvasNodeIds}
+            onDeletePermanent={async (node) => {
+              await canvas.deleteNodePermanent(node.id)
+            }}
+            onCollapse={() => setSidebarOpen(false)}
+          />
+        ) : (
+          <div className="flex w-10 shrink-0 flex-col items-center border-r bg-background pt-3">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              title="Mở Kho Node"
+              onClick={() => setSidebarOpen(true)}
+            >
+              <PanelLeftOpen className="size-4" />
+            </Button>
+          </div>
+        )}
+        <BuilderCanvas canvas={canvas} className="h-full min-w-0 flex-1" />
       </div>
 
       {confirmDelete && (

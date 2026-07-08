@@ -22,22 +22,16 @@ There is **no test runner configured yet** — `pnpm test` does not exist. The C
 
 Note: [docs/onboarding/cicd.md](docs/onboarding/cicd.md) says "`pnpm lint` = TypeScript type check" — that is outdated. `lint` and `typecheck` are distinct turbo tasks here.
 
-## Git submodules (critical)
+## Former submodules (now inlined)
 
-Two working paths are git submodules, each its own repo:
+`packages/ui` and `packages/core/src/roadmap` used to be separate git submodules (repos `IDISAI/ui`, `IDISAI/roadmap`). They have since been **inlined into this repo** (commit `chore: remove submodules from .gitmodules file`) — `.gitmodules` is empty, there are no gitlinks, and a single commit here covers changes to them. Edit them like any normal directory; `git clone --recurse-submodules` is no longer needed.
 
-| Path | Repo |
-|------|------|
-| `packages/ui` | `git@github.com:IDISAI/ui.git` |
-| `packages/core/src/roadmap` | `git@github.com:IDISAI/roadmap.git` |
-
-- Clone with `git clone --recurse-submodules`, or after clone run `git submodule update --init --recursive`. A missing submodule means empty dirs and a broken build (`web` needs `@workspace/ui`; `packages/core/src/index.ts` re-exports `./roadmap`).
-- Editing submodule code = commit **in the child repo**, then in the parent repo commit the updated gitlink to pin the new version.
-- Setup/procedure is documented in [docs/onboarding/submodules.md](docs/onboarding/submodules.md).
+- Each inlined dir still carries its own `AGENTS.md`/`README.md` from when it was standalone — read `packages/core/src/roadmap/AGENTS.md` before touching the roadmap graph/builder.
+- CI workflows still pass `submodules: recursive` + `SUBMODULE_PAT`, but these are now **no-ops** (nothing to fetch). [docs/onboarding/submodules.md](docs/onboarding/submodules.md) is obsolete.
 
 ## Architecture
 
-**What exists today:** two Next.js frontends (`apps/web`, `apps/admin`) plus shared `packages/*`. `apps/admin` (port 3002) and `apps/super-admin` (port 3003) mirror `apps/web` and mount core features; `web` mounts `RoadmapView`, `admin` mounts `NotionView` + `GraphView`, `super-admin` mounts `RoadmapView` + `NotionView`. The docs under [docs/onboarding/](docs/onboarding/) describe a larger **target** system (NestJS `api-gateway`, Prisma `packages/db`, admin CMS, Playwright e2e) that is **not built yet** — treat those as roadmap, not current state.
+**What exists today:** three Next.js frontends — `apps/web` (default port 3000), `apps/admin` (3002), `apps/super-admin` (3003) — plus shared `packages/*`. All three mount `RoadmapView` from `@workspace/core` and gate access with role resolution from `@workspace/core/navigation/role`; `admin`/`super-admin` add a roadmap **builder** (admin CRUD pages under `apps/admin/app/roadmaps`). The former `notion` core feature has been removed. `apps/svc-notion`, `apps/svc-roadmap`, and `packages/db` currently exist only as untracked stubs (a `dist/` folder, no committed source) — they are not wired in yet. The docs under [docs/onboarding/](docs/onboarding/) describe a larger **target** system (NestJS `api-gateway`, Prisma `packages/db`, Playwright e2e) that is **not built yet** — treat those as roadmap, not current state.
 
 **Dependency direction** (enforced by convention, see [rules/packages.md](rules/packages.md)):
 ```
@@ -47,10 +41,12 @@ packages/* → apps/*          ✗ never
 
 **`packages/core` (`@workspace/core`)** — all domain logic lives here, organized feature-first:
 ```
-src/<feature>/            e.g. roadmap/ (submodule), notion/
-  <sub-feature>/          e.g. roadmap/graph, notion/{content-editor,sidebar,search}
+src/<feature>/            e.g. roadmap/, navigation/, notebook/
+  <sub-feature>/          e.g. roadmap/{graph,builder}, notebook/{viewer,utils}
 ```
-Every feature/sub-feature follows the same shape: `types.ts`, `<slug>.service.ts`, `hooks/`, `components/`, `utils/`, and an `index.ts` barrel that re-exports them (parent features also re-export their sub-features up to `src/index.ts`). `core` uses `moduleResolution: Bundler` so barrels can `export *` without file extensions.
+Every feature/sub-feature follows the same shape: `types.ts`, `<slug>.service.ts`, `hooks/`, `components/`, `utils/`, and an `index.ts` barrel that re-exports them (parent features also re-export their sub-features up to `src/index.ts`). `core` uses `moduleResolution: Bundler` so barrels can `export *` without file extensions. Subpath imports work too (e.g. `@workspace/core/navigation/role`).
+
+The `src/index.ts` barrel currently re-exports `roadmap` + `navigation`. The `notebook` feature (Jupyter/Kaggle `.ipynb` viewer — `nbformat` parsing, ANSI + syntax highlight, markdown cells) is being built on branch `feat/jupyter-notebook-kaggle` and is **not wired into the barrel yet**.
 
 **Consuming a package from an app:** add `"@workspace/<pkg>": "workspace:*"` to the app's deps, add it to `transpilePackages` in `next.config.ts`, and map it under `paths` in the app's `tsconfig.json` (see `apps/web`). `apps/web/lib/core.ts` is the reference example of importing core and customizing per-app.
 
@@ -71,4 +67,4 @@ Deploys cover **web + admin + super-admin** (matrix job per app) and require Git
 
 App env vars (`.env.local`, Vercel dashboard) are separate from CI secrets — see [docs/onboarding/env.md](docs/onboarding/env.md). Current app code consumes none yet.
 
-Because `packages/ui` and the `core` features are **private submodules**, every workflow checks out with `submodules: recursive` and `token: ${{ secrets.SUBMODULE_PAT || github.token }}` — set `SUBMODULE_PAT` (a PAT with read access to the `IDISAI/*` submodule repos) or the build fails to fetch them.
+Every workflow still checks out with `submodules: recursive` and `token: ${{ secrets.SUBMODULE_PAT || github.token }}`, but since `packages/ui` and the roadmap feature are now inlined (`.gitmodules` empty), these are **vestigial no-ops** — no `SUBMODULE_PAT` is required to build.

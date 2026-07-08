@@ -5,9 +5,11 @@ import {
   Background,
   ReactFlow,
   ReactFlowProvider,
+  type ColorMode,
   type Edge,
   type Node,
 } from "@xyflow/react"
+import { useTheme } from "next-themes"
 
 import type { RoadmapNode } from "../../types"
 import { childrenOf } from "./builder-context"
@@ -28,6 +30,9 @@ const ROW_H = 90
  * scattered, misleading copy of the big canvas.
  */
 export function GraphPreview({ root, nodes }: GraphPreviewProps) {
+  const { resolvedTheme } = useTheme()
+  const colorMode: ColorMode = resolvedTheme === "dark" ? "dark" : "light"
+
   const { flowNodes, flowEdges } = useMemo(() => {
     const level1 = childrenOf(nodes, root.id)
     const pos = new Map<string, { x: number; y: number }>()
@@ -90,6 +95,7 @@ export function GraphPreview({ root, nodes }: GraphPreviewProps) {
         <ReactFlow
           nodes={flowNodes}
           edges={flowEdges}
+          colorMode={colorMode}
           fitView
           fitViewOptions={{ padding: 0.15 }}
           minZoom={0.2}

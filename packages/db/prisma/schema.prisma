@@ -1,0 +1,68 @@
+// Roadmap Platform DB. Dev = SQLite (zero infra); prod = Postgres (schema
+// `roadmap`). SQLite has no native enums / @db.* / @@schema, so nodeType,
+// articleType and status are plain strings validated in the service layer
+// (apps/svc-roadmap). To move to Postgres: change `provider` to "postgresql",
+// point DATABASE_URL at Postgres, and (optionally) promote the string columns
+// to enums NodeType{role,skill,chapter,article} / ArticleType{notion,jupyter}.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Roadmap {
+  id           String   @id @default(cuid())
+  slug         String   @unique
+  title        String
+  description  String?
+  thumbnailUrl String?
+  isPublished  Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  nodes Node[]
+}
+
+model Node {
+  id           String   @id @default(cuid())
+  roadmapId    String
+  parentId     String?
+  title        String
+  slug         String   @unique
+  description  String?
+  nodeType     String // role | skill | chapter | article
+  notionPageId String?
+  articleType  String? // notion | jupyter
+  jupyterUrl   String?
+  positionX    Float    @default(0)
+  positionY    Float    @default(0)
+  order        Int      @default(0)
+  isDeleted    Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  roadmap  Roadmap        @relation(fields: [roadmapId], references: [id], onDelete: Cascade)
+  parent   Node?          @relation("NodeChildren", fields: [parentId], references: [id], onDelete: SetNull)
+  children Node[]         @relation("NodeChildren")
+  progress UserProgress[]
+
+  @@index([roadmapId])
+  @@index([parentId])
+}
+
+model UserProgress {
+  clerkUserId String
+  nodeId      String
+  status      String   @default("locked") // locked | in_progress | done
+  updatedAt   DateTime @updatedAt
+
+  node Node @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+
+  // Composite PK → upsert(setNodeStatus) is idempotent per (user, node).
+  @@id([clerkUserId, nodeId])
+  @@index([nodeId])
+}

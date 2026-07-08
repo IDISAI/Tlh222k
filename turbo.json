@@ -1,12 +1,27 @@
 {
   "$schema": "https://turbo.build/schema.json",
   "ui": "tui",
+  "globalEnv": [
+    "NODE_ENV",
+    "PORT",
+    "DATABASE_URL",
+    "CLERK_SECRET_KEY",
+    "FRONTEND_ORIGINS",
+    "NEXT_PUBLIC_SVC_ROADMAP_URL"
+  ],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
       "inputs": ["$TURBO_DEFAULT$", ".env*"],
-      "outputs": [".next/**", "!.next/cache/**"],
-      "env": ["ADMIN_URL", "SUPER_ADMIN_URL"]
+      "outputs": [".next/**", "!.next/cache/**", "dist/**"],
+      "env": [
+        "ADMIN_URL",
+        "SUPER_ADMIN_URL",
+        "NEXT_PUBLIC_SVC_ROADMAP_URL",
+        "DATABASE_URL",
+        "CLERK_SECRET_KEY",
+        "FRONTEND_ORIGINS"
+      ]
     },
     "lint": {
       "dependsOn": ["^lint"]

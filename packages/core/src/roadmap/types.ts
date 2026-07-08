@@ -47,6 +47,15 @@ export interface Roadmap {
   thumbnailUrl: string | null
   isPublished: boolean
   nodeCount: number
+  // ── Metadata columns (roadmap-detail-columns spec) ────────────────────────
+  /** ISO 8601 create time. Optional so legacy localStorage snapshots stay valid. */
+  createdAt?: string
+  /** ISO 8601 last-update time. Optional for legacy snapshots. */
+  updatedAt?: string
+  /** ID of the creator; used when the full `author` object is unavailable. */
+  authorId?: string
+  /** Embedded author (preferred over bare `authorId` when present). */
+  author?: { id: string; name: string }
 }
 
 export interface RoadmapNode {
@@ -92,6 +101,8 @@ export interface CreateRoadmapInput {
   title: string
   description?: string
   thumbnailUrl?: string
+  /** Creator id; the real backend stamps this from the auth context. */
+  authorId?: string
 }
 
 export interface CreateNodeInput {

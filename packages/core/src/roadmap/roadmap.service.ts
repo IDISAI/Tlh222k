@@ -174,6 +174,7 @@ export class RoadmapService {
     assertCanWrite(callerRole)
     await delay()
     const store = getStore()
+    const now = new Date().toISOString()
     const slug = input.slug.trim() || slugify(input.title)
     const roadmap: Roadmap = {
       id: newId("rm"),
@@ -185,6 +186,9 @@ export class RoadmapService {
       thumbnailUrl: input.thumbnailUrl ?? null,
       isPublished: false,
       nodeCount: 0,
+      createdAt: now,
+      updatedAt: now,
+      authorId: input.authorId,
     }
     store.roadmaps.push(roadmap)
     persistStore()
@@ -212,6 +216,7 @@ export class RoadmapService {
       roadmap.thumbnailUrl = input.thumbnailUrl || null
     }
     if (input.isPublished !== undefined) roadmap.isPublished = input.isPublished
+    roadmap.updatedAt = new Date().toISOString() // bump on every write
     persistStore()
     emitRoadmapUpdate(id)
     return { ...roadmap }

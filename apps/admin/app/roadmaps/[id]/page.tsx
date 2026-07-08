@@ -18,12 +18,5 @@ export default async function BuilderCanvasPage({
   // Data loads client-side inside BuilderPage: the mock store persists to
   // localStorage, which this server render can never see (ponytail: swap for
   // a server-side GraphQL fetch + notFound() once svc-roadmap exists).
-  return (
-    <BuilderPage
-      roadmapId={id}
-      role={role}
-      webBaseUrl={process.env.NEXT_PUBLIC_HOST_URL ?? ""}
-      listHref={ROADMAPS_PATH}
-    />
-  )
+  return <BuilderPage roadmapId={id} role={role} listHref={ROADMAPS_PATH} />
 }

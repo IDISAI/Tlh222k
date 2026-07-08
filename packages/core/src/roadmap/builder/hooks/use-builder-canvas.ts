@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { toast } from "@workspace/ui/components/sonner"
 
-import { RoadmapService } from "../../roadmap.service"
+import { RoadmapService } from "../../api"
 import type {
   CallerRole,
   CreateNodeInput,
@@ -119,27 +119,6 @@ export function useBuilderCanvas(roadmapId: string, role: CallerRole) {
     [pushHistory]
   )
 
-  /** Drop an existing sidebar node onto the canvas (Req 3.4). */
-  const addExistingToCanvas = useCallback(
-    (node: RoadmapNode, position: { x: number; y: number }) => {
-      pushHistory()
-      setNodes((prev) => [
-        ...prev,
-        {
-          ...node,
-          // Detach links that point outside this canvas.
-          parentId: prev.some((n) => n.id === node.parentId)
-            ? node.parentId
-            : null,
-          positionX: position.x,
-          positionY: position.y,
-        },
-      ])
-      setIsDirty(true)
-    },
-    [pushHistory]
-  )
-
   /**
    * Remove nodes from the canvas only — the system copy survives and shows up
    * again in the sidebar (Req 3.3 Delete / Req 4.5 "Xóa khỏi Canvas").
@@ -182,6 +161,50 @@ export function useBuilderCanvas(roadmapId: string, role: CallerRole) {
       }
     },
     [service, roadmapId, role, refreshAllNodes, pushHistory]
+  )
+
+  /**
+   * Drop an existing sidebar node onto the canvas (Req 3.4).
+   *
+   * A node has a single `roadmapId`, so a node belonging to ANOTHER roadmap
+   * can't merely be referenced here — dropping it CLONES it into this roadmap
+   * (its source roadmap keeps the original). Without this, "saving" placed the
+   * foreign node's position but never associated it, so the roadmap stayed
+   * empty on the web viewer (the AI-Engineer "0 nodes" desync). Nodes that
+   * already belong to this roadmap are just re-attached locally.
+   */
+  const addExistingToCanvas = useCallback(
+    async (node: RoadmapNode, position: { x: number; y: number }) => {
+      if (node.roadmapId !== roadmapId) {
+        await createNode({
+          nodeType: node.nodeType,
+          title: node.title,
+          description: node.description ?? undefined,
+          articleType: node.articleType ?? undefined,
+          notionPageId: node.notionPageId ?? undefined,
+          jupyterUrl: node.jupyterUrl ?? undefined,
+          parentId: null,
+          positionX: position.x,
+          positionY: position.y,
+        })
+        return
+      }
+      pushHistory()
+      setNodes((prev) => [
+        ...prev,
+        {
+          ...node,
+          // Detach links that point outside this canvas.
+          parentId: prev.some((n) => n.id === node.parentId)
+            ? node.parentId
+            : null,
+          positionX: position.x,
+          positionY: position.y,
+        },
+      ])
+      setIsDirty(true)
+    },
+    [roadmapId, createNode, pushHistory]
   )
 
   /**

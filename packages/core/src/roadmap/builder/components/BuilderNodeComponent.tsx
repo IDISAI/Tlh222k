@@ -10,7 +10,7 @@ import {
 } from "react"
 import { createPortal } from "react-dom"
 import { Handle, Position, type NodeProps } from "@xyflow/react"
-import { AlertTriangle } from "lucide-react"
+import { AlertTriangle, FileText, NotebookText } from "lucide-react"
 import { Badge } from "@workspace/ui/components/badge"
 import { cn } from "@workspace/ui/lib/utils"
 
@@ -61,15 +61,20 @@ export const BuilderNodeComponent = memo(function BuilderNodeComponent({
     []
   )
 
-  // Any drag on the canvas hides the preview — a fixed-position tooltip can't
-  // track a moving node, so showing it during a drag just looks broken.
+  // Keep the fixed-position preview glued to the node while the canvas pans,
+  // zooms or the node is dragged — recompute its anchor every frame off the
+  // live DOM rect so it moves WITH the node instead of detaching.
   useEffect(() => {
-    if (isDragging) {
-      if (showTimer.current) clearTimeout(showTimer.current)
-      if (hideTimer.current) clearTimeout(hideTimer.current)
-      setShowPreview(false)
+    if (!showPreview) return
+    let raf = 0
+    const tick = () => {
+      const rect = cardRef.current?.getBoundingClientRect()
+      if (rect) setPreviewStyle(computePreviewStyle(rect))
+      raf = requestAnimationFrame(tick)
     }
-  }, [isDragging])
+    raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
+  }, [showPreview])
 
   const cancelTimers = useCallback(() => {
     if (showTimer.current) clearTimeout(showTimer.current)
@@ -140,9 +145,13 @@ export const BuilderNodeComponent = memo(function BuilderNodeComponent({
             <span title="Tài liệu chưa được liên kết">
               <AlertTriangle className="size-3.5 shrink-0 text-amber-500" />
             </span>
+          ) : node.articleType === "notion" ? (
+            <Badge className="ml-1 gap-1 border-transparent bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900">
+              <FileText className="size-3" /> Notion
+            </Badge>
           ) : (
-            <Badge variant="outline" className="ml-1">
-              {node.articleType}
+            <Badge className="ml-1 gap-1 border-transparent bg-orange-500 text-white">
+              <NotebookText className="size-3" /> Jupyter
             </Badge>
           ))}
         <Handle

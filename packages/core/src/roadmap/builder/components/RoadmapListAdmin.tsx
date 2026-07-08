@@ -14,8 +14,13 @@ import {
   TableRow,
 } from "@workspace/ui/components/table"
 
-import { RoadmapService } from "../../roadmap.service"
+import { RoadmapService } from "../../api"
 import type { CallerRole, Roadmap } from "../../types"
+import {
+  formatDate,
+  formatRelativeTime,
+  truncateDescription,
+} from "../../utils"
 import { serviceErrorMessage } from "../utils/toast-messages"
 import { CreateRoadmapDialog } from "./CreateRoadmapDialog"
 import { DeleteRoadmapDialog } from "./DeleteRoadmapDialog"
@@ -24,6 +29,11 @@ interface RoadmapListAdminProps {
   role: CallerRole
   /** Builder route prefix; rows link to `${builderBasePath}/${id}`. */
   builderBasePath?: string
+  /**
+   * Base path for author profile links (`${authorBasePath}/${authorId}`).
+   * Configurable so admin vs super-admin apps point to their own user route.
+   */
+  authorBasePath?: string
 }
 
 /**
@@ -34,6 +44,7 @@ interface RoadmapListAdminProps {
 export function RoadmapListAdmin({
   role,
   builderBasePath = "/roadmaps",
+  authorBasePath = "/super-admin/users",
 }: RoadmapListAdminProps) {
   const service = useMemo(() => new RoadmapService(), [])
   const [roadmaps, setRoadmaps] = useState<Roadmap[] | null>(null)
@@ -76,7 +87,11 @@ export function RoadmapListAdmin({
             <TableHeader>
               <TableRow>
                 <TableHead>Tên</TableHead>
+                <TableHead>Mô tả</TableHead>
                 <TableHead>Slug</TableHead>
+                <TableHead>Tác giả</TableHead>
+                <TableHead>Ngày tạo</TableHead>
+                <TableHead>Cập nhật</TableHead>
                 <TableHead className="text-right">Nodes</TableHead>
                 <TableHead className="text-center">Xuất bản</TableHead>
                 <TableHead className="text-right">Hành động</TableHead>
@@ -86,7 +101,7 @@ export function RoadmapListAdmin({
               {roadmaps.length === 0 && (
                 <TableRow>
                   <TableCell
-                    colSpan={5}
+                    colSpan={9}
                     className="text-center text-muted-foreground"
                   >
                     Chưa có roadmap nào — hãy tạo roadmap đầu tiên.
@@ -103,8 +118,31 @@ export function RoadmapListAdmin({
                   }}
                 >
                   <TableCell className="font-medium">{roadmap.title}</TableCell>
+                  <TableCell className="max-w-[200px] text-muted-foreground">
+                    {roadmap.description
+                      ? truncateDescription(roadmap.description, 60)
+                      : "—"}
+                  </TableCell>
                   <TableCell className="text-muted-foreground">
                     {roadmap.slug}
+                  </TableCell>
+                  <TableCell onClick={(e) => e.stopPropagation()}>
+                    {roadmap.author ?? roadmap.authorId ? (
+                      <a
+                        href={`${authorBasePath}/${roadmap.author?.id ?? roadmap.authorId}`}
+                        className="text-primary underline-offset-4 hover:underline"
+                      >
+                        {roadmap.author?.name ?? roadmap.authorId}
+                      </a>
+                    ) : (
+                      "—"
+                    )}
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {formatDate(roadmap.createdAt)}
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {formatRelativeTime(roadmap.updatedAt)}
                   </TableCell>
                   <TableCell className="text-right">
                     {roadmap.nodeCount}

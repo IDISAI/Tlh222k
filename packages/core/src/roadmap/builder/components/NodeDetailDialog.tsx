@@ -3,14 +3,14 @@
 import { AlertTriangle, Eraser, ExternalLink, PencilLine } from "lucide-react"
 import { Badge } from "@workspace/ui/components/badge"
 import { Button } from "@workspace/ui/components/button"
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@workspace/ui/components/dialog"
 import { Label } from "@workspace/ui/components/label"
+import {
+  Sheet,
+  SheetContent,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from "@workspace/ui/components/sheet"
 import { toast } from "@workspace/ui/components/sonner"
 import { cn } from "@workspace/ui/lib/utils"
 
@@ -22,21 +22,23 @@ import { childrenOf } from "./builder-context"
 interface NodeDetailDialogProps {
   node: RoadmapNode | null
   nodes: RoadmapNode[]
-  /** Web_App origin for role/skill detail links ("" = same origin). */
-  webBaseUrl: string
   onClose: () => void
-  onEdit: (node: RoadmapNode) => void
+  /** Omitted / ignored in read-only (viewer) mode. */
+  onEdit?: (node: RoadmapNode) => void
   /** Canvas "delete" only takes the node off the canvas → back to Kho Node. */
-  onRemoveFromCanvas: (node: RoadmapNode) => void
+  onRemoveFromCanvas?: (node: RoadmapNode) => void
+  /** Viewer mode: hide the edit / remove actions, keep only "Điều hướng". */
+  readOnly?: boolean
 }
 
-/** Resolve the destination the "Điều hướng" action opens (Req 7.4/7.5). */
-export function nodeNavigationUrl(
-  node: RoadmapNode,
-  webBaseUrl: string
-): string | null {
+/**
+ * Resolve the destination the "Điều hướng" action opens (Req 7.4/7.5).
+ * role/skill → a same-origin `/roadmap/[slug]` viewer, so admin stays on :3002
+ * and web stays on :3000 (each zone owns its own viewer route).
+ */
+export function nodeNavigationUrl(node: RoadmapNode): string | null {
   if (node.nodeType === "role" || node.nodeType === "skill") {
-    return `${webBaseUrl}/roadmap/${node.slug}`
+    return `/roadmap/${node.slug}`
   }
   if (node.nodeType === "article") {
     if (node.articleType === "notion" && node.notionPageId) {
@@ -50,16 +52,18 @@ export function nodeNavigationUrl(
 }
 
 /**
- * NodeDetail_Dialog — full node info on double-click with the three actions
- * Chỉnh sửa / Xóa / Điều hướng (Req 7).
+ * NodeDetail panel — full node info shown as a right-side slide-in sidebar (not
+ * a centered dialog) on double-click, with the three actions Chỉnh sửa / Xóa /
+ * Điều hướng (Req 7). Matches the viewer's right-drawer pattern so the builder
+ * and the viewer feel like one product.
  */
 export function NodeDetailDialog({
   node,
   nodes,
-  webBaseUrl,
   onClose,
   onEdit,
   onRemoveFromCanvas,
+  readOnly = false,
 }: NodeDetailDialogProps) {
   if (!node) return null
 
@@ -68,7 +72,7 @@ export function NodeDetailDialog({
     ? (nodes.find((n) => n.id === node.parentId) ?? null)
     : null
   const childCount = childrenOf(nodes, node.id).length
-  const navUrl = nodeNavigationUrl(node, webBaseUrl)
+  const navUrl = nodeNavigationUrl(node)
   const isArticle = node.nodeType === "article"
   const canNavigate = navUrl !== null && node.nodeType !== "chapter"
 
@@ -78,29 +82,35 @@ export function NodeDetailDialog({
       toast.warning(TOAST_MESSAGES.ARTICLE_NO_LINK)
       return
     }
-    window.open(navUrl, "_blank", "noopener,noreferrer")
+    // Navigate in the same tab (no new window) for both in-app role/skill
+    // routes and external article links.
+    window.location.assign(navUrl)
   }
 
   return (
-    <Dialog
+    <Sheet
       open
       onOpenChange={(open: boolean) => {
         if (!open) onClose()
       }}
     >
-      <DialogContent className="sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
+      <SheetContent
+        side="right"
+        showOverlay={false}
+        className="flex w-full flex-col gap-0 p-0 sm:max-w-[420px]"
+      >
+        <SheetHeader className="border-b dark:border-zinc-800">
+          <SheetTitle className="flex items-center gap-2">
             <Icon className={cn("size-4", NODE_TYPE_ACCENT[node.nodeType])} />
             <span className="min-w-0 truncate">{node.title}</span>
             <Badge variant="secondary">{node.nodeType}</Badge>
             {isArticle && node.articleType && (
               <Badge variant="outline">{node.articleType}</Badge>
             )}
-          </DialogTitle>
-        </DialogHeader>
+          </SheetTitle>
+        </SheetHeader>
 
-        <div className="space-y-3 text-sm">
+        <div className="flex-1 space-y-4 overflow-y-auto p-6 text-sm">
           {node.description && (
             <div className="space-y-1">
               <Label>Mô tả</Label>
@@ -142,29 +152,7 @@ export function NodeDetailDialog({
           </div>
         </div>
 
-        <DialogFooter>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => {
-              onClose()
-              onEdit(node)
-            }}
-          >
-            <PencilLine className="size-4" /> Chỉnh sửa
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => {
-              // Canvas delete = remove from canvas (node returns to Kho Node).
-              // Permanent deletion lives only in the sidebar.
-              onClose()
-              onRemoveFromCanvas(node)
-            }}
-          >
-            <Eraser className="size-4" /> Xóa khỏi Canvas
-          </Button>
+        <SheetFooter className="border-t dark:border-zinc-800">
           <Button
             type="button"
             disabled={isArticle ? false : !canNavigate}
@@ -175,8 +163,34 @@ export function NodeDetailDialog({
           >
             <ExternalLink className="size-4" /> Điều hướng
           </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+          {!readOnly && (
+            <>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  onClose()
+                  onEdit?.(node)
+                }}
+              >
+                <PencilLine className="size-4" /> Chỉnh sửa
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  // Canvas delete = remove from canvas (node returns to Kho
+                  // Node). Permanent deletion lives only in the sidebar.
+                  onClose()
+                  onRemoveFromCanvas?.(node)
+                }}
+              >
+                <Eraser className="size-4" /> Xóa khỏi Canvas
+              </Button>
+            </>
+          )}
+        </SheetFooter>
+      </SheetContent>
+    </Sheet>
   )
 }

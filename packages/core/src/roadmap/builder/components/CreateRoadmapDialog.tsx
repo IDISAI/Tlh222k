@@ -15,7 +15,7 @@ import { Label } from "@workspace/ui/components/label"
 import { toast } from "@workspace/ui/components/sonner"
 import { Textarea } from "@workspace/ui/components/textarea"
 
-import { RoadmapService } from "../../roadmap.service"
+import { RoadmapService } from "../../api"
 import {
   MAX_DESCRIPTION_LENGTH,
   MAX_TITLE_LENGTH,

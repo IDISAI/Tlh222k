@@ -1,7 +1,14 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { ChevronDown, ChevronRight, GripVertical, Search, Trash2 } from "lucide-react"
+import {
+  ChevronDown,
+  ChevronRight,
+  GripVertical,
+  PanelLeftClose,
+  Search,
+  Trash2,
+} from "lucide-react"
 import { Button } from "@workspace/ui/components/button"
 import { Input } from "@workspace/ui/components/input"
 import { cn } from "@workspace/ui/lib/utils"
@@ -23,6 +30,8 @@ interface NodeSidebarProps {
   canvasNodeIds: ReadonlySet<string>
   /** Permanent system delete after confirmation (Req 4.2/4.3). */
   onDeletePermanent: (node: RoadmapNode) => Promise<void> | void
+  /** Collapse the panel (toggle handled by the parent). */
+  onCollapse?: () => void
 }
 
 /** Total descendants of a node (cascade preview for the confirm dialog). */
@@ -51,6 +60,7 @@ export function NodeSidebar({
   allNodes,
   canvasNodeIds,
   onDeletePermanent,
+  onCollapse,
 }: NodeSidebarProps) {
   const [search, setSearch] = useState("")
   const debouncedSearch = useDebouncedValue(search, 300)
@@ -76,7 +86,20 @@ export function NodeSidebar({
   return (
     <aside className="flex w-80 shrink-0 flex-col border-r bg-background">
       <div className="border-b p-3">
-        <h2 className="mb-2 text-sm font-semibold">📋 Kho Node</h2>
+        <div className="mb-2 flex items-center justify-between">
+          <h2 className="text-sm font-semibold">📋 Kho Node</h2>
+          {onCollapse && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              title="Thu gọn Kho Node"
+              onClick={onCollapse}
+            >
+              <PanelLeftClose className="size-4" />
+            </Button>
+          )}
+        </div>
         <div className="relative">
           <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input

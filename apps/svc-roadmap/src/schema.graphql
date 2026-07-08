@@ -1,0 +1,128 @@
+enum NodeType {
+  role
+  skill
+  chapter
+  article
+}
+
+enum ArticleType {
+  notion
+  jupyter
+}
+
+enum NodeStatus {
+  locked
+  in_progress
+  done
+}
+
+type Roadmap {
+  id: ID!
+  slug: String!
+  title: String!
+  description: String
+  thumbnailUrl: String
+  isPublished: Boolean!
+  nodeCount: Int!
+  createdAt: String
+  updatedAt: String
+}
+
+type RoadmapNode {
+  id: ID!
+  roadmapId: ID!
+  parentId: ID
+  title: String!
+  slug: String!
+  description: String
+  nodeType: NodeType!
+  notionPageId: String
+  articleType: ArticleType
+  jupyterUrl: String
+  positionX: Float!
+  positionY: Float!
+  order: Int!
+  status: NodeStatus!
+  isDeleted: Boolean!
+  childrenCount: Int!
+}
+
+type RoadmapGraph {
+  roadmap: Roadmap!
+  nodes: [RoadmapNode!]!
+}
+
+type RoadmapProgress {
+  roadmapId: ID!
+  roadmapTitle: String!
+  doneCount: Int!
+  totalCount: Int!
+}
+
+type Query {
+  roadmaps(includeUnpublished: Boolean = false): [Roadmap!]!
+  roadmap(slug: String!): Roadmap
+  roadmapGraph(slug: String!): RoadmapGraph
+  roadmapGraphById(id: ID!): RoadmapGraph
+  allNodes: [RoadmapNode!]!
+  myProgress: [RoadmapProgress!]!
+}
+
+type Mutation {
+  createRoadmap(input: CreateRoadmapInput!): Roadmap!
+  updateRoadmap(id: ID!, input: UpdateRoadmapInput!): Roadmap!
+  deleteRoadmap(id: ID!): Boolean!
+  createNode(input: CreateNodeInput!): RoadmapNode!
+  updateNode(id: ID!, input: UpdateNodeInput!): RoadmapNode!
+  deleteNode(id: ID!): Boolean!
+  saveRoadmap(roadmapId: ID!, nodes: [NodeInput!]!): Boolean!
+  setNodeStatus(nodeId: ID!, status: NodeStatus!): Boolean!
+}
+
+input CreateRoadmapInput {
+  slug: String!
+  title: String!
+  description: String
+  thumbnailUrl: String
+}
+
+input UpdateRoadmapInput {
+  title: String
+  description: String
+  thumbnailUrl: String
+  isPublished: Boolean
+}
+
+input CreateNodeInput {
+  roadmapId: ID!
+  parentId: ID
+  title: String!
+  nodeType: NodeType!
+  slug: String
+  description: String
+  notionPageId: String
+  articleType: ArticleType
+  jupyterUrl: String
+  positionX: Float!
+  positionY: Float!
+  order: Int
+}
+
+input UpdateNodeInput {
+  title: String
+  description: String
+  articleType: ArticleType
+  notionPageId: String
+  jupyterUrl: String
+  positionX: Float
+  positionY: Float
+  order: Int
+  parentId: ID
+}
+
+input NodeInput {
+  id: ID!
+  parentId: ID
+  positionX: Float!
+  positionY: Float!
+}
