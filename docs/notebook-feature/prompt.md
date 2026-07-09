@@ -23,17 +23,36 @@ Two-tier Jupyter notebook feature in this Turborepo (pnpm, Node ≥20):
   Ctrl+Z undo), autosave ("Draft saved"), upload/download .ipynb, and **live kernel execution
   against a real Jupyter Server** (status indicator idle/busy/reconnecting, `In [*]`,
   real-time streamed outputs, Run All / Interrupt / Restart, stdin input() support).
-- **Roadmap integration:** roadmap nodes get optional `contentType?: "notion" | "jupyter"`
-  and `notebookSlug?: string | null`. On node click in the web roadmap page, if
-  `contentType === "jupyter"` → navigate to `/learn/[notebookSlug]` instead of opening the
-  Notion drawer. (Integration seam already exists: `InteractiveRoadmap` exposes
-  `onNodeClick(node)` and `apps/web/app/roadmap/[slug]/roadmap-detail-client.tsx` owns the
-  handler — only the app layer decides.) Admin apps route jupyter nodes to the editor.
-- **Backend `apps/kernel-server`:** Fastify (NOT NestJS). Notebook CRUD (filesystem store v1,
-  repository interface so Prisma can swap in later), Jupyter Server proxy + WebSocket bridge,
-  Clerk JWT auth: only admin/super-admin can start kernels or execute; web can only GET
-  published notebooks. Env: `JUPYTER_URL`, `JUPYTER_TOKEN` (server-side only), document in
-  `docs/onboarding/env.md`.
+- **Roadmap integration — NO NEW FIELDS NEEDED (model already exists as of commit #9).**
+  `RoadmapNode` already has `nodeType: "role" | "skill" | "chapter" | "article"` (4-level
+  hierarchy), and **article leaves already carry `articleType: "notion" | "jupyter"` +
+  `jupyterUrl: string | null`**. The rule: on node click in the web roadmap page, if
+  `node.nodeType === "article" && node.articleType === "jupyter"` → open OUR internal notebook
+  viewer at `/learn/[slug]` instead of the Notion drawer. (Seam exists: `InteractiveRoadmap`
+  exposes `onNodeClick(node)`; `apps/web/app/roadmap/[slug]/roadmap-detail-client.tsx` owns the
+  handler — only the app layer decides.) A mock jupyter node already exists in
+  `roadmap/mock/nodes.mock.ts`.
+  **✅ DECIDED — route by `jupyterUrl` shape:**
+  - `jupyterUrl` is an **absolute URL** (starts with `http://`/`https://`, e.g. a Colab link)
+    → open it externally (new tab / external link), current behavior preserved.
+  - `jupyterUrl` is **empty/null or a relative value** → open the INTERNAL viewer at
+    `/learn/[node.slug]`.
+  Implement as a small helper, e.g. `resolveArticleTarget(node): { kind: "external", url } |
+  { kind: "internal", slug }`, used by the web roadmap click handler. Reuse the existing
+  `roadmap/utils/is-valid-url.ts` to detect absolute URLs. No schema change.
+- **Backend `apps/kernel-server`:** **Go** (single long-running binary, NOT Node/Fastify, NOT
+  a Vercel serverless function — deploy on Fly/Railway/VPS). Jobs: (1) notebook CRUD (filesystem
+  store v1, repository interface so Postgres can swap in later), (2) auth gate — verify Clerk JWT
+  via the Clerk JWKS endpoint + `requireAdmin`, (3) authenticating **WebSocket reverse-proxy**
+  bridging the browser to a real Jupyter Server. Only admin/super-admin can start kernels or
+  execute; web can only GET published notebooks. Env: `JUPYTER_URL`, `JUPYTER_TOKEN`,
+  `CLERK_JWKS_URL`/`CLERK_ISSUER` (all server-side only), document in `docs/onboarding/env.md`.
+
+  **Why Go:** the backend's core job is holding many long-lived WebSocket connections and
+  fanning messages between browser and kernels — Go's goroutine-per-connection model fits this,
+  and a single static binary is the easiest stateful deploy (solves "can't run on Vercel"). The
+  frontend never knows or cares: it talks to kernel-server over HTTP/WS, so the language is
+  invisible across the `KernelAdapter` seam.
 
 **Explicitly out of scope:** Data tab / Kaggle API integration (former Phase 4 — dropped),
 realtime collaboration, GPU, scheduling.
@@ -48,6 +67,13 @@ realtime collaboration, GPU, scheduling.
 - Syntax highlight: hand-rolled Python regex tokenizer (no shiki/prism dep). ANSI: hand-rolled
   SGR parser (no ansi_up dep). Markdown: react-markdown (already a core dep).
 - Editor: CodeMirror 6. Kernel client (admin): @jupyterlab/services. Ask before any other heavy dep.
+- **kernel-server = Go**, but it treats notebooks as **opaque `.ipynb` bytes** (store/serve only,
+  no parsing). All nbformat parsing/validation stays in the TS `NotebookService`, run on both the
+  frontend and Next.js server components. This is why the Go backend needs no shared types — the
+  `types.ts` model lives only in TS, and duplicating it in Go structs is deliberately avoided.
+- The backend is an authenticating **WS passthrough**: the browser's `@jupyterlab/services`
+  speaks the Jupyter protocol end-to-end *through* the proxy; Go only checks auth then relays
+  frames. Go does NOT implement the Jupyter messaging protocol itself.
 
 ## Directory layout (agreed)
 
@@ -69,10 +95,16 @@ packages/core/src/notebook/
   exercise/ types.ts, exercise.service.ts, components/ExerciseView.tsx
   index.ts barrel; add `export * from "./notebook"` to packages/core/src/index.ts
 
-apps/kernel-server/ (Fastify)
-  src/{index,config}.ts, plugins/auth.ts (Clerk JWT + requireAdmin),
-  routes/{notebooks,kernels,kernel-ws}.ts,
-  services/{jupyter.service,notebook-store}.ts, storage/notebooks/ (gitignored except fixtures)
+apps/kernel-server/ (Go — separate module, NOT in the pnpm workspace)
+  go.mod, cmd/server/main.go
+  internal/config/      # env loading + validation
+  internal/auth/        # Clerk JWT verify via JWKS, requireAdmin middleware
+  internal/notebooks/   # CRUD handlers + Store interface + fsStore (opaque .ipynb bytes)
+  internal/kernels/     # kernel session lifecycle (start/interrupt/restart/shutdown, idle-reap)
+  internal/proxy/       # authenticating WebSocket reverse-proxy → Jupyter Server
+  storage/notebooks/    # .ipynb blobs (gitignored except fixtures)
+  .env.example
+  Note: add a Go build/lint step to CI separate from the pnpm lint→typecheck→build chain.
 
 apps/web:   app/learn/[slug]/page.tsx (+ client component), lib/notebook.ts,
             fixtures: content/notebooks/arithmetic-and-variables{,.exercise}.ipynb
@@ -84,9 +116,10 @@ apps/admin, apps/super-admin: app/notebooks/page.tsx + app/notebooks/[id]/page.t
 Each must end CI-green: `pnpm lint && pnpm typecheck && pnpm build` (no test runner exists).
 
 1. **Viewer** — core types/service/utils/viewer + web /learn/[slug] + fixtures + roadmap
-   jupyter-node integration. Exercise tab shows placeholder. Acceptance: fixture renders like
-   Kaggle Learn screenshot incl. red ANSI traceback, TOC scroll-spy highlights active section,
-   Start Exercise card switches tab, jupyter mock node in roadmap navigates to /learn/....
+   jupyter-node integration (use EXISTING `nodeType==="article" && articleType==="jupyter"`;
+   no schema change). Exercise tab shows placeholder. Acceptance: fixture renders like Kaggle
+   Learn screenshot incl. red ANSI traceback, TOC scroll-spy highlights active section, Start
+   Exercise card switches tab, clicking the mock jupyter article node routes to /learn/....
 2. **Editor UI + CRUD** — editor components + Fastify kernel-server (notebooks CRUD, auth) +
    admin/super-admin pages. Run buttons disabled ("kernel: Phase 3"). Acceptance: full cell
    editing + shortcuts + autosave round-trips valid nbformat 4; non-admin token → 403.
@@ -96,26 +129,60 @@ Each must end CI-green: `pnpm lint && pnpm typecheck && pnpm build` (no test run
    stdin. Acceptance (web): Pyodide runs print/pandas, q1.check() shows ✅/❌, DevTools Network
    shows zero execution requests; non-admin kernel API → 403.
 
-## Current progress (branch feat/jupyter-notebook-kaggle)
+## Known limits & risks (fold into acceptance — do not skip)
 
-Already written (Phase 1, in parent repo, NOT committed yet):
+- **[Phase 1, security] Sanitize `display_data`/`execute_result` HTML output.** A notebook's
+  `text/html` output can carry `<script>`/event handlers → XSS in our origin. Sanitize (or
+  sandbox-iframe) before rendering any html mime output. Fixtures are benign, so this is easy
+  to forget — it is not optional.
+- **[Phase 1, perf] Cap cell render + output size.** If a code cell exceeds ~2000 lines / ~50KB,
+  skip the regex tokenizer and render plain `<pre>` (avoids main-thread freeze + regex
+  backtracking). Truncate any single output to ~5000 lines / ~1MB with a "show more"/download
+  affordance. Reject absurd cells (> a few MB) at parse time with `NotebookParseError`.
+- **[Phase 3, security — DEPLOY BLOCKER] Sandbox the Jupyter kernel before any non-local deploy.**
+  Executed code runs with the kernel process's privileges (filesystem, network, env secrets).
+  "Admin-only" is not sufficient isolation. Localhost + token is fine for dev; production
+  requires containerized/sandboxed per-session kernels with resource limits. Never enable real
+  execution on a shared/production host without this.
+- **[Phase 3, resource] Kernel idle-reap.** Kernels are stateful and never self-terminate. Track
+  session ownership and shut down idle kernels, or kernel-server leaks RAM until it dies.
+- **[Phase 3, safety] Pyodide watchdog timeout.** An infinite loop hangs the user's worker;
+  enforce an execution timeout that terminates/reboots the worker.
+- **[infra] Filesystem store is dev-only.** kernel-server must be a long-running server (not
+  Vercel serverless) because it needs a persistent filesystem + live WebSockets + a Jupyter
+  process. The `Store` interface exists so Postgres can replace fsStore later.
+- **[content] learntools `q1.check()` is a hand-rolled mini-checker.** It only grades simple
+  variable/output comparisons; real Kaggle `learntools` notebooks are NOT drop-in compatible.
+  Exercise authors must write against our checker.
+
+## Current progress (working on branch `develop`)
+
+Already written AND committed to HEAD on develop:
 - `packages/core/src/notebook/types.ts`, `notebook.service.ts`,
   `utils/{ansi,highlight,nbformat,slugify,index}.ts`, `viewer/components/MarkdownCell.tsx`
 
 Remaining for Phase 1: CodeCell, OutputRenderer, CellRenderer, TableOfContents,
-StartExerciseCard, NotebookView, useActiveHeading, viewer/notebook barrels, src/index.ts export,
-web page + lib/notebook.ts + 2 .ipynb fixtures, roadmap submodule fields + mock node + app wiring.
+StartExerciseCard, NotebookView, useActiveHeading, viewer/notebook barrels, `export * from
+"./notebook"` in src/index.ts, web page /learn/[slug] + lib/notebook.ts + 2 .ipynb fixtures,
+and roadmap click-routing in the web app (NO schema change — the article/jupyter fields already
+exist; add the `resolveArticleTarget` helper + wire the web roadmap click handler).
 
 ## Repo facts (verified — trust these)
 
 - Feature-first convention per `packages/core/src/roadmap`: types.ts, `<slug>.service.ts`, hooks/,
   components/, utils/, index.ts barrels re-exported up to src/index.ts (moduleResolution: Bundler).
-- **Submodules:** `packages/ui` and `packages/core/src/roadmap` are separate git repos. The roadmap
-  change (RoadmapNode optional fields + mock node in mock/nodes.mock.ts + nothing else) must be
-  committed in the submodule repo first, then bump the gitlink in the parent. `notebook/` lives in
-  the parent core repo. Do not commit inside `packages/ui`.
-- RoadmapNode today: `{ id, roadmapId, parentId, title, notionPageId, positionX, positionY,
-  order, status }` — no type field yet. Mocks in roadmap/mock/nodes.mock.ts (BaseNode + withStatus).
+- **NO submodules anymore.** `.gitmodules` is gone; `packages/ui` and `packages/core/src/roadmap`
+  are now plain inline directories in this one repo (CLAUDE.md "Former Submodules" confirms).
+  Everything — notebook/ AND any roadmap edits — is a normal edit + single commit in this repo.
+  Ignore all earlier notes about committing inside a submodule / bumping gitlinks.
+- **RoadmapNode today (updated by commit #9 "roadmap builder"):**
+  `{ id, roadmapId, parentId, title, notionPageId, positionX, positionY, order, status,`
+  `  nodeType: "role"|"skill"|"chapter"|"article", slug, description, articleType: "notion"|"jupyter"|null,`
+  `  jupyterUrl: string|null, isDeleted? }`. See `roadmap/types.ts`. The jupyter integration
+  fields ALREADY EXIST — do not re-add them. Mock jupyter node already in mock/nodes.mock.ts.
+- Roadmap now has a full builder (`roadmap/builder/*`), api layer (`roadmap/api/roadmap.api.ts`),
+  and generated GraphQL types (`roadmap/graphql/generated.ts`). Admins already set `articleType`
+  + `jupyterUrl` per node via the builder's NodeEditPanel — reuse that, don't build node-type UI.
 - apps consume core via `"@workspace/core": "workspace:*"` + transpilePackages + tsconfig paths;
   reference: apps/web/lib/core.ts, apps/web/tsconfig.json.
 - @workspace/ui has: tabs, button, card, sheet, dialog, dropdown-menu, input, textarea, badge,

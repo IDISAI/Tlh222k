@@ -6,7 +6,7 @@
 >
 > Scope package là `@workspace/*` (không phải `@vizteck/*` như đề cập trong tài liệu này).
 
-Tài liệu này giải thích **tại sao** lh222k được thiết kế theo cách hiện tại — không chỉ liệt kê công nghệ mà còn giải thích lý do lựa chọn, các phương án đã xem xét và sự đánh đổi.
+Tài liệu này giải thích **tại sao** tlh222k được thiết kế theo cách hiện tại — không chỉ liệt kê công nghệ mà còn giải thích lý do lựa chọn, các phương án đã xem xét và sự đánh đổi.
 
 ---
 
@@ -31,7 +31,7 @@ Tài liệu này giải thích **tại sao** lh222k được thiết kế theo c
 
 ## Bức tranh tổng thể
 
-lh222k là một **polyglot monorepo** — tất cả ứng dụng và thư viện dùng chung đều nằm trong một Git repository, nhưng mỗi app có thể dùng ngôn ngữ/framework khác nhau.
+tlh222k là một **polyglot monorepo** — tất cả ứng dụng và thư viện dùng chung đều nằm trong một Git repository, nhưng mỗi app có thể dùng ngôn ngữ/framework khác nhau.
 
 ```
 ┌─────────────────────────────────────────────────────────┐
@@ -386,7 +386,7 @@ Xác minh từ `packages/db/prisma/schema.prisma`:
 
 ## Xác thực admin
 
-lh222k dùng **single static token** — không có user management, không có database users.
+tlh222k dùng **single static token** — không có user management, không có database users.
 
 ```
 apps/admin localStorage('admin_token')
@@ -552,9 +552,9 @@ PostgreSQL (:5432) — cập nhật đúng một row
 
 ## Tại sao dùng GitFlow?
 
-lh222k dùng **Full GitFlow** thay vì GitHub Flow (chỉ `main` + feature branches).
+tlh222k dùng **Full GitFlow** thay vì GitHub Flow (chỉ `main` + feature branches).
 
-GitHub Flow phù hợp với team deploy liên tục (mỗi PR merge là một deploy). lh222k cần:
+GitHub Flow phù hợp với team deploy liên tục (mỗi PR merge là một deploy). tlh222k cần:
 
 - **Staging environment** để test trước production
 - **Release có phiên bản** để phối hợp deploy admin + web cùng lúc

@@ -1,6 +1,6 @@
-# lh222k
+# tlh222k
 
-Turborepo + pnpm monorepo for the LH222K roadmap platform. The repo contains
+Turborepo + pnpm monorepo for the tlh222k roadmap platform. The repo contains
 three Next.js frontends, one NestJS roadmap service, and shared packages for UI,
 domain logic, database, lint, and TypeScript config.
 

@@ -59,7 +59,7 @@ Roadmap Platform là bản clone của [roadmap.sh](https://roadmap.sh) — nề
 ### Monorepo Structure
 
 ```
-lh222k/
+tlh222k/
 ├── apps/
 │   ├── web/                  # Public app (port 3000) — Guest + Viewer
 │   ├── admin/                # Admin app (port 3002, basePath=/admin)
@@ -108,14 +108,14 @@ lh222k/
 
 **Lý do tổ chức sub-features trong `roadmap/`:**
 
-| Sub-feature | Quan hệ với `roadmap` | Lý do gộp vào |
-|---|---|---|
-| `graph/` | Render trực tiếp `RoadmapNode[]` | Không tái sử dụng ngoài roadmap |
-| `drawer/` | Hiển thị chi tiết của 1 `RoadmapNode` | Phụ thuộc vào `RoadmapNode.notionPageId` |
-| `progress/` | Cập nhật `NodeStatus` cho `RoadmapNode` | State gắn với `nodeId` — roadmap domain |
-| `dashboard/` | Tổng hợp `RoadmapProgress[]` theo roadmap | Query `myProgress` — roadmap-scoped |
-| `navigation/` | `PlatformSwitch` dùng trong tất cả app headers; cùng package | Shared UI, không app-specific |
-| `graphql/` | Generated types từ schema của svc-roadmap | Types thuộc roadmap domain |
+| Sub-feature   | Quan hệ với `roadmap`                                        | Lý do gộp vào                            |
+| ------------- | ------------------------------------------------------------ | ---------------------------------------- |
+| `graph/`      | Render trực tiếp `RoadmapNode[]`                             | Không tái sử dụng ngoài roadmap          |
+| `drawer/`     | Hiển thị chi tiết của 1 `RoadmapNode`                        | Phụ thuộc vào `RoadmapNode.notionPageId` |
+| `progress/`   | Cập nhật `NodeStatus` cho `RoadmapNode`                      | State gắn với `nodeId` — roadmap domain  |
+| `dashboard/`  | Tổng hợp `RoadmapProgress[]` theo roadmap                    | Query `myProgress` — roadmap-scoped      |
+| `navigation/` | `PlatformSwitch` dùng trong tất cả app headers; cùng package | Shared UI, không app-specific            |
+| `graphql/`    | Generated types từ schema của svc-roadmap                    | Types thuộc roadmap domain               |
 
 ### Package dependency rule
 
@@ -151,6 +151,7 @@ async rewrites() {
 ## UI/UX Flows
 
 Section này gồm hai lớp:
+
 1. **ASCII Wireframes** — layout thực tế của từng màn hình
 2. **Mermaid Flowcharts** — luồng logic và điều kiện chạy qua các màn hình
 
@@ -232,7 +233,7 @@ COLOR MAPPING (packages/core/src/roadmap/graph/):
 
 #### Screen 3: NodeDrawer — trạng thái Guest vs Viewer
 
-```
+````
 ┌────────────────────────────────────────────┬──────────────────────┐
 │  Interactive Roadmap (dimmed backdrop)     │ ← 300ms slide-in     │
 │                                            │──────────────────────│
@@ -262,7 +263,7 @@ COLOR MAPPING (packages/core/src/roadmap/graph/):
 └────────────────────────────────────────────┴──────────────────────┘
 
 DRAWER WIDTH:  ~420px  |  ANIMATION: transform translateX(100%) → 0  |  DURATION: 300ms
-```
+````
 
 ---
 
@@ -593,6 +594,7 @@ interface InteractiveRoadmapProps {
   - `done` → green (`bg-green-500 dark:bg-green-600`)
 
 **NodeStatusColors** util:
+
 ```ts
 export const NODE_STATUS_COLORS: Record<NodeStatus, string> = {
   locked:      "bg-muted text-muted-foreground",
@@ -637,6 +639,7 @@ interface PlatformSwitchProps {
 ```
 
 Logic lọc:
+
 ```ts
 function getAllowedPlatforms(role?: UserRole): PlatformKey[] {
   if (role === "super-admin") return ["web", "admin", "super-admin"]
@@ -664,6 +667,7 @@ interface UseNodeStatusOptions {
 ```
 
 Flow:
+
 1. User clicks status button → optimistic update trong <100ms (setState local).
 2. `setNodeStatus` GraphQL mutation gửi đi.
 3. **Success**: mutation response xác nhận, state stays.
@@ -672,6 +676,7 @@ Flow:
 #### `packages/core/src/roadmap/dashboard/` — Dashboard
 
 **DashboardPage component** (`roadmap/dashboard/components/DashboardPage.tsx`):
+
 - Query `myProgress` từ svc-roadmap → list of `RoadmapProgressType`.
 - Renders progress card per roadmap:
   - Progress bar: width = `${Math.floor(doneCount / totalCount * 100)}%`
@@ -681,30 +686,32 @@ Flow:
 
 ### apps/web — Public App Routes
 
-| Route | Component | Auth | Notes |
-|---|---|---|---|
-| `/` | Redirect → `/roadmaps` | Public | |
-| `/roadmaps` | `RoadmapListPage` | Public | Server component, fetch via Apollo |
-| `/roadmap/[slug]` | `RoadmapDetailPage` | Public | InteractiveRoadmap + NodeDrawer |
-| `/dashboard` | `DashboardPage` | Protected (Viewer+) | Middleware redirect if unauthenticated |
-| `/sign-in/[[...sign-in]]` | Clerk `<SignIn>` | Public (redirect if authed) | |
-| `/sign-up/[[...sign-up]]` | Clerk `<SignUp>` | Public | |
+| Route                     | Component              | Auth                        | Notes                                  |
+| ------------------------- | ---------------------- | --------------------------- | -------------------------------------- |
+| `/`                       | Redirect → `/roadmaps` | Public                      |                                        |
+| `/roadmaps`               | `RoadmapListPage`      | Public                      | Server component, fetch via Apollo     |
+| `/roadmap/[slug]`         | `RoadmapDetailPage`    | Public                      | InteractiveRoadmap + NodeDrawer        |
+| `/dashboard`              | `DashboardPage`        | Protected (Viewer+)         | Middleware redirect if unauthenticated |
+| `/sign-in/[[...sign-in]]` | Clerk `<SignIn>`       | Public (redirect if authed) |                                        |
+| `/sign-up/[[...sign-up]]` | Clerk `<SignUp>`       | Public                      |                                        |
 
 **Middleware** (`apps/web/middleware.ts`):
+
 - Clerk `clerkMiddleware()` wraps all routes.
 - `/dashboard` → redirect to `/sign-in?redirectUrl=/dashboard` if not authenticated.
 - `/sign-in` → redirect to `/roadmaps` if already authenticated.
 
 ### apps/admin — Admin App Routes
 
-| Route | Auth | Notes |
-|---|---|---|
-| `/admin` | role=admin,super-admin | Dashboard/list |
-| `/admin/roadmaps` | role=admin,super-admin | CRUD roadmaps |
-| `/admin/roadmaps/[id]` | role=admin,super-admin | Edit roadmap + node tree |
-| `/admin/sign-in/[[...sign-in]]` | Public | Clerk SignIn |
+| Route                           | Auth                   | Notes                    |
+| ------------------------------- | ---------------------- | ------------------------ |
+| `/admin`                        | role=admin,super-admin | Dashboard/list           |
+| `/admin/roadmaps`               | role=admin,super-admin | CRUD roadmaps            |
+| `/admin/roadmaps/[id]`          | role=admin,super-admin | Edit roadmap + node tree |
+| `/admin/sign-in/[[...sign-in]]` | Public                 | Clerk SignIn             |
 
 **Middleware** (`apps/admin/middleware.ts`):
+
 - All routes except `/admin/sign-in` → require `role === "admin" || role === "super-admin"`.
 - Redirect to `/admin/sign-in` if unauthorized.
 
@@ -713,6 +720,7 @@ Flow:
 Framework: **Hono** on Node.js (port 3004). Uses `@hono/node-server`, `@hono/zod-openapi`.
 
 **Endpoint:**
+
 ```
 GET /notion/:pageId
   → 200: { markdown: string }
@@ -814,6 +822,7 @@ enum Role {
 ```
 
 **Key constraints:**
+
 - `@@unique([clerkId, nodeId])` trên `UserProgress` → enforce P2 (upsert idempotency) ở DB level.
 - `onDelete: Cascade` trên `Node → UserProgress` → enforce DB3 (cascade delete).
 - `onDelete: Cascade` trên `Roadmap → Node` → cascade khi Roadmap bị xóa.
@@ -835,51 +844,51 @@ enum NodeStatus {
 }
 
 type Roadmap {
-  id:          ID!
-  slug:        String!
-  title:       String!
+  id: ID!
+  slug: String!
+  title: String!
   description: String
   thumbnailUrl: String
   isPublished: Boolean!
-  nodeCount:   Int!
+  nodeCount: Int!
 }
 
 type RoadmapConnection {
-  items:   [Roadmap!]!
-  total:   Int!
-  page:    Int!
-  limit:   Int!
+  items: [Roadmap!]!
+  total: Int!
+  page: Int!
+  limit: Int!
 }
 
 type RoadmapNode {
-  id:           ID!
-  roadmapId:    ID!
-  parentId:     ID
-  title:        String!
+  id: ID!
+  roadmapId: ID!
+  parentId: ID
+  title: String!
   notionPageId: String
-  positionX:    Float!
-  positionY:    Float!
-  order:        Int!
-  status:       NodeStatus!   # personalized when authenticated, else "locked"
+  positionX: Float!
+  positionY: Float!
+  order: Int!
+  status: NodeStatus! # personalized when authenticated, else "locked"
 }
 
 type RoadmapGraph {
   roadmap: Roadmap!
-  nodes:   [RoadmapNode!]!
+  nodes: [RoadmapNode!]!
 }
 
 type UserProgress {
-  id:        ID!
-  nodeId:    ID!
-  status:    NodeStatus!
+  id: ID!
+  nodeId: ID!
+  status: NodeStatus!
   updatedAt: DateTime!
 }
 
 type RoadmapProgress {
-  roadmapId:    ID!
+  roadmapId: ID!
   roadmapTitle: String!
-  doneCount:    Int!
-  totalCount:   Int!
+  doneCount: Int!
+  totalCount: Int!
 }
 
 type Query {
@@ -916,25 +925,25 @@ type Mutation {
 }
 
 input NodeInput {
-  id:           ID        # if present: update; if absent: create
-  parentId:     ID
-  title:        String!
+  id: ID # if present: update; if absent: create
+  parentId: ID
+  title: String!
   notionPageId: String
-  positionX:    Float!
-  positionY:    Float!
-  order:        Int!
+  positionX: Float!
+  positionY: Float!
+  order: Int!
 }
 
 input CreateRoadmapInput {
-  slug:        String!
-  title:       String!
+  slug: String!
+  title: String!
   description: String
   thumbnailUrl: String
 }
 
 input UpdateRoadmapInput {
-  slug:        String
-  title:       String
+  slug: String
+  title: String
   description: String
   thumbnailUrl: String
   isPublished: Boolean
@@ -945,14 +954,14 @@ input UpdateRoadmapInput {
 
 Tất cả lỗi từ svc-roadmap trả về theo chuẩn Apollo với `extensions.code`:
 
-| Scenario | Extension Code |
-|---|---|
-| Unauthenticated request đến protected query/mutation | `UNAUTHENTICATED` |
-| Insufficient role (e.g. Viewer truy cập admin mutation) | `FORBIDDEN` |
-| `status` enum value không hợp lệ | `BAD_USER_INPUT` |
-| `nodeId` không tồn tại | `NOT_FOUND` |
-| `slug` Roadmap không tồn tại | `NOT_FOUND` |
-| Database error | `INTERNAL_SERVER_ERROR` |
+| Scenario                                                | Extension Code          |
+| ------------------------------------------------------- | ----------------------- |
+| Unauthenticated request đến protected query/mutation    | `UNAUTHENTICATED`       |
+| Insufficient role (e.g. Viewer truy cập admin mutation) | `FORBIDDEN`             |
+| `status` enum value không hợp lệ                        | `BAD_USER_INPUT`        |
+| `nodeId` không tồn tại                                  | `NOT_FOUND`             |
+| `slug` Roadmap không tồn tại                            | `NOT_FOUND`             |
+| Database error                                          | `INTERNAL_SERVER_ERROR` |
 
 ### GraphQL Codegen
 
@@ -999,6 +1008,7 @@ GET  /notion/:pageId
 ### Role Resolution
 
 Role được đọc từ `publicMetadata.role` trong Clerk JWT:
+
 ```ts
 type ClerkRole = "admin" | "super-admin" | undefined  // undefined = viewer
 ```
@@ -1010,6 +1020,7 @@ type ClerkRole = "admin" | "super-admin" | undefined  // undefined = viewer
 ### Auth Flow Diagrams
 
 **Guest → Dashboard redirect (A2):**
+
 ```
 Guest → GET /dashboard
   → Clerk middleware detects unauthenticated
@@ -1019,6 +1030,7 @@ Guest → GET /dashboard
 ```
 
 **Viewer → setNodeStatus mutation:**
+
 ```
 Viewer → Apollo Client mutation setNodeStatus
   → GraphQL request với Bearer JWT (Authorization header)
@@ -1029,6 +1041,7 @@ Viewer → Apollo Client mutation setNodeStatus
 ```
 
 **Admin → protected route:**
+
 ```
 Request /admin/roadmaps
   → apps/admin middleware.ts
@@ -1118,6 +1131,7 @@ function print(markdown: string): NotionBlock[]
 `parse(print(parse(P)))` ≡ `parse(P)` về mặt ngữ nghĩa.
 
 Điều này đảm bảo: nếu ta lấy một Notion page, parse ra Markdown, sau đó print ngược lại Notion blocks, rồi parse lại — ta phải nhận được Markdown tương đương. Edge cases phải handle:
+
 - Consecutive list items của cùng type phải giữ nguyên thứ tự.
 - Code blocks phải giữ nguyên language identifier.
 - Image URLs phải pass-through không bị transform.
@@ -1190,41 +1204,42 @@ Tất cả component dùng `dark:` variant của Tailwind CSS 4. InteractiveRoad
 
 ## Correctness Properties
 
-*A property is a characteristic or behavior that should hold true across all valid executions of a system — essentially, a formal statement about what the system should do. Properties serve as the bridge between human-readable specifications and machine-verifiable correctness guarantees.*
+_A property is a characteristic or behavior that should hold true across all valid executions of a system — essentially, a formal statement about what the system should do. Properties serve as the bridge between human-readable specifications and machine-verifiable correctness guarantees._
 
 ### Property 1: Roadmap card description truncation
 
-*For any* Roadmap object with a description of arbitrary length, the card component shall render a description string of at most 160 characters.
+_For any_ Roadmap object with a description of arbitrary length, the card component shall render a description string of at most 160 characters.
 
 **Validates: Requirements 1.2**
 
 ### Property 2: Zoom bounds invariant
 
-*For any* sequence of zoom operations (scroll, pinch, or programmatic), the resulting zoom level of InteractiveRoadmap shall always be within the closed interval `[0.25, 2.0]`.
+_For any_ sequence of zoom operations (scroll, pinch, or programmatic), the resulting zoom level of InteractiveRoadmap shall always be within the closed interval `[0.25, 2.0]`.
 
 **Validates: Requirements 2.2, R4**
 
 ### Property 3: Node status color mapping
 
-*For any* `NodeStatus` value (`locked`, `in_progress`, `done`), the RoadmapNode component shall render with the color class corresponding exactly to that status, and no two distinct statuses shall produce the same rendered class.
+_For any_ `NodeStatus` value (`locked`, `in_progress`, `done`), the RoadmapNode component shall render with the color class corresponding exactly to that status, and no two distinct statuses shall produce the same rendered class.
 
 **Validates: Requirements 2.4**
 
 ### Property 4: Guest nodes all locked
 
-*For any* roadmap graph loaded without authentication, every node in the graph shall have `status = "locked"`.
+_For any_ roadmap graph loaded without authentication, every node in the graph shall have `status = "locked"`.
 
 **Validates: Requirements 2.5**
 
 ### Property 5: NodeDrawer renders any valid Markdown as HTML
 
-*For any* non-empty valid Markdown string returned by svc-notion, the NodeDrawer renderer shall produce a non-empty HTML output string without throwing an error.
+_For any_ non-empty valid Markdown string returned by svc-notion, the NodeDrawer renderer shall produce a non-empty HTML output string without throwing an error.
 
 **Validates: Requirements 3.2**
 
 ### Property 6: PlatformSwitch role-based link filtering
 
-*For any* `UserRole` value (`"viewer"`, `"admin"`, `"super-admin"`), the PlatformSwitch component shall display exactly the set of platform links that the role is authorized to see:
+_For any_ `UserRole` value (`"viewer"`, `"admin"`, `"super-admin"`), the PlatformSwitch component shall display exactly the set of platform links that the role is authorized to see:
+
 - `viewer` → only "Web"
 - `admin` → "Web" and "Admin"
 - `super-admin` → "Web", "Admin", and "Super Admin"
@@ -1233,31 +1248,32 @@ Tất cả component dùng `dark:` variant của Tailwind CSS 4. InteractiveRoad
 
 ### Property 7: PlatformSwitch active state
 
-*For any* valid `PlatformKey` value passed as `current`, exactly one link shall have `aria-current="page"` and the active visual style, and all other links shall not.
+_For any_ valid `PlatformKey` value passed as `current`, exactly one link shall have `aria-current="page"` and the active visual style, and all other links shall not.
 
 **Validates: Requirements 6.2**
 
 ### Property 8: NodeStatus set-then-get round trip
 
-*For any* `nodeId` belonging to a valid authenticated viewer and *for any* `NodeStatus` value, calling `setNodeStatus(nodeId, status)` followed by querying `roadmapGraph` for that node shall return the same `status` that was set.
+_For any_ `nodeId` belonging to a valid authenticated viewer and _for any_ `NodeStatus` value, calling `setNodeStatus(nodeId, status)` followed by querying `roadmapGraph` for that node shall return the same `status` that was set.
 
 **Validates: Requirements 7.1, 7.2, 7.3, 7.7**
 
 ### Property 9: Optimistic update rollback
 
-*For any* initial `NodeStatus` value displayed in the UI, if the `setNodeStatus` mutation fails (network error or server error), the displayed status after the rollback shall equal the status that was shown before the mutation was initiated.
+_For any_ initial `NodeStatus` value displayed in the UI, if the `setNodeStatus` mutation fails (network error or server error), the displayed status after the rollback shall equal the status that was shown before the mutation was initiated.
 
 **Validates: Requirements 7.5, P3**
 
 ### Property 10: Upsert idempotency
 
-*For any* `(clerkId, nodeId)` pair and *for any* `NodeStatus` value, calling `setNodeStatus` N times with the same arguments shall produce exactly one record in `user_progress` — the final state shall be identical to calling it once.
+_For any_ `(clerkId, nodeId)` pair and _for any_ `NodeStatus` value, calling `setNodeStatus` N times with the same arguments shall produce exactly one record in `user_progress` — the final state shall be identical to calling it once.
 
 **Validates: Requirements 7.6, P2, DB2**
 
 ### Property 11: Dashboard progress formula and bounds
 
-*For any* `(doneCount, totalCount)` pair where `0 ≤ doneCount ≤ totalCount` and `totalCount > 0`, the Dashboard shall display:
+_For any_ `(doneCount, totalCount)` pair where `0 ≤ doneCount ≤ totalCount` and `totalCount > 0`, the Dashboard shall display:
+
 - Percentage = `Math.floor(doneCount / totalCount * 100)` which is always in `[0, 100]`
 - Count label = `"${doneCount}/${totalCount} nodes done"`
 
@@ -1265,25 +1281,25 @@ Tất cả component dùng `dark:` variant của Tailwind CSS 4. InteractiveRoad
 
 ### Property 12: Dashboard roadmap visibility filter
 
-*For any* user progress dataset, a roadmap shall appear on the Dashboard if and only if that user has at least one node for that roadmap with `status ≠ "locked"`.
+_For any_ user progress dataset, a roadmap shall appear on the Dashboard if and only if that user has at least one node for that roadmap with `status ≠ "locked"`.
 
 **Validates: Requirements 8.2**
 
 ### Property 13: Notion parse-print round trip
 
-*For any* valid Notion page content `P` composed of supported block types, the composition `parse(print(parse(P)))` shall be semantically equivalent to `parse(P)` — the same Markdown structure, block order, and text content.
+_For any_ valid Notion page content `P` composed of supported block types, the composition `parse(print(parse(P)))` shall be semantically equivalent to `parse(P)` — the same Markdown structure, block order, and text content.
 
 **Validates: Requirements 13.5, N1**
 
 ### Property 14: Notion parser handles all supported block types
 
-*For any* single supported Notion block type (`paragraph`, `heading_1`, `heading_2`, `heading_3`, `bulleted_list_item`, `numbered_list_item`, `code`, `image`) with arbitrary text content, `parse([block])` shall return a non-empty valid Markdown string that contains the block's text content.
+_For any_ single supported Notion block type (`paragraph`, `heading_1`, `heading_2`, `heading_3`, `bulleted_list_item`, `numbered_list_item`, `code`, `image`) with arbitrary text content, `parse([block])` shall return a non-empty valid Markdown string that contains the block's text content.
 
 **Validates: Requirements 13.3, 13.7, N2**
 
 ### Property 15: Theme localStorage round trip
 
-*For any* valid theme value (`"light"`, `"dark"`, `"system"`), after the ThemeProvider saves the selection to localStorage and the page is reloaded, the ThemeProvider shall restore exactly that theme value.
+_For any_ valid theme value (`"light"`, `"dark"`, `"system"`), after the ThemeProvider saves the selection to localStorage and the page is reloaded, the ThemeProvider shall restore exactly that theme value.
 
 **Validates: Requirements 14.3, 14.4**
 
@@ -1396,6 +1412,7 @@ apps/svc-notion/src/notion/
 ### Unit Tests (Example-Based)
 
 Bổ sung cho property tests:
+
 - Authentication flow tests (redirect logic)
 - GraphQL resolver tests with mock repositories
 - Admin CRUD operations with validation

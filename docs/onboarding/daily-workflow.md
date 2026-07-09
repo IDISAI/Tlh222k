@@ -6,9 +6,9 @@ Hướng dẫn này giải thích mọi thứ bạn làm mỗi ngày: nhận tas
 
 ## Tại sao dùng GitFlow?
 
-lh222k dùng **Full GitFlow** thay vì GitHub Flow đơn giản hơn.
+tlh222k dùng **Full GitFlow** thay vì GitHub Flow đơn giản hơn.
 
-**GitHub Flow** (chỉ `main` + feature branches) phù hợp với team deploy liên tục mà không cần staging. lh222k cần:
+**GitHub Flow** (chỉ `main` + feature branches) phù hợp với team deploy liên tục mà không cần staging. tlh222k cần:
 
 1. **Môi trường staging** để team test trước khi lên production
 2. **Release có phiên bản** (`v1.0.0`, `v1.1.0`) với changelog rõ ràng
@@ -240,10 +240,10 @@ Khi bạn thay đổi `packages/db/prisma/schema.prisma`:
 
 ```bash
 # Trong quá trình phát triển local (không tạo migration file)
-DATABASE_URL="postgresql://vizteck:vizteck@localhost:5432/lh222k" pnpm --filter @vizteck/db db:push
+DATABASE_URL="postgresql://vizteck:vizteck@localhost:5432/tlh222k" pnpm --filter @vizteck/db db:push
 
 # Khi sẵn sàng commit thay đổi schema
-DATABASE_URL="postgresql://vizteck:vizteck@localhost:5432/lh222k" pnpm --filter @vizteck/db db:migrate
+DATABASE_URL="postgresql://vizteck:vizteck@localhost:5432/tlh222k" pnpm --filter @vizteck/db db:migrate
 ```
 
 **Quy tắc:** Luôn commit migration files trong cùng PR với code sử dụng schema mới. Không bao giờ commit migration file riêng lẻ.
