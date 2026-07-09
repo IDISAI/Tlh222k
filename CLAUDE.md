@@ -1,70 +1,130 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file is the canonical guide for AI agents working in this repository.
 
 ## Commands
 
-Turborepo + pnpm workspace. Node ≥20, pnpm 10.33.4 (pinned via `packageManager`).
+Turborepo + pnpm workspace. Node >= 20, pnpm 10.33.4.
 
 ```bash
-pnpm install                      # install all workspaces
-pnpm dev                          # turbo dev (persistent, all apps)
-pnpm build                        # turbo build
-pnpm lint                         # eslint across packages (real lint, not typecheck)
-pnpm typecheck                    # tsc --noEmit across packages (separate task from lint)
-pnpm format                       # prettier --write
+pnpm install
+pnpm dev
+pnpm build
+pnpm lint
+pnpm typecheck
+pnpm format
 
-pnpm --filter <name> <script>     # run one package, e.g. pnpm --filter web build
-pnpm --filter web dev             # run only the web app
+pnpm --filter web dev
+pnpm --filter admin dev
+pnpm --filter super-admin dev
+pnpm --filter svc-roadmap dev
+pnpm -F @workspace/db generate
+pnpm -F @workspace/db db:push
+pnpm -F @workspace/db seed
 ```
 
-There is **no test runner configured yet** — `pnpm test` does not exist. The CI chain is `install --frozen-lockfile → lint → typecheck → build`. Run that locally before pushing.
-
-Note: [docs/onboarding/cicd.md](docs/onboarding/cicd.md) says "`pnpm lint` = TypeScript type check" — that is outdated. `lint` and `typecheck` are distinct turbo tasks here.
-
-## Former submodules (now inlined)
-
-`packages/ui` and `packages/core/src/roadmap` used to be separate git submodules (repos `IDISAI/ui`, `IDISAI/roadmap`). They have since been **inlined into this repo** (commit `chore: remove submodules from .gitmodules file`) — `.gitmodules` is empty, there are no gitlinks, and a single commit here covers changes to them. Edit them like any normal directory; `git clone --recurse-submodules` is no longer needed.
-
-- Each inlined dir still carries its own `AGENTS.md`/`README.md` from when it was standalone — read `packages/core/src/roadmap/AGENTS.md` before touching the roadmap graph/builder.
-- CI workflows still pass `submodules: recursive` + `SUBMODULE_PAT`, but these are now **no-ops** (nothing to fetch). [docs/onboarding/submodules.md](docs/onboarding/submodules.md) is obsolete.
+There is no test runner configured yet. CI is
+`install --frozen-lockfile -> lint -> typecheck -> build`. `lint` is ESLint;
+`typecheck` is `tsc --noEmit`.
 
 ## Architecture
 
-**What exists today:** three Next.js frontends — `apps/web` (default port 3000), `apps/admin` (3002), `apps/super-admin` (3003) — plus shared `packages/*`. All three mount `RoadmapView` from `@workspace/core` and gate access with role resolution from `@workspace/core/navigation/role`; `admin`/`super-admin` add a roadmap **builder** (admin CRUD pages under `apps/admin/app/roadmaps`). The former `notion` core feature has been removed. `apps/svc-notion`, `apps/svc-roadmap`, and `packages/db` currently exist only as untracked stubs (a `dist/` folder, no committed source) — they are not wired in yet. The docs under [docs/onboarding/](docs/onboarding/) describe a larger **target** system (NestJS `api-gateway`, Prisma `packages/db`, Playwright e2e) that is **not built yet** — treat those as roadmap, not current state.
+Current committed system:
 
-**Dependency direction** (enforced by convention, see [rules/packages.md](rules/packages.md)):
+- `apps/web`: public Next.js frontend and Multi-Zone host, port 3000.
+- `apps/admin`: admin/roadmap-builder Next.js child zone, port 3002.
+- `apps/super-admin`: super-admin/user-management child zone, port 3003.
+- `apps/svc-roadmap`: NestJS backend exposing GraphQL, REST, Swagger, and SSE,
+  default port 3005.
+- `packages/core`: shared domain logic, feature-first.
+- `packages/db`: Prisma schema/client and seed data.
+- `packages/ui`: shared shadcn/ui + Tailwind v4 components.
+- `packages/eslint-config` and `packages/typescript-config`: shared tooling.
+
+Dependency direction:
+
+```text
+apps/*      -> packages/*   OK
+packages/*  -> apps/*       never
 ```
-apps/*  →  packages/*        ✓
-packages/* → apps/*          ✗ never
+
+Package scope is `@workspace/*`, not `@vizteck/*`.
+
+## Former Submodules
+
+`packages/ui` and `packages/core/src/roadmap` used to be separate git
+submodules. They are now inline in this repo. `.gitmodules` is empty, there are
+no gitlinks, and one parent-repo commit covers changes to them. Ignore old docs
+that still say to clone or bump submodules.
+
+## Domain Logic
+
+Put shared domain logic in `packages/core`, organized feature-first:
+
+```text
+src/<feature>/
+  types.ts
+  <feature>.service.ts
+  hooks/
+  components/
+  utils/
+  index.ts
 ```
 
-**`packages/core` (`@workspace/core`)** — all domain logic lives here, organized feature-first:
+Apps consume packages through `workspace:*`, `transpilePackages`, and tsconfig
+paths. `apps/web/lib/core.ts` is the reference for per-app customization.
+
+## Env
+
+There is no shared root app env. Each app/package owns the env file beside it:
+
+```bash
+cp apps/web/.env.example          apps/web/.env.local
+cp apps/admin/.env.example        apps/admin/.env.local
+cp apps/super-admin/.env.example  apps/super-admin/.env.local
+cp apps/svc-roadmap/.env.example  apps/svc-roadmap/.env
+cp packages/db/.env.example       packages/db/.env
 ```
-src/<feature>/            e.g. roadmap/, navigation/, notebook/
-  <sub-feature>/          e.g. roadmap/{graph,builder}, notebook/{viewer,utils}
-```
-Every feature/sub-feature follows the same shape: `types.ts`, `<slug>.service.ts`, `hooks/`, `components/`, `utils/`, and an `index.ts` barrel that re-exports them (parent features also re-export their sub-features up to `src/index.ts`). `core` uses `moduleResolution: Bundler` so barrels can `export *` without file extensions. Subpath imports work too (e.g. `@workspace/core/navigation/role`).
 
-The `src/index.ts` barrel currently re-exports `roadmap` + `navigation`. The `notebook` feature (Jupyter/Kaggle `.ipynb` viewer — `nbformat` parsing, ANSI + syntax highlight, markdown cells) is being built on branch `feat/jupyter-notebook-kaggle` and is **not wired into the barrel yet**.
+Rules:
 
-**Consuming a package from an app:** add `"@workspace/<pkg>": "workspace:*"` to the app's deps, add it to `transpilePackages` in `next.config.ts`, and map it under `paths` in the app's `tsconfig.json` (see `apps/web`). `apps/web/lib/core.ts` is the reference example of importing core and customizing per-app.
+- Commit only `.env.example`; never commit real `.env` or `.env.local`.
+- `NEXT_PUBLIC_*` is browser-visible.
+- `NEXT_PUBLIC_SVC_ROADMAP_URL` selects the real backend. If it is empty,
+  `@workspace/core` uses the mock/localStorage roadmap service.
+- `NEXT_PUBLIC_DEV_AUTH_ROLE` is a dev-only Clerk bypass and is ignored in
+  production.
 
-**Package naming is `@workspace/*`** (e.g. `@workspace/ui`, `@workspace/core`). Some docs/rules mention `@vizteck/*` — that is outdated; the real scope is `@workspace`.
+Full guide: [docs/onboarding/env.md](docs/onboarding/env.md).
 
-## Next.js version warning
+## Next.js 16.2.6
 
-This repo pins a modified Next.js (see [AGENTS.md](AGENTS.md)) with breaking changes vs. common knowledge. Before writing Next.js code, read the relevant guide in `node_modules/next/dist/docs/`.
+This repo pins Next.js 16.2.6. Before writing Next code, read the relevant
+installed guide under `node_modules/.pnpm/.../node_modules/next/dist/docs/`.
+The plain `node_modules/next/dist/docs/` path may not exist with this pnpm
+layout.
+
+React 19 warns when a client component renders a `<script>` tag. The apps alias
+`next-themes` to `packages/core/src/navigation/no-script-next-themes.tsx` in
+their Next config to keep `useTheme()` behavior without the inline script.
+
+## Documentation
+
+Keep `README.md` for human orientation and `AGENTS.md` for AI-agent notes in
+committed workspace folders. Do not add those files to generated/cache folders
+such as `.git`, `.next`, `.turbo`, `dist`, or `node_modules`.
+
+Docs under `docs/onboarding/` sometimes describe a larger target system. Treat
+anything not represented in committed code as roadmap, not current behavior.
 
 ## CI/CD
 
-Three workflows in `.github/workflows/` (see [docs/onboarding/cicd.md](docs/onboarding/cicd.md)):
-- `ci.yml` — PRs + push to `main`/`develop`/`release/**`: lint → typecheck → build.
-- `deploy-staging.yml` — push `develop`/`release/**`: Vercel preview (web).
-- `release.yml` — tag `v*`: Vercel production (web) + GitHub Release.
+Workflows live in `.github/workflows/`:
 
-Deploys cover **web + admin + super-admin** (matrix job per app) and require GitHub secrets `VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID_WEB`, `VERCEL_PROJECT_ID_ADMIN`, `VERCEL_PROJECT_ID_SUPER_ADMIN` (note underscore — hyphens are invalid in secret names, so the matrix maps `super-admin` → `SUPER_ADMIN`); each Vercel project's Root Directory = the app dir.
+- `ci.yml`: lint -> typecheck -> build.
+- `deploy-staging.yml`: Vercel preview deploys.
+- `release.yml`: Vercel production deploys and GitHub release.
 
-App env vars (`.env.local`, Vercel dashboard) are separate from CI secrets — see [docs/onboarding/env.md](docs/onboarding/env.md). Current app code consumes none yet.
-
-Every workflow still checks out with `submodules: recursive` and `token: ${{ secrets.SUBMODULE_PAT || github.token }}`, but since `packages/ui` and the roadmap feature are now inlined (`.gitmodules` empty), these are **vestigial no-ops** — no `SUBMODULE_PAT` is required to build.
+Deploys cover web, admin, and super-admin. Required GitHub secrets include
+`VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID_WEB`,
+`VERCEL_PROJECT_ID_ADMIN`, and `VERCEL_PROJECT_ID_SUPER_ADMIN`.

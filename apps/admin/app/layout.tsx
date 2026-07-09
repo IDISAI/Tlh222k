@@ -1,4 +1,3 @@
-import Link from "next/link"
 import { Geist_Mono, Inter } from "next/font/google"
 import { ClerkProvider, UserButton } from "@clerk/nextjs"
 
@@ -9,6 +8,7 @@ import { Toaster } from "@workspace/ui/components/sonner"
 import { ThemeProvider } from "@/components/theme-provider"
 import { cn } from "@workspace/ui/lib/utils"
 import { getIsAuthenticated } from "@/lib/auth"
+import { ROADMAPS_PATH } from "@/lib/paths"
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-sans" })
 
@@ -39,12 +39,12 @@ export default async function RootLayout({
         <body>
           <ThemeProvider>
             <header className="flex items-center justify-between border-b p-3">
-              <Link
-                href="/roadmaps"
+              <a
+                href={ROADMAPS_PATH}
                 className="font-heading text-sm font-bold uppercase italic"
               >
                 Roadmap CMS
-              </Link>
+              </a>
               <div className="flex items-center gap-2">
                 <ThemeToggle />
                 {isAuthed && <UserButton />}

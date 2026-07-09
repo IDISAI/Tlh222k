@@ -3,6 +3,7 @@ import { clerkClient } from "@clerk/nextjs/server"
 import { normalizeRole } from "@workspace/core"
 
 import { getRole } from "@/lib/auth"
+import { SIGN_IN_PATH } from "@/lib/paths"
 import { UserTable, type ManagedUser } from "./user-table"
 
 export const metadata = { title: "Quản lý người dùng" }
@@ -13,7 +14,7 @@ export const metadata = { title: "Quản lý người dùng" }
  */
 export default async function UsersPage() {
   const role = await getRole()
-  if (role !== "super-admin") redirect("/sign-in")
+  if (role !== "super-admin") redirect(SIGN_IN_PATH)
 
   const client = await clerkClient()
   const res = await client.users.getUserList({

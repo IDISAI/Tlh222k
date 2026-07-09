@@ -3,6 +3,7 @@
   "ui": "tui",
   "globalEnv": [
     "NODE_ENV",
+    "CI",
     "PORT",
     "DATABASE_URL",
     "CLERK_SECRET_KEY",

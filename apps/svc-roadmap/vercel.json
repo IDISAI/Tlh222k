@@ -1,7 +1,7 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": null,
-  "installCommand": "sed -i 's|provider = \"sqlite\"|provider = \"postgresql\"|' ../../packages/db/prisma/schema.prisma && pnpm install --frozen-lockfile",
+  "installCommand": "DATABASE_URL=file:./dev.db pnpm install --frozen-lockfile && pnpm -F @workspace/db generate:postgres",
   "buildCommand": "pnpm --filter svc-roadmap exec nest build",
   "outputDirectory": "public",
   "functions": {

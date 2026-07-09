@@ -1,4 +1,3 @@
-import Link from "next/link"
 import { Geist_Mono, Inter } from "next/font/google"
 import { ClerkProvider, UserButton } from "@clerk/nextjs"
 
@@ -8,6 +7,7 @@ import "@workspace/ui/globals.css"
 import { ThemeProvider } from "@/components/theme-provider"
 import { cn } from "@workspace/ui/lib/utils"
 import { getIsAuthenticated } from "@/lib/auth"
+import { USERS_PATH } from "@/lib/paths"
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-sans" })
 
@@ -38,12 +38,12 @@ export default async function RootLayout({
         <body>
           <ThemeProvider>
             <header className="flex items-center justify-between border-b p-3">
-              <Link
-                href="/"
+              <a
+                href={USERS_PATH}
                 className="font-heading text-sm font-bold uppercase italic"
               >
                 Super Admin
-              </Link>
+              </a>
               <div className="flex items-center gap-2">
                 <ThemeToggle />
                 {isAuthed && <UserButton />}

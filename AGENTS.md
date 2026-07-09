@@ -1,15 +1,51 @@
+<!-- codebase-memory-mcp:start -->
+
+# Codebase Knowledge Graph (codebase-memory-mcp)
+
+This project uses codebase-memory-mcp to maintain a knowledge graph of the
+codebase. Prefer graph tools over grep/glob/file search when they are available.
+
+Priority order:
+
+1. `search_graph` - find functions, classes, routes, variables by pattern
+2. `trace_path` - trace callers/callees or data flow
+3. `get_code_snippet` - read exact function/class source
+4. `query_graph` - run Cypher for complex patterns
+5. `get_architecture` - high-level project summary
+
+Fallback to `rg`/file reads when the graph is not indexed, when searching
+non-code files, or when looking for string literals/config values.
+
+<!-- codebase-memory-mcp:end -->
+
 <!-- BEGIN:nextjs-agent-rules -->
+
 # This is NOT the Next.js you know
 
-This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` before writing any code. Heed deprecation notices.
+This repo pins Next.js 16.2.6 and may differ from your training data. Before
+editing Next.js code, read the relevant guide in the installed docs. With pnpm,
+the docs may live under `node_modules/.pnpm/.../node_modules/next/dist/docs/`
+instead of `node_modules/next/dist/docs/`.
+
 <!-- END:nextjs-agent-rules -->
 
-# Project agent rules
+# Project Agent Rules
 
-Canonical guidance for AI agents lives in [CLAUDE.md](CLAUDE.md) — read it first (commands, architecture, conventions). Key points that bite if missed:
+Read [CLAUDE.md](CLAUDE.md) first. It is the canonical agent guide for commands,
+architecture, env, package boundaries, and verification.
 
-- **Submodules:** `packages/ui` (`IDISAI/ui`) and `packages/core/src/roadmap` (`IDISAI/roadmap`) are separate repos. Clone with `--recurse-submodules` or run `git submodule update --init --recursive`, else the build breaks. Editing submodule code = commit in the child repo, then bump the gitlink in the parent. Procedure: [docs/onboarding/submodules.md](docs/onboarding/submodules.md).
-- **`lint` ≠ `typecheck`:** they are distinct turbo tasks. There is no test runner. CI = `install --frozen-lockfile → lint → typecheck → build`.
-- **Package scope is `@workspace/*`** (not `@vizteck/*`). `apps/*` may import `packages/*`, never the reverse — see [rules/packages.md](rules/packages.md).
-- **Domain logic goes in `packages/core`** feature-first (`types.ts` / `*.service.ts` / `hooks/` / `components/` / `utils/` + barrel). Apps import and customize per-app (see `apps/web/lib/core.ts`).
-- Docs under `docs/onboarding/` describe a larger **target** system (NestJS api-gateway, Prisma, admin CMS) that is not built yet — treat as roadmap, not current state.
+Key points:
+
+- `packages/ui` and `packages/core/src/roadmap` are no longer submodules. They
+  are inline source folders; commit them in this repo like normal code.
+- `lint` and `typecheck` are separate Turborepo tasks. There is no test runner.
+  CI is `install --frozen-lockfile -> lint -> typecheck -> build`.
+- Package scope is `@workspace/*`. Apps may import packages; packages must never
+  import apps. See [rules/packages.md](rules/packages.md).
+- Domain logic belongs in `packages/core`, feature-first. Apps import and adapt
+  it per app.
+- Env files are intentionally per app/package. Do not create a shared root app
+  env. See [docs/onboarding/env.md](docs/onboarding/env.md).
+- Every committed workspace folder should have a `README.md` for humans and an
+  `AGENTS.md` for AI-agent notes. Do not add these files to generated folders
+  such as `node_modules`, `.next`, `dist`, `.turbo`, or `.git`.

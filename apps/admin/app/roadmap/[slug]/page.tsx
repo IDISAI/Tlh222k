@@ -2,7 +2,7 @@ import { redirect } from "next/navigation"
 import { RoadmapViewer } from "@workspace/core"
 
 import { getRole } from "@/lib/auth"
-import { ROADMAPS_PATH } from "@/lib/paths"
+import { FORBIDDEN_PATH, ROADMAPS_PATH } from "@/lib/paths"
 
 export const metadata = { title: "Xem roadmap" }
 
@@ -22,7 +22,7 @@ export default async function AdminRoadmapViewPage({
 }) {
   const { slug } = await params
   const role = await getRole()
-  if (role !== "admin" && role !== "super-admin") redirect("/403")
+  if (role !== "admin" && role !== "super-admin") redirect(FORBIDDEN_PATH)
 
   return (
     <RoadmapViewer

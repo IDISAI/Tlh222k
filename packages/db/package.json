@@ -7,11 +7,15 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "postinstall": "prisma generate",
-    "generate": "prisma generate",
-    "db:push": "prisma db push",
+    "postinstall": "prisma generate --schema prisma/schema.prisma",
+    "generate": "prisma generate --schema prisma/schema.prisma",
+    "generate:sqlite": "prisma generate --schema prisma/schema.prisma",
+    "generate:postgres": "prisma generate --schema prisma/schema.postgres.prisma",
+    "db:push": "prisma db push --schema prisma/schema.prisma",
+    "db:push:sqlite": "prisma db push --schema prisma/schema.prisma",
+    "db:push:postgres": "prisma db push --schema prisma/schema.postgres.prisma",
     "seed": "tsx prisma/seed.ts",
-    "build": "prisma generate",
+    "build": "prisma generate --schema prisma/schema.prisma",
     "lint": "eslint",
     "typecheck": "tsc --noEmit"
   },

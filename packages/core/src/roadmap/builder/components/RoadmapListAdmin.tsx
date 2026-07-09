@@ -83,7 +83,18 @@ export function RoadmapListAdmin({
         </div>
       ) : (
         <div className="rounded-xl border">
-          <Table>
+          <Table className="min-w-[1180px] table-fixed">
+            <colgroup>
+              <col className="w-[180px]" />
+              <col className="w-[300px]" />
+              <col className="w-[160px]" />
+              <col className="w-[150px]" />
+              <col className="w-[120px]" />
+              <col className="w-[120px]" />
+              <col className="w-[72px]" />
+              <col className="w-[96px]" />
+              <col className="w-[150px]" />
+            </colgroup>
             <TableHeader>
               <TableRow>
                 <TableHead>Tên</TableHead>
@@ -117,20 +128,32 @@ export function RoadmapListAdmin({
                     window.location.href = `${builderBasePath}/${roadmap.id}`
                   }}
                 >
-                  <TableCell className="font-medium">{roadmap.title}</TableCell>
-                  <TableCell className="max-w-[200px] text-muted-foreground">
-                    {roadmap.description
-                      ? truncateDescription(roadmap.description, 60)
-                      : "—"}
+                  <TableCell className="font-medium">
+                    <span className="block truncate" title={roadmap.title}>
+                      {roadmap.title}
+                    </span>
                   </TableCell>
                   <TableCell className="text-muted-foreground">
-                    {roadmap.slug}
+                    <span
+                      className="block truncate"
+                      title={roadmap.description ?? "—"}
+                    >
+                      {roadmap.description
+                        ? truncateDescription(roadmap.description, 80)
+                        : "—"}
+                    </span>
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">
+                    <span className="block truncate" title={roadmap.slug}>
+                      {roadmap.slug}
+                    </span>
                   </TableCell>
                   <TableCell onClick={(e) => e.stopPropagation()}>
                     {roadmap.author ?? roadmap.authorId ? (
                       <a
                         href={`${authorBasePath}/${roadmap.author?.id ?? roadmap.authorId}`}
-                        className="text-primary underline-offset-4 hover:underline"
+                        className="block truncate text-primary underline-offset-4 hover:underline"
+                        title={roadmap.author?.name ?? roadmap.authorId ?? ""}
                       >
                         {roadmap.author?.name ?? roadmap.authorId}
                       </a>

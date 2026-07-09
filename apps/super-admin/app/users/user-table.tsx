@@ -21,6 +21,8 @@ export interface ManagedUser {
 
 const ROLES: UserRole[] = ["viewer", "admin", "super-admin"]
 
+// The browser sees /super-admin/* through the web host. The host strips that
+// prefix before forwarding API requests to this root-built child app.
 const BASE_PATH = process.env.NODE_ENV === "production" ? "/super-admin" : ""
 
 export function UserTable({ users: initial }: { users: ManagedUser[] }) {
