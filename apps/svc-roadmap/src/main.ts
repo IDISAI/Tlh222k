@@ -17,12 +17,11 @@ async function bootstrap(): Promise<void> {
     .map((o) => o.trim())
     .filter(Boolean)
 
-  // Vercel preview deploys get a per-commit hostname (e.g.
-  // tlh222k-web-<hash>-idis.vercel.app) that a static allowlist can never
-  // enumerate. Match this project's web/admin/super-admin *.vercel.app deploys
-  // so previews aren't blocked by CORS while production stays explicit.
-  const previewOrigin =
-    /^https:\/\/tlh222k-(web|admin|super-admin)[\w-]*\.vercel\.app$/
+  // Vercel preview deploys get a per-commit hostname a static allowlist can't
+  // enumerate (web previews are tlh222k-<hash>-idis.vercel.app). Match any
+  // deploy under this project's tlh222k- prefix so previews aren't blocked by
+  // CORS while production stays explicit.
+  const previewOrigin = /^https:\/\/tlh222k-[\w-]+\.vercel\.app$/
 
   app.enableCors({
     // Echo the caller's origin when it's an explicit allow or a project preview.
