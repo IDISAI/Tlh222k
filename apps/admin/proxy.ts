@@ -2,40 +2,43 @@ import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server"
 import { NextResponse } from "next/server"
 import { roleFromClaims } from "@workspace/core/navigation/role"
 
-// Runs under basePath `/admin` in production only (see next.config.ts), so
-// matchers/pathnames here are basePath-relative in prod (`/sign-in` matches
-// the request served at `/admin/sign-in`); in dev there's no prefix to strip.
-const isSignIn = createRouteMatcher(["/sign-in(.*)"])
+const PUBLIC_PREFIX = process.env.NODE_ENV === "production" ? "/admin" : ""
 
-// Dev-only auth bypass for headless QA / the localhost-only preview (can't open
-// Clerk's hosted sign-in). Set DEV_AUTH_ROLE in .env.local; off in production.
-const DEV_AUTH_ROLE =
-  process.env.NODE_ENV !== "production"
-    ? process.env.NEXT_PUBLIC_DEV_AUTH_ROLE
-    : undefined
+const isSignIn = createRouteMatcher(["/sign-in(.*)", "/admin/sign-in(.*)"])
+const isForbidden = createRouteMatcher(["/403", "/admin/403"])
 
-// In dev bypass mode, skip Clerk entirely. clerkMiddleware still runs its
-// dev-browser handshake (a 307 to the external Clerk domain) even when the
-// callback returns early, stalling every matched request — including /api/*.
-// A plain pass-through removes Clerk from the request path completely.
-const proxy = DEV_AUTH_ROLE
-  ? () => NextResponse.next()
-  : clerkMiddleware(async (auth, req) => {
-      // The sign-in page itself is public (Req 5.4 exception).
-      if (isSignIn(req)) return
+function publicPath(pathname: string) {
+  if (!PUBLIC_PREFIX || pathname.startsWith(PUBLIC_PREFIX)) return pathname
+  return `${PUBLIC_PREFIX}${pathname === "/" ? "" : pathname}`
+}
 
-      const role = roleFromClaims((await auth()).sessionClaims)
+export default clerkMiddleware(async (auth, req) => {
+  // The sign-in and forbidden pages are public (Req 1.2/1.3 exceptions).
+  if (isSignIn(req) || isForbidden(req)) return
 
-      // Admin zone requires admin or super-admin (Req 5.4/5.6/11.6, A1).
-      if (role !== "admin" && role !== "super-admin") {
-        const url = req.nextUrl.clone()
-        url.pathname = "/sign-in" // basePath-relative → /admin/sign-in
-        url.search = ""
-        return NextResponse.redirect(url)
-      }
-    })
+  const { userId, sessionClaims } = await auth()
 
-export default proxy
+  // Req 1.3: unauthenticated → Clerk sign-in, then back to the original URL.
+  if (!userId) {
+    const url = req.nextUrl.clone()
+    url.pathname = `${PUBLIC_PREFIX}/sign-in`
+    url.search = ""
+    url.searchParams.set(
+      "redirect_url",
+      publicPath(req.nextUrl.pathname) + req.nextUrl.search
+    )
+    return NextResponse.redirect(url)
+  }
+
+  // Req 1.2: authenticated viewers are forbidden, not re-prompted.
+  const role = roleFromClaims(sessionClaims)
+  if (role !== "admin" && role !== "super-admin") {
+    const url = req.nextUrl.clone()
+    url.pathname = `${PUBLIC_PREFIX}/403`
+    url.search = ""
+    return NextResponse.redirect(url)
+  }
+})
 
 export const config = {
   matcher: ["/((?!_next|.*\\.[^/]+$).*)", "/(api|trpc)(.*)"],

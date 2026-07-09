@@ -1,0 +1,5 @@
+# SQLite dev database (regenerate with `prisma db push` + `pnpm seed`)
+*.db
+*.db-journal
+prisma/dev.db
+prisma/*.db

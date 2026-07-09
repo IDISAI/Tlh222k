@@ -2,6 +2,7 @@
 
 # dependencies
 node_modules
+.pnpm-store/
 .pnp
 .pnp.*
 .yarn/*
@@ -34,8 +35,11 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
-.env*
+# env files — real secrets stay local; only .env.example templates are committed
+.env
+.env.*
+!.env.example
+!**/.env.example
 
 # vercel
 .vercel
@@ -45,3 +49,4 @@ yarn-error.log*
 next-env.d.ts
 # CocoIndex Code (ccc)
 /.cocoindex_code/
+.gstack/

@@ -1,0 +1,109 @@
+# Operation documents consumed by GraphQL Codegen (typescript-react-apollo).
+# Each `RoadmapService` method carries a `ponytail:` comment naming the
+# operation here that will replace its mock body in Phase 5.
+
+query Roadmaps($includeUnpublished: Boolean) {
+  roadmaps(includeUnpublished: $includeUnpublished) {
+    id
+    slug
+    title
+    description
+    thumbnailUrl
+    isPublished
+    nodeCount
+  }
+}
+
+query RoadmapGraph($slug: String!) {
+  roadmapGraph(slug: $slug) {
+    roadmap {
+      id
+      slug
+      title
+      description
+      thumbnailUrl
+      isPublished
+      nodeCount
+    }
+    nodes {
+      id
+      roadmapId
+      parentId
+      title
+      slug
+      description
+      nodeType
+      notionPageId
+      articleType
+      jupyterUrl
+      positionX
+      positionY
+      order
+      status
+      isDeleted
+      childrenCount
+    }
+  }
+}
+
+query AllNodes {
+  allNodes {
+    id
+    roadmapId
+    parentId
+    title
+    slug
+    nodeType
+    articleType
+    isDeleted
+  }
+}
+
+mutation CreateRoadmap($input: CreateRoadmapInput!) {
+  createRoadmap(input: $input) {
+    id
+    slug
+    title
+  }
+}
+
+mutation UpdateRoadmap($id: ID!, $input: UpdateRoadmapInput!) {
+  updateRoadmap(id: $id, input: $input) {
+    id
+    slug
+    title
+    isPublished
+  }
+}
+
+mutation DeleteRoadmap($id: ID!) {
+  deleteRoadmap(id: $id)
+}
+
+mutation CreateNode($input: CreateNodeInput!) {
+  createNode(input: $input) {
+    id
+    slug
+    nodeType
+    title
+  }
+}
+
+mutation UpdateNode($id: ID!, $input: UpdateNodeInput!) {
+  updateNode(id: $id, input: $input) {
+    id
+    title
+    description
+    articleType
+    notionPageId
+    jupyterUrl
+  }
+}
+
+mutation DeleteNode($id: ID!) {
+  deleteNode(id: $id)
+}
+
+mutation SaveRoadmap($roadmapId: ID!, $nodes: [NodeInput!]!) {
+  saveRoadmap(roadmapId: $roadmapId, nodes: $nodes)
+}

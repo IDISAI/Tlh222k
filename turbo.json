@@ -1,12 +1,35 @@
 {
   "$schema": "https://turbo.build/schema.json",
   "ui": "tui",
+  "globalEnv": [
+    "NODE_ENV",
+    "CI",
+    "PORT",
+    "DATABASE_URL",
+    "CLERK_SECRET_KEY",
+    "FRONTEND_ORIGINS",
+    "NEXT_PUBLIC_SVC_ROADMAP_URL",
+    "SENTRY_DSN",
+    "SENTRY_TRACES_SAMPLE_RATE",
+    "SENTRY_ORG",
+    "SENTRY_PROJECT",
+    "SENTRY_AUTH_TOKEN",
+    "NEXT_PUBLIC_SENTRY_DSN",
+    "NEXT_PUBLIC_SENTRY_TRACES_SAMPLE_RATE"
+  ],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
       "inputs": ["$TURBO_DEFAULT$", ".env*"],
-      "outputs": [".next/**", "!.next/cache/**"],
-      "env": ["ADMIN_URL", "SUPER_ADMIN_URL"]
+      "outputs": [".next/**", "!.next/cache/**", "dist/**"],
+      "env": [
+        "ADMIN_URL",
+        "SUPER_ADMIN_URL",
+        "NEXT_PUBLIC_SVC_ROADMAP_URL",
+        "DATABASE_URL",
+        "CLERK_SECRET_KEY",
+        "FRONTEND_ORIGINS"
+      ]
     },
     "lint": {
       "dependsOn": ["^lint"]

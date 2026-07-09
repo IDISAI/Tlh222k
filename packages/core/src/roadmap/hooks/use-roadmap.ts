@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react"
 
 import type { Roadmap } from "../types"
-import { RoadmapService } from "../roadmap.service"
+import { RoadmapService } from "../api"
 
 const service = new RoadmapService()
 

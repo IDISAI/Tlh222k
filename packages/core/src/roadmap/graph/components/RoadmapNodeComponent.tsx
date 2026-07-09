@@ -2,7 +2,7 @@
 
 import { memo } from "react"
 import { Handle, Position, type NodeProps } from "@xyflow/react"
-import { CheckCircle, Clock, Lock } from "lucide-react"
+import { AlertTriangle, CheckCircle, Clock, Lock } from "lucide-react"
 
 import type { NodeStatus } from "../../types"
 import type { RoadmapFlowNode } from "../types"
@@ -21,6 +21,13 @@ export const RoadmapNodeComponent = memo(function RoadmapNodeComponent({
   const { node } = data
   const Icon = STATUS_ICON[node.status]
 
+  // Req 6.3/6.6: article nodes badge their document kind up front; unlinked
+  // documents show a warning instead and never navigate.
+  const isArticle = node.nodeType === "article"
+  const articleLinked =
+    (node.articleType === "notion" && node.notionPageId) ||
+    (node.articleType === "jupyter" && node.jupyterUrl)
+
   return (
     <div
       className={
@@ -31,6 +38,16 @@ export const RoadmapNodeComponent = memo(function RoadmapNodeComponent({
       <Handle type="target" position={Position.Top} className="!bg-zinc-400" />
       <Icon className="size-4 shrink-0" />
       <span className="text-sm font-semibold">{node.title}</span>
+      {isArticle &&
+        (articleLinked ? (
+          <span className="ml-1 rounded-full border px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide">
+            {node.articleType}
+          </span>
+        ) : (
+          <span title="Tài liệu chưa được liên kết">
+            <AlertTriangle className="ml-1 size-3.5 shrink-0 text-amber-500" />
+          </span>
+        ))}
       <Handle type="source" position={Position.Bottom} className="!bg-zinc-400" />
     </div>
   )

@@ -1,10 +1,8 @@
-import { RoadmapView } from "@workspace/core"
+import { redirect } from "next/navigation"
 
+import { USERS_PATH } from "@/lib/paths"
+
+// Super-admin lands on the user-management console.
 export default function Page() {
-  return (
-    <div className="flex min-h-svh flex-col gap-6 p-6">
-      <h1 className="font-medium">Super Admin</h1>
-      <RoadmapView />
-    </div>
-  )
+  redirect(USERS_PATH)
 }
