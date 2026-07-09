@@ -21,8 +21,25 @@ async function bootstrap(): Promise<(req: Request, res: Response) => void> {
     .split(",")
     .map((o) => o.trim())
     .filter(Boolean)
+  // Vercel preview deploys get a per-commit hostname (e.g.
+  // tlh222k-web-<hash>-idis.vercel.app) a static allowlist can't enumerate.
+  // Match this project's web/admin/super-admin *.vercel.app deploys so previews
+  // aren't blocked by CORS while production stays explicit via FRONTEND_ORIGINS.
+  const previewOrigin =
+    /^https:\/\/tlh222k-(web|admin|super-admin)[\w-]*\.vercel\.app$/
   app.enableCors({
-    origin: origins.length ? origins : true,
+    origin: (origin, callback) => {
+      if (
+        !origin ||
+        !origins.length ||
+        origins.includes(origin) ||
+        previewOrigin.test(origin)
+      ) {
+        callback(null, true)
+        return
+      }
+      callback(null, false)
+    },
     credentials: true,
     allowedHeaders: ["Content-Type", "Authorization"],
   })

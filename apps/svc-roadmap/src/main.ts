@@ -17,8 +17,23 @@ async function bootstrap(): Promise<void> {
     .map((o) => o.trim())
     .filter(Boolean)
 
+  // Vercel preview deploys get a per-commit hostname (e.g.
+  // tlh222k-web-<hash>-idis.vercel.app) that a static allowlist can never
+  // enumerate. Match this project's web/admin/super-admin *.vercel.app deploys
+  // so previews aren't blocked by CORS while production stays explicit.
+  const previewOrigin =
+    /^https:\/\/tlh222k-(web|admin|super-admin)[\w-]*\.vercel\.app$/
+
   app.enableCors({
-    origin: origins,
+    // Echo the caller's origin when it's an explicit allow or a project preview.
+    // No Origin header (curl, server-to-server) is always allowed.
+    origin: (origin, callback) => {
+      if (!origin || origins.includes(origin) || previewOrigin.test(origin)) {
+        callback(null, true)
+        return
+      }
+      callback(null, false)
+    },
     credentials: true,
     // Allow the Clerk bearer token + SSE.
     allowedHeaders: ["Content-Type", "Authorization"],

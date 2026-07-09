@@ -1,7 +1,7 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": null,
-  "installCommand": "DATABASE_URL=file:./dev.db pnpm install --frozen-lockfile && pnpm -F @workspace/db generate:postgres",
+  "installCommand": "pnpm install --frozen-lockfile",
   "buildCommand": "pnpm --filter svc-roadmap exec nest build",
   "outputDirectory": "public",
   "functions": {

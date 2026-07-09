@@ -7,7 +7,7 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "postinstall": "prisma generate --schema prisma/schema.prisma",
+    "postinstall": "node scripts/prisma-generate.mjs",
     "generate": "prisma generate --schema prisma/schema.prisma",
     "generate:sqlite": "prisma generate --schema prisma/schema.prisma",
     "generate:postgres": "prisma generate --schema prisma/schema.postgres.prisma",
