@@ -1,4 +1,5 @@
 import type { NextConfig } from "next"
+import { withSentryConfig } from "@sentry/nextjs"
 
 const isProd = process.env.NODE_ENV === "production"
 
@@ -20,4 +21,12 @@ const nextConfig: NextConfig = {
   transpilePackages: ["@workspace/ui", "@workspace/core"],
 }
 
-export default nextConfig
+// withSentryConfig injects the client config and (when SENTRY_AUTH_TOKEN +
+// SENTRY_ORG/SENTRY_PROJECT are set, i.e. CI/prod) uploads source maps. With
+// none of those env vars present it's a safe no-op, so local dev is unaffected.
+export default withSentryConfig(nextConfig, {
+  org: process.env.SENTRY_ORG,
+  project: process.env.SENTRY_PROJECT,
+  silent: !process.env.CI,
+  widenClientFileUpload: true,
+})

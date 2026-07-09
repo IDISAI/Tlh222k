@@ -14,6 +14,14 @@ export default async function RoadmapsPage() {
 
   return (
     <div className="container mx-auto px-4 py-8">
+      <button
+        onClick={() => {
+          throw new Error("Sentry test - web")
+        }}
+      >
+        Test Sentry
+      </button>
+
       <RoadmapListAdmin role={role} builderBasePath={ROADMAPS_PATH} />
     </div>
   )

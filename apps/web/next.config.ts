@@ -1,4 +1,5 @@
 import type { NextConfig } from "next"
+import { withSentryConfig } from "@sentry/nextjs"
 
 // Native Next.js Multi-Zones: this (default/host) app proxies the child zones by
 // path. Local dev defaults to the child dev servers; production uses the child
@@ -33,4 +34,14 @@ const nextConfig: NextConfig = {
   },
 }
 
-export default nextConfig
+// withSentryConfig injects the client config and (when SENTRY_AUTH_TOKEN +
+// SENTRY_ORG/SENTRY_PROJECT are set, i.e. CI/prod) uploads source maps. With
+// none of those env vars present it's a safe no-op, so local dev is unaffected.
+export default withSentryConfig(nextConfig, {
+  org: process.env.SENTRY_ORG,
+  project: process.env.SENTRY_PROJECT,
+  // Only emit upload logs in CI.
+  silent: !process.env.CI,
+  // Broaden client source map upload for more complete stack traces.
+  widenClientFileUpload: true,
+})

@@ -1,4 +1,6 @@
 import "dotenv/config"
+// Load Sentry before any instrumented library so OTel can patch them (order matters).
+import "./instrument"
 import "reflect-metadata"
 import { NestFactory } from "@nestjs/core"
 import { DocumentBuilder, SwaggerModule } from "@nestjs/swagger"

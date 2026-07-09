@@ -19,6 +19,7 @@
     "@nestjs/platform-express": "^10.4.15",
     "@nestjs/swagger": "^11.4.5",
     "@prisma/client": "^6.16.2",
+    "@sentry/nestjs": "^10",
     "@workspace/db": "workspace:*",
     "dotenv": "^16.4.7",
     "graphql": "^16.10.0",
