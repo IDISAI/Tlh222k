@@ -83,6 +83,138 @@ web Exercise grades
   -> existing roadmap progress API -> UserProgress
 ```
 
+## ASCII UI and Runtime Rules
+
+### Public learning page
+
+```text
++--------------------------------------------------------------------------------+
+|  Notebook title                                      [Session: Off | Ready]    |
++--------------------------------------------------------------------------------+
+| [Tutorial] [Exercise]                  [Run all] [Interrupt] [Restart]        |
++--------------------------------------------------------------------------------+
+| In [ ]:  import pandas as pd                              [ Run cell ]         |
+|          df = pd.DataFrame({"score": [8, 10]})                                |
+|                                                                                |
+| Out [1]:    score                                                               |
+|             0      8                                                           |
+|             1     10                                                           |
++--------------------------------------------------------------------------------+
+| Exercise progress:  [q1: correct] [q2: unattempted]                 1 / 2     |
++--------------------------------------------------------------------------------+
+```
+
+```text
+Visitor opens published notebook
+        |
+        +-- read markdown/output ----------------------------> allowed
+        |
+        +-- clicks Run / Run all / Exercise -----------------> signed in?
+                                                               |
+                                   no ------------------------+--> show sign-in
+                                   yes
+                                    |
+                                    v
+                         can allocate/resume session?
+                                    |
+                     no -----------+------------ yes
+                     |                           |
+                     v                           v
+            show capacity error             execute selected cell
+            (do not queue)                     |
+                                               v
+                         stream stdout/stderr/display/error to that cell
+                                               |
+                           +-------------------+-------------------+
+                           |                                       |
+                    qN.check() run?                         normal tutorial run
+                           |                                       |
+                           v                                       v
+              update chips and progress                     retain ephemeral output
+                           |
+                   all questions correct?
+                           |
+                  yes -----+----- no
+                  |               |
+                  v               v
+       roadmap node = done   roadmap node = in_progress
+```
+
+### Admin and super-admin editor
+
+```text
++--------------------------------------------------------------------------------+
+| Notebook title  [Draft | Published]  [data-science v]  [Session: Busy]        |
+| [Code] [Markdown] [Run all] [Interrupt] [Restart] [Upload] [Download] [Save]  |
++--------------------------------------------------------------------------------+
+| In [3]:  from sklearn.linear_model import LinearRegression       [ Run ]       |
+|          model = LinearRegression().fit(X, y)                                  |
+| Out [3]:  LinearRegression()                                                    |
+|                                                                                |
+| [move] [duplicate] [delete]                                                     |
++--------------------------------------------------------------------------------+
+```
+
+```text
+role = admin or super-admin?
+        |
+   no --+--> deny `/notebooks` and every notebook mutation
+   yes
+    |
+    +-- list / create / upload / edit / save ------> allowed
+    +-- choose runtime profile ---------------------> allowed values only:
+    |                                                `data-science`, `ml-cpu`
+    +-- publish / unpublish ------------------------> allowed
+    +-- run / interrupt / restart ------------------> own runtime session only
+```
+
+### Session state machine
+
+```text
+                    POST /sessions (authenticated)
+OFF --------------------------------------------------> STARTING
+                                                        |   |
+                              startup failure --------+   +-- kernel ready --> READY
+                              |                                      |  |
+                              v                                      |  +-- Run cell / Run all --> BUSY
+                            ERROR                                    |                              |
+                              |                                      |             cell complete ---+
+                              +-- Retry --> STARTING                 |                              v
+                              +-- Cleanup --> OFF                    +<--------- Interrupt ---------+
+                                                                     |
+                                                                     +-- Restart --> STARTING
+
+READY or BUSY -- DELETE / idle expiry / browser leave --> TERMINATED --> OFF
+```
+
+### Server-side authorization and isolation rules
+
+```text
+Incoming HTTP or WebSocket request
+        |
+        v
+Verify Clerk JWT ---- invalid ----> 401 (no container is created)
+        |
+        v
+Resolve session id ---- absent ----> 404
+        |
+        v
+session.owner == JWT.sub ? ---- no ----> 403 (never proxy)
+        |
+       yes
+        |
+        v
+session profile is allowed, active count < 2 ? ---- no ----> 429 capacity error
+        |
+       yes
+        |
+        v
+kernel-server forwards to private Jupyter endpoint and injects server token
+        |
+        v
+sanitize display HTML -> return frame/output to the caller's browser only
+```
+
 ### Core package
 
 `JupyterSandboxAdapter` implements the existing `KernelAdapter` interface. It
