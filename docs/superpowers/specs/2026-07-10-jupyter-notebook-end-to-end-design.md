@@ -21,6 +21,9 @@ guaranteed GPU access, or deep-learning training at scale.
 
 - Every interactive execution uses a remote Jupyter sandbox. Pyodide is not
   the primary runtime and must not share state with the remote session.
+- Every roadmap article with `articleType: "jupyter"` opens this internal
+  notebook feature. Its `jupyterUrl` value is legacy metadata and must never
+  redirect a user to Colab or another external notebook host.
 - One sandbox belongs to one authenticated Clerk user and cannot be accessed by
   any other user.
 - A learner may read published notebooks anonymously, but must authenticate
@@ -42,30 +45,35 @@ guaranteed GPU access, or deep-learning training at scale.
 
 ### Public web
 
-1. A visitor opens `/learn/[slug]` and reads a published tutorial without
+1. Clicking any public roadmap article whose `articleType` is `jupyter` routes
+   to `/learn/[slug]`; the route is internal regardless of `jupyterUrl`.
+2. A visitor opens `/learn/[slug]` and reads a published tutorial without
    authentication.
-2. Selecting Run on a tutorial cell, Run all, or an Exercise cell asks an
+3. Selecting Run on a tutorial cell, Run all, or an Exercise cell asks an
    anonymous visitor to sign in.
-3. The authenticated browser asks kernel-server to allocate or resume the
+4. The authenticated browser asks kernel-server to allocate or resume the
    caller's session for the selected profile.
-4. The browser connects only to a kernel-server proxy. It never receives a
+5. The browser connects only to a kernel-server proxy. It never receives a
    Jupyter token or a direct container address.
-5. The cell streams stdout, stderr, display output, errors, and the execution
+6. The cell streams stdout, stderr, display output, errors, and the execution
    counter into the notebook UI. Users may interrupt or restart only their own
    session.
-6. Exercise `qN.check()` results update the exercise progress UI and the
+7. Exercise `qN.check()` results update the exercise progress UI and the
    existing roadmap status.
 
 ### Admin and super-admin
 
-1. Both zones expose `/notebooks` and `/notebooks/[slug]` behind their existing
+1. Clicking any admin or super-admin roadmap article whose `articleType` is
+   `jupyter` routes to that zone's internal `/notebooks/[slug]` editor, never
+   to `jupyterUrl`.
+2. Both zones expose `/notebooks` and `/notebooks/[slug]` behind their existing
    role checks.
-2. Editors create or upload notebooks, edit cells, choose a runtime profile,
+3. Editors create or upload notebooks, edit cells, choose a runtime profile,
    run/interrupt/restart cells, autosave source, download `.ipynb`, and
    publish or unpublish.
-3. The component implementation lives in `@workspace/core`; app routes supply
+4. The component implementation lives in `@workspace/core`; app routes supply
    Clerk token retrieval and zone-specific authorization only.
-4. Only admin and super-admin roles may mutate notebook records. Both roles
+5. Only admin and super-admin roles may mutate notebook records. Both roles
    may use runtime sessions, subject to the same operational resource limits.
 
 ## Architecture
@@ -84,6 +92,24 @@ web Exercise grades
 ```
 
 ## ASCII UI and Runtime Rules
+
+### Roadmap article routing
+
+```text
+clicked article
+      |
+      +-- articleType != "jupyter" --> existing Notion/article behavior
+      |
+      +-- articleType == "jupyter"
+                |
+                +-- web ---------> /learn/[slug]       (viewer + sandbox)
+                |
+                +-- admin -------> /notebooks/[slug]   (editor + sandbox)
+                |
+                +-- super-admin -> /notebooks/[slug]   (editor + sandbox)
+
+Rule: ignore `jupyterUrl` for navigation. An absolute URL is not an exception.
+```
 
 ### Public learning page
 
@@ -304,6 +330,8 @@ HTTPS kernel-server URL. No Jupyter port is publicly exposed.
 ## Acceptance Criteria
 
 - Published notebooks render for anonymous visitors in the web app.
+- Every Jupyter roadmap article opens an internal notebook route in its current
+  zone; no Jupyter article opens an external `jupyterUrl`.
 - Signed-in web learners can run tutorial and exercise cells in their own
   sandbox, including output, errors, interrupt, restart, and grading progress.
 - Admin and super-admin can list, edit, execute, publish, unpublish, upload,
