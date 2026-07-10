@@ -109,10 +109,8 @@ export const BuilderNodeComponent = memo(function BuilderNodeComponent({
   const Icon = NODE_TYPE_ICONS[node.nodeType]
   const articleUnlinked =
     node.nodeType === "article" &&
-    !(
-      (node.articleType === "notion" && node.notionPageId) ||
-      (node.articleType === "jupyter" && node.jupyterUrl)
-    )
+    !(node.articleType === "jupyter" ||
+      (node.articleType === "notion" && node.notionPageId))
 
   return (
     <>

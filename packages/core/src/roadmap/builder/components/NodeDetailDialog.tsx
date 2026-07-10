@@ -15,6 +15,7 @@ import { toast } from "@workspace/ui/components/sonner"
 import { cn } from "@workspace/ui/lib/utils"
 
 import type { RoadmapNode } from "../../types"
+import { resolveArticleTarget } from "../../utils/resolve-article-target"
 import { NODE_TYPE_ACCENT, NODE_TYPE_ICONS } from "../utils/node-type-styles"
 import { TOAST_MESSAGES } from "../utils/toast-messages"
 import { childrenOf } from "./builder-context"
@@ -29,23 +30,35 @@ interface NodeDetailDialogProps {
   onRemoveFromCanvas?: (node: RoadmapNode) => void
   /** Viewer mode: hide the edit / remove actions, keep only "Điều hướng". */
   readOnly?: boolean
+  /**
+   * Base path for INTERNAL Jupyter articles. Web (viewers) → "/learn"
+   * (read-only viewer); admin/super-admin (creators) → "/notebooks" (editor).
+   */
+  notebookBasePath?: string
 }
 
 /**
  * Resolve the destination the "Điều hướng" action opens (Req 7.4/7.5).
  * role/skill → a same-origin `/roadmap/[slug]` viewer, so admin stays on :3002
  * and web stays on :3000 (each zone owns its own viewer route).
+ *
+ * `notebookBasePath` decides where an INTERNAL Jupyter article goes and differs
+ * by zone: web (viewers) → `/learn` (read-only viewer); admin/super-admin
+ * (creators) → `/notebooks` (the editor, to create/update that notebook).
  */
-export function nodeNavigationUrl(node: RoadmapNode): string | null {
+export function nodeNavigationUrl(
+  node: RoadmapNode,
+  notebookBasePath = "/learn"
+): string | null {
   if (node.nodeType === "role" || node.nodeType === "skill") {
     return `/roadmap/${node.slug}`
   }
   if (node.nodeType === "article") {
-    if (node.articleType === "notion" && node.notionPageId) {
-      return `https://notion.so/${node.notionPageId}`
-    }
-    if (node.articleType === "jupyter" && node.jupyterUrl) {
-      return node.jupyterUrl
+    const target = resolveArticleTarget(node)
+    if (target) {
+      return target.kind === "external"
+        ? target.url
+        : `${notebookBasePath}/${target.slug}`
     }
   }
   return null
@@ -64,6 +77,7 @@ export function NodeDetailDialog({
   onEdit,
   onRemoveFromCanvas,
   readOnly = false,
+  notebookBasePath = "/learn",
 }: NodeDetailDialogProps) {
   if (!node) return null
 
@@ -72,9 +86,13 @@ export function NodeDetailDialog({
     ? (nodes.find((n) => n.id === node.parentId) ?? null)
     : null
   const childCount = childrenOf(nodes, node.id).length
-  const navUrl = nodeNavigationUrl(node)
+  const navUrl = nodeNavigationUrl(node, notebookBasePath)
   const isArticle = node.nodeType === "article"
   const canNavigate = navUrl !== null && node.nodeType !== "chapter"
+  // Same-origin routes (role/skill, internal notebook) stay in this zone;
+  // only Notion targets open as external links in a new tab.
+  const isExternal =
+    isArticle && node.articleType === "notion" && navUrl !== null
 
   const handleNavigate = () => {
     // Req 7.6: unlinked article documents warn instead of navigating.
@@ -82,9 +100,11 @@ export function NodeDetailDialog({
       toast.warning(TOAST_MESSAGES.ARTICLE_NO_LINK)
       return
     }
-    // Navigate in the same tab (no new window) for both in-app role/skill
-    // routes and external article links.
-    window.location.assign(navUrl)
+    if (isExternal) {
+      window.open(navUrl, "_blank", "noopener,noreferrer")
+    } else {
+      window.location.assign(navUrl)
+    }
   }
 
   return (
@@ -124,8 +144,9 @@ export function NodeDetailDialog({
               {navUrl ? (
                 <a
                   href={navUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
+                  {...(isExternal
+                    ? { target: "_blank", rel: "noopener noreferrer" }
+                    : {})}
                   className="block truncate text-xs text-primary underline underline-offset-2"
                 >
                   {navUrl}
