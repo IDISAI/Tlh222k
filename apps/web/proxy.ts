@@ -36,5 +36,7 @@ export const config = {
     // files with an extension. Always run on API routes.
     "/((?!_next|admin|super-admin|.*\\.[^/]+$).*)",
     "/(api|trpc)(.*)",
+    "/__clerk/(.*)",
+    "/_clerk/(.*)",
   ],
 }
