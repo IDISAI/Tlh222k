@@ -1,4 +1,4 @@
-// Package auth resolves the caller's role for each request. Two modes:
+// Package auth resolves the caller's principal for each request. Two modes:
 //   - Dev bypass: DEV_AUTH_ROLE set → every request is that role (no JWT).
 //   - Production: verify the Clerk session JWT (RS256) against the Clerk JWKS
 //     and read the role from the token claims.
@@ -32,6 +32,12 @@ const (
 
 func (r Role) IsAdmin() bool { return r == RoleAdmin || r == RoleSuperAdmin }
 
+type Principal struct {
+	Subject       string
+	Role          Role
+	Authenticated bool
+}
+
 type ctxKey struct{}
 
 // Authenticator resolves roles; safe for concurrent use.
@@ -52,20 +58,33 @@ func New(devAuthRole, jwksURL string) *Authenticator {
 	}
 }
 
-// Middleware resolves the role once and stashes it on the request context.
+// Middleware resolves the principal once and stashes it on the request context.
 func (a *Authenticator) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		role := a.resolve(r)
-		ctx := context.WithValue(r.Context(), ctxKey{}, role)
+		principal := a.resolve(r)
+		ctx := context.WithValue(r.Context(), ctxKey{}, principal)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
 
-func RoleFrom(r *http.Request) Role {
-	if v, ok := r.Context().Value(ctxKey{}).(Role); ok {
+func PrincipalFrom(r *http.Request) Principal {
+	if v, ok := r.Context().Value(ctxKey{}).(Principal); ok {
 		return v
 	}
-	return RoleViewer
+	return Principal{Role: RoleViewer}
+}
+
+func RoleFrom(r *http.Request) Role { return PrincipalFrom(r).Role }
+
+// RequireAuthenticated rejects callers without a verified subject with 401.
+func RequireAuthenticated(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if !PrincipalFrom(r).Authenticated {
+			http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+			return
+		}
+		next(w, r)
+	}
 }
 
 // RequireAdmin rejects non-admin callers with 403.
@@ -79,19 +98,23 @@ func RequireAdmin(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
-func (a *Authenticator) resolve(r *http.Request) Role {
+func (a *Authenticator) resolve(r *http.Request) Principal {
 	if a.devRole != "" {
-		return a.devRole
+		return Principal{Subject: "dev:" + string(a.devRole), Role: a.devRole, Authenticated: true}
 	}
 	token := bearer(r)
 	if token == "" || a.jwksURL == "" {
-		return RoleViewer
+		return Principal{Role: RoleViewer}
 	}
 	claims, err := a.verify(token)
 	if err != nil {
-		return RoleViewer
+		return Principal{Role: RoleViewer}
 	}
-	return roleFromClaims(claims)
+	subject, ok := claims["sub"].(string)
+	if !ok || strings.TrimSpace(subject) == "" {
+		return Principal{Role: RoleViewer}
+	}
+	return Principal{Subject: subject, Role: roleFromClaims(claims), Authenticated: true}
 }
 
 func bearer(r *http.Request) string {

@@ -3,7 +3,9 @@ package config
 
 import (
 	"os"
+	"strconv"
 	"strings"
+	"time"
 )
 
 type Config struct {
@@ -18,6 +20,13 @@ type Config struct {
 	ClerkJWKSURL string
 	// Browser origins allowed to call this server (CORS).
 	AllowedOrigins []string
+
+	JupyterMaxSessions   int
+	JupyterSessionIdle   time.Duration
+	JupyterSessionCPU    string
+	JupyterSessionMemory string
+	JupyterSessionPIDs   int
+	JupyterDockerNetwork string
 }
 
 func getenv(key, fallback string) string {
@@ -25,6 +34,14 @@ func getenv(key, fallback string) string {
 		return v
 	}
 	return fallback
+}
+
+func getenvPositiveInt(key string, fallback int) int {
+	value, err := strconv.Atoi(os.Getenv(key))
+	if err != nil || value <= 0 {
+		return fallback
+	}
+	return value
 }
 
 func Load() Config {
@@ -36,10 +53,16 @@ func Load() Config {
 		origins[i] = strings.TrimSpace(origins[i])
 	}
 	return Config{
-		Port:           getenv("PORT", "3006"),
-		StorageDir:     getenv("STORAGE_DIR", "./storage/notebooks"),
-		DevAuthRole:    os.Getenv("DEV_AUTH_ROLE"),
-		ClerkJWKSURL:   os.Getenv("CLERK_JWKS_URL"),
-		AllowedOrigins: origins,
+		Port:                 getenv("PORT", "3006"),
+		StorageDir:           getenv("STORAGE_DIR", "./storage/notebooks"),
+		DevAuthRole:          os.Getenv("DEV_AUTH_ROLE"),
+		ClerkJWKSURL:         os.Getenv("CLERK_JWKS_URL"),
+		AllowedOrigins:       origins,
+		JupyterMaxSessions:   getenvPositiveInt("JUPYTER_MAX_SESSIONS", 2),
+		JupyterSessionIdle:   time.Duration(getenvPositiveInt("JUPYTER_SESSION_IDLE_SECONDS", 900)) * time.Second,
+		JupyterSessionCPU:    getenv("JUPYTER_SESSION_CPU", "1"),
+		JupyterSessionMemory: getenv("JUPYTER_SESSION_MEMORY", "2g"),
+		JupyterSessionPIDs:   getenvPositiveInt("JUPYTER_SESSION_PIDS", 128),
+		JupyterDockerNetwork: getenv("JUPYTER_DOCKER_NETWORK", "notebook-internal"),
 	}
 }
