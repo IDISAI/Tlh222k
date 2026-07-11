@@ -16,6 +16,7 @@ import (
 	"github.com/lh222k/kernel-server/internal/auth"
 	"github.com/lh222k/kernel-server/internal/config"
 	"github.com/lh222k/kernel-server/internal/httpx"
+	"github.com/lh222k/kernel-server/internal/runtime"
 	"github.com/lh222k/kernel-server/internal/sessions"
 	"github.com/lh222k/kernel-server/internal/store"
 )
@@ -35,6 +36,7 @@ func main() {
 
 	authn := auth.New(cfg.DevAuthRole, cfg.ClerkJWKSURL)
 	handler := httpx.CORS(cfg.AllowedOrigins, authn.Middleware(mux))
+	containerRuntime := runtime.NewDockerRuntime(nil, runtime.DefaultImages())
 	sessionManager := sessions.NewManager(sessions.Options{
 		MaxSessions: cfg.JupyterMaxSessions,
 		IdleTimeout: cfg.JupyterSessionIdle,
@@ -42,7 +44,7 @@ func main() {
 		Memory:      cfg.JupyterSessionMemory,
 		Pids:        cfg.JupyterSessionPIDs,
 		Network:     cfg.JupyterDockerNetwork,
-	}, nil, sessions.SystemClock{})
+	}, containerRuntime, sessions.SystemClock{})
 	go reapSessions(processCtx, sessionManager)
 
 	if cfg.DevAuthRole != "" {
