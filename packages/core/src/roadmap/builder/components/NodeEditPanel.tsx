@@ -162,7 +162,7 @@ export function NodeEditPanel({ node, onClose, onSave }: NodeEditPanelProps) {
               {articleType === "notion" && (
                 <p className="text-xs text-muted-foreground">
                   Nội dung Notion được chỉnh sửa trực tiếp trong trang tài liệu
-                  (mở qua "Điều hướng").
+                  (mở qua nút Điều hướng).
                 </p>
               )}
 

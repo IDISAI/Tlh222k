@@ -27,6 +27,12 @@ interface DocumentViewProps {
   publicUrl: string | null
   /** Selected doc changed on the server; `treeAffecting` re-syncs the sidebar. */
   onDocChanged: (doc: NotionDoc, treeAffecting: boolean) => void
+  /**
+   * Title ↔ linked roadmap node are ONE title (QĐ-2, reverse of the builder's
+   * node→notion sync). Fired after a title save with the doc's slug so the
+   * caller can push it to the node with the same slug. Best-effort.
+   */
+  onTitleSync?: (slug: string, title: string) => void | Promise<void>
   /** Slot for the "open sidebar" hamburger when the sidebar is collapsed. */
   topLeft?: ReactNode
 }
@@ -39,6 +45,7 @@ export function DocumentView({
   actions,
   publicUrl,
   onDocChanged,
+  onTitleSync,
   topLeft,
 }: DocumentViewProps) {
   const [title, setTitle] = useState(doc?.title ?? "")
@@ -56,7 +63,11 @@ export function DocumentView({
   const saveTitle = useDebouncedCallback((id: string, value: string) => {
     void actions
       .update?.({ id, title: value || "Untitled" })
-      .then((updated) => onDocChanged(updated, true))
+      .then((updated) => {
+        onDocChanged(updated, true)
+        // Push the rename to the linked roadmap node (same slug).
+        if (updated.slug) void onTitleSync?.(updated.slug, updated.title)
+      })
   }, 500)
 
   const saveContent = useDebouncedCallback((id: string, content: string) => {

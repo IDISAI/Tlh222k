@@ -28,19 +28,30 @@ export async function generateMetadata({
  */
 export default async function NotionPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ slug: string }>
+  searchParams: Promise<{ page?: string }>
 }) {
   const { slug } = await params
+  const { page } = await searchParams
   // "viewer" on purpose: the web zone is published-only for every role.
   const doc = await service.getBySlug("viewer", slug)
 
   if (!doc) return <NotionNotReady slug={slug} />
 
+  // Deep-link to a published article page under this chapter (read-only).
+  let initialSelectedId: string | undefined
+  if (page && page !== slug) {
+    const pageDoc = await service.getBySlug("viewer", page)
+    initialSelectedId = pageDoc?.id
+  }
+
   return (
     <NotionWorkspace
       root={doc}
       canEdit={false}
+      initialSelectedId={initialSelectedId}
       actions={{ getById, getChildren }}
     />
   )

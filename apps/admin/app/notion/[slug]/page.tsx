@@ -44,25 +44,44 @@ function titleFromSlug(slug: string): string {
  */
 export default async function AdminNotionPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ slug: string }>
+  searchParams: Promise<{ page?: string }>
 }) {
   const { slug } = await params
+  const { page } = await searchParams
   const role = await getRole()
   if (role !== "admin" && role !== "super-admin") redirect(FORBIDDEN_PATH)
+  const { userId } = await auth()
+  const authorId = userId ?? "unknown"
 
-  // Root doc backing this article node — auto-created on first admin visit.
+  // Root doc = the roadmap CHAPTER (A1). Auto-created on first admin visit.
   let doc = await service.getBySlug(role, slug)
   if (!doc) {
-    const { userId } = await auth()
     doc = await service
-      .create(role, userId ?? "unknown", {
-        slug,
-        title: titleFromSlug(slug),
-      })
+      .create(role, authorId, { slug, title: titleFromSlug(slug) })
       // Unique-slug race (two admins' first visit): the loser refetches.
       .catch(() => service.getBySlug(role, slug))
     if (!doc) redirect(FORBIDDEN_PATH)
+  }
+
+  // Deep-link to an article page under this chapter (?page=<article-slug>).
+  // Auto-create its child doc when the article node exists on the canvas but
+  // has no doc yet (article authored in the builder, not the notion sidebar).
+  let initialSelectedId: string | undefined
+  if (page && page !== slug) {
+    let pageDoc = await service.getBySlug(role, page)
+    if (!pageDoc) {
+      pageDoc = await service
+        .create(role, authorId, {
+          slug: page,
+          parentDocumentId: doc.id,
+          title: titleFromSlug(page),
+        })
+        .catch(() => service.getBySlug(role, page))
+    }
+    initialSelectedId = pageDoc?.id
   }
 
   return (
@@ -70,6 +89,9 @@ export default async function AdminNotionPage({
       root={doc}
       canEdit
       publicOrigin={process.env.NEXT_PUBLIC_HOST_URL}
+      initialSelectedId={initialSelectedId}
+      roadmapChapterSlug={slug}
+      roadmapRole={role}
       actions={{
         getById,
         getChildren,

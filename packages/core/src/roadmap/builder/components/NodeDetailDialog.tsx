@@ -55,7 +55,14 @@ interface NodeDetailDialogProps {
 export function nodeNavigationUrl(
   node: RoadmapNode,
   notebookBasePath = "/learn",
-  notionBasePath = "/notion"
+  notionBasePath = "/notion",
+  /**
+   * Slug of the article's parent chapter. Notion articles open a workspace
+   * ROOTED at the chapter (its whole page tree in the sidebar) with the article
+   * page pre-selected via `?page=`. Falls back to the article's own slug when
+   * the parent isn't known (keeps a valid link).
+   */
+  parentChapterSlug?: string
 ): string | null {
   if (
     node.nodeType === "role" ||
@@ -68,9 +75,13 @@ export function nodeNavigationUrl(
     const target = resolveArticleTarget(node)
     if (target) {
       if (target.kind === "external") return target.url
-      const basePath =
-        node.articleType === "notion" ? notionBasePath : notebookBasePath
-      return `${basePath}/${target.slug}`
+      if (node.articleType === "notion") {
+        const chapterSlug = parentChapterSlug ?? node.slug
+        return `${notionBasePath}/${chapterSlug}?page=${encodeURIComponent(
+          node.slug
+        )}`
+      }
+      return `${notebookBasePath}/${target.slug}`
     }
   }
   return null
@@ -99,7 +110,12 @@ export function NodeDetailDialog({
     ? (nodes.find((n) => n.id === node.parentId) ?? null)
     : null
   const childCount = childrenOf(nodes, node.id).length
-  const navUrl = nodeNavigationUrl(node, notebookBasePath, notionBasePath)
+  const navUrl = nodeNavigationUrl(
+    node,
+    notebookBasePath,
+    notionBasePath,
+    parent?.slug
+  )
   const isArticle = node.nodeType === "article"
   const canNavigate = navUrl !== null
   // Same-origin routes (role/skill, internal notebook/notion) stay in this
