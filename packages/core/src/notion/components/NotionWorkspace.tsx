@@ -9,6 +9,7 @@ import { toast } from "@workspace/ui/components/sonner"
 import { RoadmapService, roadmapBackendEnabled } from "../../roadmap/api"
 import type { CallerRole as RoadmapRole } from "../../roadmap/types"
 import type { NotionActions, NotionDoc } from "../types"
+import { OPEN_DOC_EVENT, type NotionPageRef } from "./blocks"
 import { DocumentView } from "./DocumentView"
 import { SearchCommand } from "./SearchCommand"
 import { Sidebar } from "./Sidebar"
@@ -180,6 +181,24 @@ export function NotionWorkspace({
     if (window.innerWidth < 768) setCollapsed(true)
   }, [])
 
+  // Page chips inside the editor (mention / link_to_page) select their target
+  // doc via a DOM event — no prop drilling through BlockNote (Req 12.14/12.15).
+  useEffect(() => {
+    const onOpenDoc = (e: Event) => {
+      const id = (e as CustomEvent<string>).detail
+      if (id) setSelectedId(id)
+    }
+    window.addEventListener(OPEN_DOC_EVENT, onOpenDoc)
+    return () => window.removeEventListener(OPEN_DOC_EVENT, onOpenDoc)
+  }, [])
+
+  // Non-archived pages for @-mentions and link_to_page pickers (admin only).
+  const getPages = useCallback(async (): Promise<NotionPageRef[]> => {
+    if (!actions.getSearch) return []
+    const docs = await actions.getSearch()
+    return docs.map((d) => ({ id: d.id, title: d.title, icon: d.icon }))
+  }, [actions])
+
   const handleDocChanged = useCallback(
     (doc: NotionDoc, treeAffecting: boolean) => {
       setSelectedDoc((prev) => (prev?.id === doc.id ? doc : prev))
@@ -335,6 +354,7 @@ export function NotionWorkspace({
           publicUrl={publicUrl}
           onDocChanged={handleDocChanged}
           onTitleSync={canEdit ? syncNodeTitle : undefined}
+          getPages={canEdit && actions.getSearch ? getPages : undefined}
           topLeft={
             collapsed ? (
               <Button

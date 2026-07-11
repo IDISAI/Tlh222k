@@ -15,6 +15,7 @@ import { cn } from "@workspace/ui/lib/utils"
 
 import type { NotionActions, NotionDoc } from "../types"
 import { useDebouncedCallback } from "../hooks/use-debounced-callback"
+import type { NotionPageRef } from "./blocks"
 import { Editor } from "./Editor"
 import { IconPicker } from "./IconPicker"
 
@@ -33,6 +34,8 @@ interface DocumentViewProps {
    * caller can push it to the node with the same slug. Best-effort.
    */
   onTitleSync?: (slug: string, title: string) => void | Promise<void>
+  /** Page list for @-mentions and link_to_page pickers (admin zone). */
+  getPages?: () => Promise<NotionPageRef[]>
   /** Slot for the "open sidebar" hamburger when the sidebar is collapsed. */
   topLeft?: ReactNode
 }
@@ -46,6 +49,7 @@ export function DocumentView({
   publicUrl,
   onDocChanged,
   onTitleSync,
+  getPages,
   topLeft,
 }: DocumentViewProps) {
   const [title, setTitle] = useState(doc?.title ?? "")
@@ -352,6 +356,7 @@ export function DocumentView({
               canEdit ? (content) => saveContent(doc.id, content) : undefined
             }
             uploadFile={canEdit ? actions.uploadFile : undefined}
+            getPages={canEdit ? getPages : undefined}
           />
         </div>
 

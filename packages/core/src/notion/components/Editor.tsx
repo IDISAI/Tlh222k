@@ -5,11 +5,23 @@ import "@blocknote/shadcn/style.css"
 
 import { useEffect, useState } from "react"
 import { useTheme } from "next-themes"
-import type { PartialBlock } from "@blocknote/core"
-import { useCreateBlockNote } from "@blocknote/react"
+import { filterSuggestionItems, type PartialBlock } from "@blocknote/core"
+import {
+  SuggestionMenuController,
+  getDefaultReactSlashMenuItems,
+  useCreateBlockNote,
+} from "@blocknote/react"
 import { BlockNoteView } from "@blocknote/shadcn"
 
 import { Skeleton } from "@workspace/ui/components/skeleton"
+
+import {
+  customSlashMenuItems,
+  mentionMenuItems,
+  notionSchema,
+  setGetPages,
+  type NotionPageRef,
+} from "./blocks"
 
 interface EditorProps {
   /** BlockNote block array as JSON string (Document.content). */
@@ -19,6 +31,8 @@ interface EditorProps {
   onChange?: (content: string) => void
   /** FormData("file") → public URL; enables image/file blocks (admin). */
   uploadFile?: (form: FormData) => Promise<{ url: string }>
+  /** Page list for @-mentions and link_to_page pickers (admin). */
+  getPages?: () => Promise<NotionPageRef[]>
 }
 
 function parseContent(content: string | null): PartialBlock[] | undefined {
@@ -36,6 +50,11 @@ function parseContent(content: string | null): PartialBlock[] | undefined {
  * viewers get the same rendering with editing (toolbars, slash menu, drag
  * handles) disabled via `editable={false}`. BlockNote is browser-only
  * (contenteditable), so the editor mounts client-side behind a skeleton.
+ *
+ * Block coverage (notion-article-node Req 12): BlockNote built-ins
+ * (paragraph, heading 1-3, lists, todo, toggle, quote, divider, table, code,
+ * image, video, audio, file) plus custom callout / embed / link_to_page
+ * blocks and @-mention inline content from ./blocks.
  */
 export function Editor(props: EditorProps) {
   const [mounted, setMounted] = useState(false)
@@ -58,10 +77,19 @@ function BlockNoteEditor({
   editable,
   onChange,
   uploadFile,
+  getPages,
 }: EditorProps) {
   const { resolvedTheme } = useTheme()
 
+  // Block specs are schema-global; the page picker inside linkToPage reads
+  // this module-level ref (see ./blocks).
+  useEffect(() => {
+    setGetPages(getPages)
+    return () => setGetPages(undefined)
+  }, [getPages])
+
   const editor = useCreateBlockNote({
+    schema: notionSchema,
     initialContent: parseContent(initialContent),
     uploadFile: uploadFile
       ? async (file: File) => {
@@ -79,6 +107,28 @@ function BlockNoteEditor({
       editable={editable}
       theme={resolvedTheme === "dark" ? "dark" : "light"}
       onChange={() => onChange?.(JSON.stringify(editor.document))}
-    />
+      slashMenu={false}
+    >
+      {/* "/" — defaults + callout/embed/link_to_page (Req 12.19). */}
+      <SuggestionMenuController
+        triggerCharacter="/"
+        getItems={async (query) =>
+          filterSuggestionItems(
+            [
+              ...getDefaultReactSlashMenuItems(editor),
+              ...customSlashMenuItems(editor),
+            ],
+            query
+          )
+        }
+      />
+      {/* "@" — page + date mentions (Req 12.14). */}
+      <SuggestionMenuController
+        triggerCharacter="@"
+        getItems={async (query) =>
+          filterSuggestionItems(await mentionMenuItems(editor, getPages), query)
+        }
+      />
+    </BlockNoteView>
   )
 }
