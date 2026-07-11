@@ -15,6 +15,9 @@ import { joinSource } from "./utils/nbformat"
 /** Markdown ATX headings, used for both TOC and title derivation. */
 const HEADING_PATTERN = /^(#{1,6})\s+(.+?)\s*#*\s*$/gm
 
+/** Cells beyond this are rejected at parse time (regex-freeze protection). */
+const MAX_CELL_SOURCE_CHARS = 3 * 1024 * 1024
+
 export class NotebookService {
   /** Parse raw .ipynb JSON (string or object) into the normalized model. */
   parse(input: string | unknown): Notebook {
@@ -82,7 +85,12 @@ export class NotebookService {
       if (cell.cellType !== "markdown") continue
       for (const match of cell.source.matchAll(HEADING_PATTERN)) {
         const text = stripInlineMarkdown(match[2]!)
-        entries.push({ level: match[1]!.length, text, slug: slug(text) })
+        entries.push({
+          level: match[1]!.length,
+          text,
+          slug: slug(text),
+          cellId: cell.id,
+        })
       }
     }
     return entries
@@ -102,10 +110,16 @@ export class NotebookService {
         `Cell ${index} has unknown cell_type "${String(cell.cell_type)}"`
       )
     }
+    const source = joinSource(cell.source)
+    if (source.length > MAX_CELL_SOURCE_CHARS) {
+      throw new NotebookParseError(
+        `Cell ${index} exceeds the maximum supported size (${MAX_CELL_SOURCE_CHARS} chars)`
+      )
+    }
     return {
       id: cell.id ?? `cell-${index}`,
       cellType: cell.cell_type,
-      source: joinSource(cell.source),
+      source,
       executionCount:
         typeof cell.execution_count === "number" ? cell.execution_count : null,
       outputs: (cell.outputs ?? []).map(parseOutput),

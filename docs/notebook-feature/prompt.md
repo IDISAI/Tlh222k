@@ -40,6 +40,15 @@ Two-tier Jupyter notebook feature in this Turborepo (pnpm, Node ≥20):
   Implement as a small helper, e.g. `resolveArticleTarget(node): { kind: "external", url } |
   { kind: "internal", slug }`, used by the web roadmap click handler. Reuse the existing
   `roadmap/utils/is-valid-url.ts` to detect absolute URLs. No schema change.
+  **✅ ALSO DECIDED — internal target is ROLE-aware (not just viewer):** an internal jupyter
+  article opens a different destination per zone, threaded via `notebookBasePath` on
+  `NodeDetailDialog`/`RoadmapViewer` (default `/learn`):
+  - web (viewers) → `/learn/[slug]` (read-only viewer)
+  - admin/super-admin (creators) → `/notebooks/[slug]` (the EDITOR, to create/update)
+  Builder canvas + admin roadmap view pass `/notebooks`; web passes nothing (default `/learn`).
+  Also: the builder's `NodeEditPanel` no longer REQUIRES `jupyterUrl` for jupyter articles —
+  an empty URL is what selects the internal notebook, so requiring it made the internal path
+  unreachable (that was the reported "integration doesn't work" bug).
 - **Backend `apps/kernel-server`:** **Go** (single long-running binary, NOT Node/Fastify, NOT
   a Vercel serverless function — deploy on Fly/Railway/VPS). Jobs: (1) notebook CRUD (filesystem
   store v1, repository interface so Postgres can swap in later), (2) auth gate — verify Clerk JWT
@@ -157,15 +166,61 @@ Each must end CI-green: `pnpm lint && pnpm typecheck && pnpm build` (no test run
 
 ## Current progress (working on branch `develop`)
 
-Already written AND committed to HEAD on develop:
-- `packages/core/src/notebook/types.ts`, `notebook.service.ts`,
-  `utils/{ansi,highlight,nbformat,slugify,index}.ts`, `viewer/components/MarkdownCell.tsx`
+**Phase 1 (Viewer) — COMPLETE** (uncommitted on develop as of 2026-07-09):
+- Core: `types.ts`, `notebook.service.ts` (+ parse-time cell-size cap, TocEntry.cellId),
+  `utils/{ansi,highlight,nbformat,slugify,sanitize-html,index}.ts`, full `viewer/`
+  (MarkdownCell, CodeCell, OutputRenderer, CellRenderer, TableOfContents,
+  StartExerciseCard, NotebookView, useActiveHeading, barrels). `export * from "./notebook"`
+  in src/index.ts — NOTE: notebook barrel re-exports utils by NAME because notebook's
+  `slugify` collides with roadmap's at the top barrel (`export *` would silently drop both).
+- Security/perf limits implemented: html outputs sanitized client-side post-mount
+  (whitelist DOMParser sanitizer, text/plain fallback during SSR), >2000-line/50KB cells
+  skip the tokenizer, outputs truncated at 5000 lines/1MB with "Show more", >3MB cells
+  rejected with NotebookParseError.
+- Web: `app/learn/[slug]/{page,learn-client}.tsx`, `lib/notebook.ts` (slug-validated fs
+  loader), fixtures `content/notebooks/arithmetic-and-variables{,.exercise}.ipynb`
+  (incl. ANSI NameError traceback + pandas-style html table), `outputFileTracingIncludes`
+  for the fixtures in next.config.ts.
+- Roadmap routing: `roadmap/utils/resolve-article-target.ts` wired into
+  `nodeNavigationUrl` (NodeDetailDialog); mock (`fe-ar-arith`) + db seed both carry an
+  internal jupyter node slug `arithmetic-and-variables` (jupyterUrl null → /learn/...).
+  Caveat: on the standalone admin dev origin (:3002) /learn 404s (web-zone route); in
+  prod the host domain serves both zones so the link resolves correctly.
 
-Remaining for Phase 1: CodeCell, OutputRenderer, CellRenderer, TableOfContents,
-StartExerciseCard, NotebookView, useActiveHeading, viewer/notebook barrels, `export * from
-"./notebook"` in src/index.ts, web page /learn/[slug] + lib/notebook.ts + 2 .ipynb fixtures,
-and roadmap click-routing in the web app (NO schema change — the article/jupyter fields already
-exist; add the `resolveArticleTarget` helper + wire the web roadmap click handler).
+**Phase 2 (Editor UI) — v1 COMPLETE & CI-green** (typecheck + lint 0-err + `pnpm -F admin build`
++ `pnpm -F web build` all pass):
+- Fixed the reported "roadmap integration" bug: `NodeEditPanel` no longer REQUIRES `jupyterUrl`
+  for jupyter articles (empty URL = internal notebook; requiring it made the internal path
+  unreachable). URL now validated only when provided.
+- Role-aware routing: `nodeNavigationUrl(node, notebookBasePath)` + `notebookBasePath` prop on
+  `NodeDetailDialog`/`RoadmapViewer`. web → `/learn/[slug]` (viewer), admin/super-admin →
+  `/notebooks/[slug]` (editor). Builder canvas + admin roadmap page pass `/notebooks`. Internal
+  links now open same-tab; only external (Colab/Notion) open a new tab.
+- `notebook/editor/`: `editor.service.ts` (pure cell ops: insert/delete/move/duplicate/
+  changeType/updateSource + emptyNotebook), `store.ts` (`NotebookStore` + `LocalNotebookStore`),
+  `hooks/useNotebookEditor.ts` (state + debounced autosave), `components/{NotebookEditor,
+  EditorToolbar,EditableCell,CodeCellEditor,MarkdownCellEditor}.tsx`. Barrels + `export * from
+  "./editor"` in notebook/index.ts. Cells are textarea-based v1; Run disabled.
+- Admin route `apps/admin/app/notebooks/[slug]/page.tsx` (role-guarded) → `NotebookEditor`.
+
+**Phase 2 backend (Go kernel-server) — DONE & running.** `apps/kernel-server` (standalone Go
+module, stdlib only, NOT in pnpm/turbo workspace; `go build`/`go vet` clean, CRUD smoke-tested
+on :3006). Notebook CRUD over a filesystem store (opaque `.ipynb` bytes + `.meta.json`),
+`DEV_AUTH_ROLE` bypass + Clerk JWKS RS256 verification, `RequireAdmin` on mutating routes,
+public `/api/published/{slug}` for web, CORS for the three zones. Wired:
+- core `HttpNotebookStore` (editor/store.ts); `NotebookEditor` picks it when
+  `NEXT_PUBLIC_KERNEL_SERVER_URL` is set, else `LocalNotebookStore`.
+- web `lib/notebook.ts` reads `/api/published/{slug}` first, falls back to committed fixtures.
+- env: `NEXT_PUBLIC_KERNEL_SERVER_URL` (web+admin), kernel-server `.env.example`. README+AGENTS added.
+So admin-authored notebooks now appear on web (closes the localStorage↔fixtures gap).
+
+Phase 2 deferred (next): CodeMirror 6 (replace textarea cells), keyboard shortcuts
+(Shift+Enter/A/B/DD/M/Y), super-admin editor parity (route not yet added), and wiring the
+admin browser's Clerk token into `HttpNotebookStore.getToken` for production (dev uses the
+kernel-server DEV_AUTH_ROLE bypass).
+
+**Phase 3 (execution) — NOT STARTED.** KernelAdapter + Pyodide (web Exercise tab) +
+Jupyter-via-Go (admin), replacing the disabled Run buttons + the Exercise-tab placeholder.
 
 ## Repo facts (verified — trust these)
 

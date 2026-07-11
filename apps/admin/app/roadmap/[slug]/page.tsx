@@ -30,6 +30,9 @@ export default async function AdminRoadmapViewPage({
       isAuthenticated
       backHref={ROADMAPS_PATH}
       readOnlyBadge
+      // Admins create/update notebooks: jupyter articles open the editor,
+      // not the web read-only viewer.
+      notebookBasePath="/notebooks"
     />
   )
 }
