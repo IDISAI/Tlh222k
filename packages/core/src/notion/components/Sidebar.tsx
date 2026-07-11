@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import {
   DndContext,
   PointerSensor,
@@ -191,9 +191,17 @@ function DocItem({
   const [expanded, setExpanded] = useState(isRoot)
   const selected = tree.selectedId === doc.id
 
+  // Deep-link support (notion-article-node Req 5.1): the pre-selected item
+  // scrolls into view so the admin never hunts for it in a long tree.
+  const rowRef = useRef<HTMLDivElement | null>(null)
+  useEffect(() => {
+    if (selected) rowRef.current?.scrollIntoView({ block: "nearest" })
+  }, [selected])
+
   return (
     <div ref={dragRef} style={dragStyle} {...dragProps}>
       <div
+        ref={rowRef}
         role="button"
         tabIndex={0}
         onClick={() => tree.onSelect(doc.id)}

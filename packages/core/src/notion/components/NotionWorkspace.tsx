@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react"
 import { Menu } from "lucide-react"
 
 import { Button } from "@workspace/ui/components/button"
+import { toast } from "@workspace/ui/components/sonner"
 
 import { RoadmapService, roadmapBackendEnabled } from "../../roadmap/api"
 import type { CallerRole as RoadmapRole } from "../../roadmap/types"
@@ -37,36 +38,81 @@ export interface NotionWorkspaceProps {
 }
 
 /**
- * Create an `article` node (articleType "notion") under the chapter identified
- * by `chapterSlug`, placed after its existing children. Returns the node's
- * backend-assigned slug so the caller creates the matching Document with the
- * SAME slug. Client-side only — the Clerk token authorizing the write lives in
- * the browser (the gql client reads none server-side).
+ * Create an `article` node (articleType "notion") on the canvas under
+ * `parentNodeId` (the chapter node for top-level pages, an article node for
+ * sub-pages — notion-article-node Req 4.1/4.2), placed after that parent's
+ * existing children. Returns the node's backend-assigned slug so the caller
+ * creates the matching Document with the SAME slug. Client-side only — the
+ * Clerk token authorizing the write lives in the browser (the gql client
+ * reads none server-side).
  */
 async function createLinkedArticleNode(
   chapterSlug: string,
-  role: RoadmapRole
+  role: RoadmapRole,
+  parentNodeId: string
 ): Promise<string | undefined> {
   const svc = new RoadmapService()
   const graph = await svc.graphBySlug(chapterSlug, { authenticated: true })
   if (!graph) return undefined
-  const chapter = graph.nodes.find((n) => n.slug === chapterSlug)
-  if (!chapter) return undefined
-  const siblings = graph.nodes.filter((n) => n.parentId === chapter.id)
+  const parent = graph.nodes.find((n) => n.id === parentNodeId)
+  if (!parent) return undefined
+  const siblings = graph.nodes.filter((n) => n.parentId === parent.id)
   const node = await svc.createNode(
     {
-      roadmapId: chapter.roadmapId,
-      parentId: chapter.id,
+      roadmapId: parent.roadmapId,
+      parentId: parent.id,
       title: "Untitled",
       nodeType: "article",
       articleType: "notion",
-      positionX: chapter.positionX + siblings.length * 220,
-      positionY: chapter.positionY + 160,
+      positionX: parent.positionX + siblings.length * 220,
+      positionY: parent.positionY + 160,
       order: siblings.length,
     },
     role
   )
   return node.slug
+}
+
+/**
+ * Compensating transaction (Req 4.7): permanently remove the node created a
+ * moment ago when its Document failed to create — no dangling canvas node.
+ */
+async function deleteLinkedArticleNode(
+  chapterSlug: string,
+  nodeSlug: string,
+  role: RoadmapRole
+): Promise<void> {
+  const svc = new RoadmapService()
+  const graph = await svc.graphBySlug(chapterSlug, { authenticated: true })
+  const node = graph?.nodes.find((n) => n.slug === nodeSlug)
+  if (node) await svc.deleteNode(node.id, role)
+}
+
+/**
+ * Resolve which canvas node a new sidebar page should hang under (Req 4.1):
+ * a child of the ROOT doc gets the chapter node; a child of an Article_Doc
+ * (doc whose slug matches an article node) gets that node; a child of a
+ * Child_Doc (no matching node) gets none → Document only (Req 4.4/4.5).
+ */
+async function resolveParentNodeId(
+  chapterSlug: string,
+  parentDocSlug: string | null,
+  isRootChild: boolean
+): Promise<string | undefined> {
+  const svc = new RoadmapService()
+  const graph = await svc.graphBySlug(chapterSlug, { authenticated: true })
+  if (!graph) return undefined
+  if (isRootChild) {
+    return graph.nodes.find((n) => n.slug === chapterSlug)?.id
+  }
+  if (!parentDocSlug) return undefined
+  return graph.nodes.find(
+    (n) =>
+      n.slug === parentDocSlug &&
+      n.nodeType === "article" &&
+      n.articleType === "notion" &&
+      !n.isDeleted
+  )?.id
 }
 
 /**
@@ -145,27 +191,65 @@ export function NotionWorkspace({
   const handleCreateChild = useCallback(
     async (parentId: string) => {
       if (!actions.create) return
-      // A1: a new TOP-LEVEL page (child of the chapter root) also spawns a
-      // linked article node on the canvas. Create the NODE first so the backend
-      // assigns a unique slug, then create the doc with that exact slug — this
-      // keeps `node.slug === Document.slug` (the join key) in lockstep. Deeper
-      // nesting stays notion-only (article is a leaf on the canvas).
-      const linkToCanvas =
-        canEdit &&
-        !!roadmapChapterSlug &&
-        !!roadmapRole &&
-        parentId === root.id &&
-        roadmapBackendEnabled()
+      // notion-article-node Req 4: a new sidebar page ALSO spawns a linked
+      // article node on the canvas — under the chapter node for top-level
+      // pages, under the matching article node for sub-pages. The NODE is
+      // created first so the backend assigns a unique slug, then the doc is
+      // created with that exact slug (`node.slug === Document.slug` join key).
+      // Pages under a Child_Doc (no matching node) stay notion-only.
+      const canLink =
+        canEdit && !!roadmapChapterSlug && !!roadmapRole && roadmapBackendEnabled()
 
-      let slug: string | undefined
-      if (linkToCanvas) {
-        slug = await createLinkedArticleNode(
+      let parentNodeId: string | undefined
+      if (canLink) {
+        const parentDoc =
+          parentId === root.id ? null : await actions.getById(parentId)
+        parentNodeId = await resolveParentNodeId(
           roadmapChapterSlug!,
-          roadmapRole!
+          parentDoc?.slug ?? null,
+          parentId === root.id
         ).catch(() => undefined)
       }
 
-      const doc = await actions.create({ parentDocumentId: parentId, slug })
+      if (canLink && parentNodeId) {
+        // 1. Node first — a node failure stops everything (Req 4.6).
+        let slug: string | undefined
+        try {
+          slug = await createLinkedArticleNode(
+            roadmapChapterSlug!,
+            roadmapRole!,
+            parentNodeId
+          )
+        } catch {
+          slug = undefined
+        }
+        if (!slug) {
+          toast.error("Không thể tạo node trên canvas.")
+          return
+        }
+
+        // 2. Document with the node's slug; failure rolls the node back
+        //    (compensating transaction, Req 4.7).
+        let doc: NotionDoc
+        try {
+          doc = await actions.create({ parentDocumentId: parentId, slug })
+        } catch {
+          await deleteLinkedArticleNode(
+            roadmapChapterSlug!,
+            slug,
+            roadmapRole!
+          ).catch(() => {})
+          toast.error("Không thể tạo trang Notion. Đã hủy tạo node.")
+          return
+        }
+        bump()
+        setSelectedId(doc.id)
+        return
+      }
+
+      // Child_Doc parent / viewer zone / mock mode: Document only
+      // (Req 4.4/4.5/4.8/4.9).
+      const doc = await actions.create({ parentDocumentId: parentId })
       bump()
       setSelectedId(doc.id)
     },

@@ -9,6 +9,7 @@ import { cn } from "@workspace/ui/lib/utils"
 import {
   MAX_TITLE_LENGTH,
   NODE_TYPES,
+  type ArticleType,
   type NodeType,
   type RoadmapNode,
 } from "../../types"
@@ -27,6 +28,8 @@ interface NodeSelectorModalProps {
   /** Resolves true on success → the modal closes. */
   onCreate: (input: {
     nodeType: NodeType
+    /** Set only when nodeType = "article" (notion-article-node Req 2.1). */
+    articleType?: ArticleType
     title: string
     parentId: string | null
     x: number
@@ -47,6 +50,7 @@ export function NodeSelectorModal({
   const allowed = parent ? allowedChildTypes(parent.nodeType) : [...NODE_TYPES]
 
   const [nodeType, setNodeType] = useState<NodeType>(allowed[0] ?? "role")
+  const [articleType, setArticleType] = useState<ArticleType>("notion")
   const [title, setTitle] = useState("")
   const [error, setError] = useState("")
   const [submitting, setSubmitting] = useState(false)
@@ -56,6 +60,7 @@ export function NodeSelectorModal({
     setTitle("")
     setError("")
     setNodeType(allowed[0] ?? "role")
+    setArticleType("notion")
     // eslint-disable-next-line react-hooks/exhaustive-deps -- reset only on open/parent change
   }, [position, parent])
 
@@ -80,6 +85,7 @@ export function NodeSelectorModal({
     setSubmitting(true)
     const ok = await onCreate({
       nodeType,
+      articleType: nodeType === "article" ? articleType : undefined,
       title: trimmed,
       parentId: parent?.id ?? null,
       x: position.flowX,
@@ -168,6 +174,30 @@ export function NodeSelectorModal({
               })}
             </div>
           </div>
+
+          {nodeType === "article" && (
+            <div className="space-y-1.5">
+              <Label>Loại tài liệu</Label>
+              <div className="flex gap-2">
+                {(["notion", "jupyter"] as const).map((type) => (
+                  <Button
+                    key={type}
+                    type="button"
+                    size="sm"
+                    variant={articleType === type ? "default" : "outline"}
+                    onClick={() => setArticleType(type)}
+                  >
+                    {type === "notion" ? "Notion" : "Jupyter"}
+                  </Button>
+                ))}
+              </div>
+              {articleType === "notion" && (
+                <p className="text-xs text-muted-foreground">
+                  Trang Notion sẽ được tạo tự động và mở ngay sau khi tạo node.
+                </p>
+              )}
+            </div>
+          )}
 
           <div className="flex justify-end gap-2">
             <Button type="button" variant="ghost" size="sm" onClick={onClose}>

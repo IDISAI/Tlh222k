@@ -24,7 +24,8 @@ model Roadmap {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  nodes Node[]
+  nodes       Node[]
+  linkedNodes Node[] @relation("NodeLinkedRoadmap")
 }
 
 model Node {
@@ -42,13 +43,18 @@ model Node {
   positionY    Float    @default(0)
   order        Int      @default(0)
   isDeleted    Boolean  @default(false)
+  // Roadmap auto-created for role/skill nodes (notion-article-node Req 11).
+  linkedRoadmapId String?
+  // Publish state synced with the linked Document (notion-article-node Req 7).
+  isPublished  Boolean  @default(false)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  roadmap  Roadmap        @relation(fields: [roadmapId], references: [id], onDelete: Cascade)
-  parent   Node?          @relation("NodeChildren", fields: [parentId], references: [id], onDelete: SetNull)
-  children Node[]         @relation("NodeChildren")
-  progress UserProgress[]
+  roadmap       Roadmap        @relation(fields: [roadmapId], references: [id], onDelete: Cascade)
+  parent        Node?          @relation("NodeChildren", fields: [parentId], references: [id], onDelete: SetNull)
+  children      Node[]         @relation("NodeChildren")
+  linkedRoadmap Roadmap?       @relation("NodeLinkedRoadmap", fields: [linkedRoadmapId], references: [id], onDelete: SetNull)
+  progress      UserProgress[]
 
   @@index([roadmapId])
   @@index([parentId])

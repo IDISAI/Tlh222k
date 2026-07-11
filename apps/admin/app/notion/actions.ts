@@ -51,6 +51,55 @@ export async function syncTitleBySlug(
   if (doc) await service.update(role, { id: doc.id, title })
 }
 
+/**
+ * Auto-create the Document backing a new notion article node with the SAME
+ * slug (join key) — notion-article-node Req 2.1/2.2. Returns null on failure
+ * so the canvas can leave the node unlinked instead of throwing.
+ */
+export async function createDocumentForNode(
+  slug: string,
+  title: string
+): Promise<{ id: string } | null> {
+  const { userId } = await auth()
+  try {
+    const doc = await service.create(await getRole(), userId ?? "unknown", {
+      slug,
+      title,
+    })
+    return { id: doc.id }
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Publish-state sync from a notion article node to its linked Document
+ * (`notionPageId` = Document.id) — notion-article-node Req 7. Missing
+ * documents are skipped silently (Req 7.3).
+ */
+export async function syncPublishByNotionPageId(
+  notionPageId: string,
+  isPublished: boolean
+): Promise<void> {
+  const role = await getRole()
+  const doc = await service.getById(role, notionPageId)
+  if (!doc) return
+  await service.update(role, { id: notionPageId, isPublished })
+}
+
+/**
+ * Archive the Document linked to a permanently-deleted notion article node —
+ * notion-article-node Req 8.2. Missing documents are a no-op.
+ */
+export async function archiveByNotionPageId(
+  notionPageId: string
+): Promise<void> {
+  const role = await getRole()
+  const doc = await service.getById(role, notionPageId)
+  if (!doc) return
+  await service.archive(role, notionPageId)
+}
+
 export async function archive(id: string): Promise<void> {
   await service.archive(await getRole(), id)
 }

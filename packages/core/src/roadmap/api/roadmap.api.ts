@@ -17,6 +17,7 @@ const ROADMAP_FIELDS = `
 const NODE_FIELDS = `
   id roadmapId parentId title slug description nodeType notionPageId
   articleType jupyterUrl positionX positionY order status isDeleted
+  linkedRoadmapId isPublished
 `
 
 /**

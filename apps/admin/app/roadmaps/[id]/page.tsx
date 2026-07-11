@@ -3,7 +3,12 @@ import { BuilderPage } from "@workspace/core"
 
 import { getRole } from "@/lib/auth"
 import { FORBIDDEN_PATH, ROADMAPS_PATH } from "@/lib/paths"
-import { syncTitleBySlug } from "@/app/notion/actions"
+import {
+  archiveByNotionPageId,
+  createDocumentForNode,
+  syncPublishByNotionPageId,
+  syncTitleBySlug,
+} from "@/app/notion/actions"
 
 export const metadata = { title: "Roadmap Builder" }
 
@@ -25,6 +30,9 @@ export default async function BuilderCanvasPage({
       role={role}
       listHref={ROADMAPS_PATH}
       onNodeTitleSync={syncTitleBySlug}
+      onCreateNotionDoc={createDocumentForNode}
+      onSyncPublish={syncPublishByNotionPageId}
+      onArchiveDocument={archiveByNotionPageId}
     />
   )
 }

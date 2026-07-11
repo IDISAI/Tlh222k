@@ -14,7 +14,7 @@ import {
 } from "./types"
 import { getStore, persistStore } from "./mock/builder-store"
 import { emitRoadmapUpdate } from "./utils/update-signal"
-import { slugify } from "./utils/slugify"
+import { slugify, uniqueSlug } from "./utils/slugify"
 import { validateHierarchy } from "./utils/validate-hierarchy"
 
 const LATENCY_MS = 150
@@ -181,9 +181,7 @@ export class RoadmapService {
     const slug = input.slug.trim() || slugify(input.title)
     const roadmap: Roadmap = {
       id: newId("rm"),
-      slug: store.roadmaps.some((r) => r.slug === slug)
-        ? slugify(slug, { unique: true })
-        : slug,
+      slug: uniqueSlug(slug, (s) => store.roadmaps.some((r) => r.slug === s)),
       title: input.title.trim().slice(0, MAX_TITLE_LENGTH),
       description: input.description?.trim() || null,
       thumbnailUrl: input.thumbnailUrl ?? null,
@@ -260,9 +258,7 @@ export class RoadmapService {
       roadmapId: input.roadmapId,
       parentId: input.parentId ?? null,
       title,
-      slug: store.nodes.some((n) => n.slug === baseSlug)
-        ? slugify(baseSlug, { unique: true })
-        : baseSlug,
+      slug: uniqueSlug(baseSlug, (s) => store.nodes.some((n) => n.slug === s)),
       nodeType: input.nodeType,
       description: input.description?.trim() || null,
       notionPageId: input.notionPageId ?? null,
@@ -310,6 +306,10 @@ export class RoadmapService {
     if (input.positionX !== undefined) node.positionX = input.positionX
     if (input.positionY !== undefined) node.positionY = input.positionY
     if (input.order !== undefined) node.order = input.order
+    if (input.linkedRoadmapId !== undefined) {
+      node.linkedRoadmapId = input.linkedRoadmapId ?? null
+    }
+    if (input.isPublished !== undefined) node.isPublished = input.isPublished
 
     persistStore()
     emitRoadmapUpdate(node.roadmapId)

@@ -41,34 +41,65 @@ interface NodeDetailDialogProps {
    * zone-prefixed path in production).
    */
   notionBasePath?: string
+  /**
+   * Admin-builder base ("/roadmaps"). When set, chapter navigates to its
+   * Roadmap_Detail_Page (`{base}/{roadmapId}/chapter/{slug}`, Req 10.1) and
+   * role/skill navigates to its LINKED roadmap's builder (`{base}/{id}`,
+   * Req 11.5). Omitted in viewer zones → `/roadmap/{slug}` as before.
+   */
+  builderBasePath?: string
+}
+
+export interface NodeNavigationOptions {
+  notebookBasePath?: string
+  notionBasePath?: string
+  /**
+   * Slug of the article's parent chapter. Notion articles open a workspace
+   * ROOTED at the chapter (its whole page tree in the sidebar) with the
+   * article page pre-selected via `?page=`. Falls back to the article's own
+   * slug when the parent isn't known (keeps a valid link).
+   */
+  parentChapterSlug?: string
+  /** See NodeDetailDialogProps.builderBasePath. */
+  builderBasePath?: string
 }
 
 /**
- * Resolve the destination the "Điều hướng" action opens (Req 7.4/7.5).
- * role/skill → a same-origin `/roadmap/[slug]` viewer, so admin stays on :3002
- * and web stays on :3000 (each zone owns its own viewer route).
+ * Resolve the destination the "Điều hướng" action opens.
  *
- * The base paths decide where INTERNAL articles go and differ by zone: web
- * gets the read-only surfaces (`/learn`, `/notion`), admin/super-admin get
- * the editors (`/notebooks`, `/notion` in the admin zone).
+ * Viewer zones (no `builderBasePath`): role/skill/chapter → a same-origin
+ * `/roadmap/[slug]` viewer. Admin builder (`builderBasePath` set): chapter →
+ * its Roadmap_Detail_Page (Req 10.1); role/skill → the linked roadmap's
+ * builder, or null when `linkedRoadmapId` is unset (Req 11.5/11.6).
+ *
+ * Notion articles REQUIRE a non-null `notionPageId` (Req 1.2/1.3) — an
+ * unlinked node returns null so the caller shows the "chưa được tạo" toast.
  */
 export function nodeNavigationUrl(
   node: RoadmapNode,
-  notebookBasePath = "/learn",
-  notionBasePath = "/notion",
-  /**
-   * Slug of the article's parent chapter. Notion articles open a workspace
-   * ROOTED at the chapter (its whole page tree in the sidebar) with the article
-   * page pre-selected via `?page=`. Falls back to the article's own slug when
-   * the parent isn't known (keeps a valid link).
-   */
-  parentChapterSlug?: string
+  opts: NodeNavigationOptions = {}
 ): string | null {
-  if (
-    node.nodeType === "role" ||
-    node.nodeType === "skill" ||
-    node.nodeType === "chapter"
-  ) {
+  const {
+    notebookBasePath = "/learn",
+    notionBasePath = "/notion",
+    parentChapterSlug,
+    builderBasePath,
+  } = opts
+
+  if (node.nodeType === "chapter") {
+    if (builderBasePath) {
+      if (!node.slug) return null // Req 10.6
+      return `${builderBasePath}/${node.roadmapId}/chapter/${node.slug}`
+    }
+    return node.slug ? `/roadmap/${node.slug}` : null
+  }
+  if (node.nodeType === "role" || node.nodeType === "skill") {
+    if (builderBasePath) {
+      // Req 11.5/11.6: builder navigates into the LINKED roadmap only.
+      return node.linkedRoadmapId
+        ? `${builderBasePath}/${node.linkedRoadmapId}`
+        : null
+    }
     return `/roadmap/${node.slug}`
   }
   if (node.nodeType === "article") {
@@ -76,6 +107,7 @@ export function nodeNavigationUrl(
     if (target) {
       if (target.kind === "external") return target.url
       if (node.articleType === "notion") {
+        if (!node.notionPageId) return null // Req 1.3: unlinked notion node
         const chapterSlug = parentChapterSlug ?? node.slug
         return `${notionBasePath}/${chapterSlug}?page=${encodeURIComponent(
           node.slug
@@ -85,6 +117,18 @@ export function nodeNavigationUrl(
     }
   }
   return null
+}
+
+/** Vietnamese toast body when navigation is impossible for this node. */
+export function navigationBlockedMessage(node: RoadmapNode): string {
+  if (node.nodeType === "chapter") return "Không thể điều hướng đến chapter này"
+  if (node.nodeType === "role" || node.nodeType === "skill") {
+    return "Node này chưa được liên kết với roadmap nào."
+  }
+  if (node.nodeType === "article" && node.articleType === "notion") {
+    return "Trang Notion chưa được tạo cho node này"
+  }
+  return TOAST_MESSAGES.ARTICLE_NO_LINK
 }
 
 /**
@@ -102,6 +146,7 @@ export function NodeDetailDialog({
   readOnly = false,
   notebookBasePath = "/learn",
   notionBasePath = "/notion",
+  builderBasePath,
 }: NodeDetailDialogProps) {
   if (!node) return null
 
@@ -110,12 +155,12 @@ export function NodeDetailDialog({
     ? (nodes.find((n) => n.id === node.parentId) ?? null)
     : null
   const childCount = childrenOf(nodes, node.id).length
-  const navUrl = nodeNavigationUrl(
-    node,
+  const navUrl = nodeNavigationUrl(node, {
     notebookBasePath,
     notionBasePath,
-    parent?.slug
-  )
+    parentChapterSlug: parent?.nodeType === "chapter" ? parent.slug : undefined,
+    builderBasePath,
+  })
   const isArticle = node.nodeType === "article"
   const canNavigate = navUrl !== null
   // Same-origin routes (role/skill, internal notebook/notion) stay in this
@@ -123,9 +168,9 @@ export function NodeDetailDialog({
   const isExternal = navUrl !== null && /^https?:\/\//.test(navUrl)
 
   const handleNavigate = () => {
-    // Req 7.6: unlinked article documents warn instead of navigating.
+    // Unlinked nodes warn instead of navigating (Req 1.3 / 10.6 / 11.6).
     if (!navUrl) {
-      toast.warning(TOAST_MESSAGES.ARTICLE_NO_LINK)
+      toast.warning(navigationBlockedMessage(node))
       return
     }
     if (isExternal) {
@@ -204,10 +249,11 @@ export function NodeDetailDialog({
         <SheetFooter className="border-t dark:border-zinc-800">
           <Button
             type="button"
-            disabled={isArticle ? false : !canNavigate}
-            title={
-              !navUrl && isArticle ? "Tài liệu chưa được liên kết" : undefined
-            }
+            // Req 1.3/10.6/11.6: stays clickable so the toast can explain WHY
+            // navigation is blocked; the muted style signals "disabled".
+            className={cn(!canNavigate && "opacity-50")}
+            aria-disabled={!canNavigate}
+            title={!navUrl ? navigationBlockedMessage(node) : undefined}
             onClick={handleNavigate}
           >
             <ExternalLink className="size-4" /> Điều hướng

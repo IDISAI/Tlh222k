@@ -45,6 +45,8 @@ type RoadmapNode {
   status: NodeStatus!
   isDeleted: Boolean!
   childrenCount: Int!
+  linkedRoadmapId: ID
+  isPublished: Boolean!
 }
 
 type RoadmapGraph {
@@ -118,6 +120,8 @@ input UpdateNodeInput {
   positionY: Float
   order: Int
   parentId: ID
+  linkedRoadmapId: ID
+  isPublished: Boolean
 }
 
 input NodeInput {

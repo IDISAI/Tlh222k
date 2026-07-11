@@ -4,6 +4,7 @@ import { useMemo, useState } from "react"
 import { ArrowLeft, PanelLeftOpen, Redo2, Save, Trash2, Undo2 } from "lucide-react"
 import { Button } from "@workspace/ui/components/button"
 import { Skeleton } from "@workspace/ui/components/skeleton"
+import { toast } from "@workspace/ui/components/sonner"
 import { cn } from "@workspace/ui/lib/utils"
 
 import type { CallerRole } from "../../types"
@@ -23,6 +24,15 @@ interface BuilderPageProps {
    * by the admin page (web omits it — read-only).
    */
   onNodeTitleSync?: (slug: string, title: string) => void | Promise<void>
+  /** Auto-create the Document for a new notion article node (Req 2). */
+  onCreateNotionDoc?: (
+    slug: string,
+    title: string
+  ) => Promise<{ id: string } | null>
+  /** Publish-state sync with the linked Document (Req 7). */
+  onSyncPublish?: (notionPageId: string, isPublished: boolean) => Promise<void>
+  /** Archive the linked Document on permanent node delete (Req 8.2). */
+  onArchiveDocument?: (notionPageId: string) => Promise<void>
 }
 
 /**
@@ -35,8 +45,16 @@ export function BuilderPage({
   role,
   listHref = "/roadmaps",
   onNodeTitleSync,
+  onCreateNotionDoc,
+  onSyncPublish,
+  onArchiveDocument,
 }: BuilderPageProps) {
-  const canvas = useBuilderCanvas(roadmapId, role, onNodeTitleSync)
+  const canvas = useBuilderCanvas(
+    roadmapId,
+    role,
+    onNodeTitleSync,
+    onCreateNotionDoc
+  )
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(true)
 
@@ -159,7 +177,25 @@ export function BuilderPage({
             allNodes={canvas.allNodes}
             canvasNodeIds={canvasNodeIds}
             onDeletePermanent={async (node) => {
-              await canvas.deleteNodePermanent(node.id)
+              const ok = await canvas.deleteNodePermanent(node.id)
+              // Req 8.2-8.4: node deleted FIRST, then the linked Document is
+              // archived; an archive failure never undoes the delete.
+              if (
+                ok &&
+                node.articleType === "notion" &&
+                node.notionPageId &&
+                onArchiveDocument
+              ) {
+                await onArchiveDocument(node.notionPageId).catch((error) => {
+                  console.error(
+                    "[notion-article-node] document archive failed",
+                    { nodeId: node.id, notionPageId: node.notionPageId, error }
+                  )
+                  toast.warning(
+                    "Node đã xóa nhưng không thể archive Notion page."
+                  )
+                })
+              }
             }}
             onCollapse={() => setSidebarOpen(false)}
           />
@@ -176,7 +212,11 @@ export function BuilderPage({
             </Button>
           </div>
         )}
-        <BuilderCanvas canvas={canvas} className="h-full min-w-0 flex-1" />
+        <BuilderCanvas
+          canvas={canvas}
+          className="h-full min-w-0 flex-1"
+          onSyncPublish={onSyncPublish}
+        />
       </div>
 
       {confirmDelete && (

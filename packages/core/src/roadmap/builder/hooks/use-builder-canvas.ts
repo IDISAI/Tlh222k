@@ -11,6 +11,7 @@ import type {
   RoadmapNode,
   UpdateNodeInput,
 } from "../../types"
+import { slugify } from "../../utils/slugify"
 import { TOAST_MESSAGES, serviceErrorMessage } from "../utils/toast-messages"
 
 /**
@@ -28,7 +29,16 @@ export function useBuilderCanvas(
    * matching Document (keyed by slug). Best-effort, cross-service; injected by
    * the admin page so `packages/core` never imports app Server Actions.
    */
-  onTitleSync?: (slug: string, title: string) => void | Promise<void>
+  onTitleSync?: (slug: string, title: string) => void | Promise<void>,
+  /**
+   * Post-create hook (notion-article-node Req 2): creating an article node
+   * with articleType "notion" auto-creates the matching Document (same slug)
+   * and navigates into the workspace. Injected by the admin page.
+   */
+  onCreateNotionDoc?: (
+    slug: string,
+    title: string
+  ) => Promise<{ id: string } | null>
 ) {
   const service = useMemo(() => new RoadmapService(), [])
 
@@ -149,28 +159,116 @@ export function useBuilderCanvas(
     [pushHistory]
   )
 
-  /** Create in the system and place on the canvas selected (Req 3.1/3.2). */
+  /**
+   * Create in the system and place on the canvas selected (Req 3.1/3.2).
+   *
+   * Post-create side effects (notion-article-node spec):
+   * - article notion → auto-create the Document (same slug), link it via
+   *   `notionPageId`, then navigate into the workspace (Req 2).
+   * - role/skill → auto-create a Roadmap and link it via `linkedRoadmapId`
+   *   (Req 11).
+   * Node creation failing stops everything — no orphan Document/Roadmap
+   * (Req 2.7). The dependent step failing leaves the node unlinked with a
+   * warning toast; it never rolls the node back (Req 2.4/11.4).
+   */
   const createNode = useCallback(
     async (
       input: Omit<CreateNodeInput, "roadmapId">
     ): Promise<RoadmapNode | null> => {
+      let node: RoadmapNode
       try {
-        const node = await service.createNode(
-          { ...input, roadmapId },
-          role
-        )
+        node = await service.createNode({ ...input, roadmapId }, role)
         pushHistory()
         setNodes((prev) => [...prev, node])
         setIsDirty(true)
         void refreshAllNodes()
         toast.success(TOAST_MESSAGES.CREATE_SUCCESS)
-        return node
       } catch (error) {
         toast.error(serviceErrorMessage(error))
         return null
       }
+
+      // Req 2: article notion node → Document with the SAME slug (join key).
+      if (
+        input.nodeType === "article" &&
+        input.articleType === "notion" &&
+        onCreateNotionDoc
+      ) {
+        const doc = await onCreateNotionDoc(node.slug, node.title).catch(
+          () => null
+        )
+        if (!doc) {
+          toast.warning(
+            "Không thể tạo trang Notion. Node đã được tạo nhưng chưa được liên kết."
+          )
+        } else {
+          try {
+            await service.updateNode(node.id, { notionPageId: doc.id }, role)
+            applyNodePatch(node.id, { notionPageId: doc.id }, { dirty: false })
+            // Req 2.3/2.6: open the workspace only when the parent chapter is
+            // known — the URL is rooted at the chapter slug.
+            const parent = nodesRef.current.find((n) => n.id === input.parentId)
+            if (parent?.nodeType === "chapter" && parent.slug) {
+              window.location.assign(
+                `/notion/${parent.slug}?page=${encodeURIComponent(node.slug)}`
+              )
+            }
+          } catch (error) {
+            // Req 2.5: keep the pair traceable for manual re-linking.
+            console.error("[notion-article-node] notionPageId update failed", {
+              nodeId: node.id,
+              documentId: doc.id,
+              slug: node.slug,
+              error,
+            })
+            toast.warning("Node đã tạo nhưng không thể lưu liên kết Notion.")
+          }
+        }
+      }
+
+      // Req 11: role/skill node → linked Roadmap (isPublished=false by
+      // default). Client-side on purpose: the Clerk token authorizing the
+      // write lives in the browser, and the localStorage mock works too.
+      if (input.nodeType === "role" || input.nodeType === "skill") {
+        const roadmap = await service
+          .createRoadmap({ slug: slugify(node.title), title: node.title }, role)
+          .catch(() => null)
+        if (!roadmap) {
+          toast.error(
+            "Không thể tạo roadmap. Node đã được tạo nhưng chưa được liên kết với roadmap."
+          )
+        } else {
+          try {
+            await service.updateNode(
+              node.id,
+              { linkedRoadmapId: roadmap.id },
+              role
+            )
+            applyNodePatch(
+              node.id,
+              { linkedRoadmapId: roadmap.id },
+              { dirty: false }
+            )
+          } catch (error) {
+            console.error(
+              "[notion-article-node] linkedRoadmapId update failed",
+              { nodeId: node.id, roadmapId: roadmap.id, error }
+            )
+          }
+        }
+      }
+
+      return node
     },
-    [service, roadmapId, role, refreshAllNodes, pushHistory]
+    [
+      service,
+      roadmapId,
+      role,
+      refreshAllNodes,
+      pushHistory,
+      applyNodePatch,
+      onCreateNotionDoc,
+    ]
   )
 
   /**
@@ -255,9 +353,18 @@ export function useBuilderCanvas(
           input.title !== undefined &&
           input.title.trim() &&
           input.title.trim() !== previous.title &&
-          previous.slug
+          previous.slug &&
+          onTitleSync
         ) {
-          void onTitleSync?.(previous.slug, input.title.trim())
+          // Best-effort (Req 3.5): the node title is already saved; a failed
+          // Document sync only warns, never rolls back.
+          Promise.resolve(
+            onTitleSync(previous.slug, input.title.trim())
+          ).catch(() => {
+            toast.warning(
+              "Đã lưu tên node nhưng không thể đồng bộ với Notion page."
+            )
+          })
         }
         void refreshAllNodes()
         toast.success(TOAST_MESSAGES.UPDATE_SUCCESS)

@@ -87,9 +87,26 @@ export function RoadmapViewer({
   const nodes = useMemo<RoadmapNode[]>(() => graph?.nodes ?? [], [graph])
   const selectedNode = nodes.find((n) => n.id === selectedId) ?? null
 
-  const handleNodeClick = useCallback((node: RoadmapNode) => {
-    setSelectedId(node.id)
-  }, [])
+  const handleNodeClick = useCallback(
+    (node: RoadmapNode) => {
+      // notion-article-node Req 6.1/6.2: a LINKED notion article navigates
+      // straight into the read-only workspace; an unlinked one is inert.
+      if (node.nodeType === "article" && node.articleType === "notion") {
+        if (!node.notionPageId) return
+        const parent = nodes.find((n) => n.id === node.parentId)
+        const chapterSlug =
+          parent?.nodeType === "chapter" ? parent.slug : undefined
+        if (chapterSlug) {
+          window.location.assign(
+            `${notionBasePath}/${chapterSlug}?page=${encodeURIComponent(node.slug)}`
+          )
+          return
+        }
+      }
+      setSelectedId(node.id)
+    },
+    [nodes, notionBasePath]
+  )
 
   return (
     <div className="flex h-[calc(100svh-57px)] flex-col">

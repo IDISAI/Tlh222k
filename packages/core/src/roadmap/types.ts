@@ -79,6 +79,10 @@ export interface RoadmapNode {
   jupyterUrl: string | null
   /** True once permanently removed from the system → Disabled_Node (Req 4.4). */
   isDeleted?: boolean
+  /** Roadmap auto-created for role/skill nodes (notion-article-node Req 11). */
+  linkedRoadmapId?: string | null
+  /** Publish state synced with the linked Document (notion-article-node Req 7). */
+  isPublished?: boolean
 }
 
 export interface RoadmapGraph {
@@ -123,7 +127,10 @@ export interface CreateNodeInput {
 
 export type UpdateNodeInput = Partial<
   Omit<CreateNodeInput, "roadmapId" | "nodeType" | "slug">
->
+> & {
+  linkedRoadmapId?: string | null
+  isPublished?: boolean
+}
 
 // ── Service errors ──────────────────────────────────────────────────────────
 

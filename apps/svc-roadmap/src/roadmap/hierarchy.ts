@@ -38,8 +38,13 @@ export function isNodeType(v: unknown): v is NodeType {
   return typeof v === "string" && (NODE_TYPES as readonly string[]).includes(v)
 }
 
-/** URL-safe slug (Vietnamese diacritics stripped), matching the core util. */
-export function slugify(input: string, opts: { unique?: boolean } = {}): string {
+/**
+ * URL-safe slug (Vietnamese diacritics stripped), matching the core util.
+ * Empty/special-only input falls back to "untitled" (notion-article-node
+ * Req 9.1). Uniqueness is a deterministic `-{n}` suffix (Req 9.2) resolved by
+ * the service, not here.
+ */
+export function slugify(input: string): string {
   const base = input
     .normalize("NFD")
     .replace(/[̀-ͯ]/g, "")
@@ -48,6 +53,5 @@ export function slugify(input: string, opts: { unique?: boolean } = {}): string 
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
     .slice(0, 80)
-  const slug = base || "node"
-  return opts.unique ? `${slug}-${Math.random().toString(36).slice(2, 7)}` : slug
+  return base || "untitled"
 }

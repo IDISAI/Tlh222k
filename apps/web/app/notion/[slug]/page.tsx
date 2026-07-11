@@ -41,10 +41,14 @@ export default async function NotionPage({
   if (!doc) return <NotionNotReady slug={slug} />
 
   // Deep-link to a published article page under this chapter (read-only).
+  // A ?page= that resolves to nothing published shows the "không khả dụng"
+  // screen instead of silently falling back to other content
+  // (notion-article-node Req 6.5).
   let initialSelectedId: string | undefined
   if (page && page !== slug) {
     const pageDoc = await service.getBySlug("viewer", page)
-    initialSelectedId = pageDoc?.id
+    if (!pageDoc) return <NotionNotReady slug={page} />
+    initialSelectedId = pageDoc.id
   }
 
   return (
@@ -61,7 +65,7 @@ function NotionNotReady({ slug }: { slug: string }) {
   return (
     <div className="mx-auto flex min-h-[60svh] w-full max-w-lg flex-col items-center justify-center gap-3 px-4 text-center">
       <FileText className="size-9 text-muted-foreground" />
-      <h1 className="text-xl font-semibold">Tài liệu chưa sẵn sàng</h1>
+      <h1 className="text-xl font-semibold">Nội dung không khả dụng</h1>
       <p className="text-sm text-muted-foreground">
         Tài liệu{" "}
         <code className="rounded bg-muted px-1.5 py-0.5">{slug}</code> chưa có

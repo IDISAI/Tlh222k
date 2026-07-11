@@ -21,7 +21,7 @@ import "@xyflow/react/dist/style.css"
 
 import { toast } from "@workspace/ui/components/sonner"
 
-import { type NodeType, type RoadmapNode } from "../../types"
+import { type ArticleType, type NodeType, type RoadmapNode } from "../../types"
 import type { BuilderCanvasApi } from "../hooks/use-builder-canvas"
 import type {
   BuilderFlowNode,
@@ -44,6 +44,8 @@ const edgeTypes = { childCount: ChildCountEdgeComponent }
 interface BuilderCanvasProps {
   canvas: BuilderCanvasApi
   className?: string
+  /** Publish-state sync for notion articles (notion-article-node Req 7). */
+  onSyncPublish?: (notionPageId: string, isPublished: boolean) => Promise<void>
 }
 
 /** Derive edges (+ child-count badges, Req 3.9) from parent links. */
@@ -82,7 +84,11 @@ function minimapNodeColor(node: Node): string {
   return MINIMAP_COLORS[domain.nodeType] ?? "#94a3b8"
 }
 
-function BuilderCanvasInner({ canvas, className }: BuilderCanvasProps) {
+function BuilderCanvasInner({
+  canvas,
+  className,
+  onSyncPublish,
+}: BuilderCanvasProps) {
   const { resolvedTheme } = useTheme()
   const colorMode: ColorMode = resolvedTheme === "dark" ? "dark" : "light"
   const { screenToFlowPosition, setCenter } = useReactFlow()
@@ -246,11 +252,35 @@ function BuilderCanvasInner({ canvas, className }: BuilderCanvasProps) {
     [canvas]
   )
 
-  /** Double-click opens NodeDetail_Dialog (Req 7.1); ghosts stay inert. */
+  /**
+   * Double-click opens NodeDetail_Dialog (Req 7.1); ghosts stay inert.
+   * Article notion nodes with a linked Document ALSO auto-navigate to the
+   * notion workspace (notion-article-node Req 1.2) — the sidebar renders
+   * first as visual feedback, then the page navigates after a short delay.
+   */
   const onNodeDoubleClick = useCallback(
     (_event: React.MouseEvent, rfNode: Node) => {
       const domain = canvas.nodesRef.current.find((n) => n.id === rfNode.id)
-      if (domain && !domain.isDeleted) setDetailNode(domain)
+      if (!domain || domain.isDeleted) return
+      setDetailNode(domain)
+      if (
+        domain.nodeType === "article" &&
+        domain.articleType === "notion" &&
+        domain.notionPageId
+      ) {
+        const parent = canvas.nodesRef.current.find(
+          (n) => n.id === domain.parentId
+        )
+        const chapterSlug =
+          parent?.nodeType === "chapter" ? parent.slug : undefined
+        if (chapterSlug) {
+          setTimeout(() => {
+            window.location.assign(
+              `/notion/${chapterSlug}?page=${encodeURIComponent(domain.slug)}`
+            )
+          }, 100)
+        }
+      }
     },
     [canvas]
   )
@@ -319,6 +349,7 @@ function BuilderCanvasInner({ canvas, className }: BuilderCanvasProps) {
   const handleCreate = useCallback(
     async (input: {
       nodeType: NodeType
+      articleType?: ArticleType
       title: string
       parentId: string | null
       x: number
@@ -326,6 +357,7 @@ function BuilderCanvasInner({ canvas, className }: BuilderCanvasProps) {
     }) => {
       const created = await canvas.createNode({
         nodeType: input.nodeType,
+        articleType: input.articleType,
         title: input.title,
         parentId: input.parentId,
         positionX: input.x,
@@ -405,6 +437,7 @@ function BuilderCanvasInner({ canvas, className }: BuilderCanvasProps) {
         onClose={() => setDetailNode(null)}
         onEdit={setEditNode}
         onRemoveFromCanvas={(node) => canvas.removeFromCanvas([node.id])}
+        builderBasePath="/roadmaps"
       />
 
       {editNode && (
@@ -412,6 +445,7 @@ function BuilderCanvasInner({ canvas, className }: BuilderCanvasProps) {
           node={editNode}
           onClose={() => setEditNode(null)}
           onSave={canvas.updateNodeMeta}
+          onSyncPublish={onSyncPublish}
         />
       )}
     </BuilderCanvasContext.Provider>

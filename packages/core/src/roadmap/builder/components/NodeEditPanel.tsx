@@ -3,6 +3,7 @@
 import { useState } from "react"
 import { Badge } from "@workspace/ui/components/badge"
 import { Button } from "@workspace/ui/components/button"
+import { Checkbox } from "@workspace/ui/components/checkbox"
 import { Input } from "@workspace/ui/components/input"
 import { Label } from "@workspace/ui/components/label"
 import {
@@ -15,6 +16,7 @@ import {
 import { toast } from "@workspace/ui/components/sonner"
 import { Textarea } from "@workspace/ui/components/textarea"
 
+import { roadmapBackendEnabled } from "../../api"
 import {
   MAX_DESCRIPTION_LENGTH,
   MAX_TITLE_LENGTH,
@@ -29,23 +31,36 @@ interface NodeEditPanelProps {
   onClose: () => void
   /** Optimistic update + async mutation live in the caller (Req 9.4/9.5). */
   onSave: (id: string, input: UpdateNodeInput) => Promise<boolean>
+  /**
+   * Publish-state sync with the linked Document (notion-article-node Req 7).
+   * Called AFTER the node saved, only for notion articles with a non-null
+   * `notionPageId`. Injected as a Server Action by the admin page.
+   */
+  onSyncPublish?: (notionPageId: string, isPublished: boolean) => Promise<void>
 }
 
 /**
  * Edit panel (Req 9): title (required, ≤150), description (≤500), read-only
  * NodeType badge, and — for articles — articleType with its required link.
  */
-export function NodeEditPanel({ node, onClose, onSave }: NodeEditPanelProps) {
+export function NodeEditPanel({
+  node,
+  onClose,
+  onSave,
+  onSyncPublish,
+}: NodeEditPanelProps) {
   const [title, setTitle] = useState(node.title)
   const [description, setDescription] = useState(node.description ?? "")
   const [articleType, setArticleType] = useState<ArticleType | null>(
     node.articleType
   )
   const [jupyterUrl, setJupyterUrl] = useState(node.jupyterUrl ?? "")
+  const [isPublished, setIsPublished] = useState(node.isPublished ?? false)
   const [titleError, setTitleError] = useState("")
   const [saving, setSaving] = useState(false)
 
   const isArticle = node.nodeType === "article"
+  const isNotionArticle = isArticle && node.articleType === "notion"
 
   const handleSave = async () => {
     // Req 9.3: empty/whitespace title → inline error, no save.
@@ -80,9 +95,27 @@ export function NodeEditPanel({ node, onClose, onSave }: NodeEditPanelProps) {
       input.articleType = articleType
       input.jupyterUrl = articleType === "jupyter" ? jupyterUrl.trim() : ""
     }
+    if (isNotionArticle) input.isPublished = isPublished
 
     setSaving(true)
     const ok = await onSave(node.id, input)
+    // Req 7: publish-state sync to the linked Document — node first, then the
+    // doc; a failed sync warns but never rolls the node back (Req 7.4). Mock
+    // mode and unlinked nodes skip silently (Req 7.3/7.5).
+    if (
+      ok &&
+      isNotionArticle &&
+      isPublished !== (node.isPublished ?? false) &&
+      node.notionPageId &&
+      onSyncPublish &&
+      roadmapBackendEnabled()
+    ) {
+      await onSyncPublish(node.notionPageId, isPublished).catch(() => {
+        toast.warning(
+          "Đã lưu trạng thái xuất bản nhưng không thể đồng bộ với Notion page."
+        )
+      })
+    }
     setSaving(false)
     if (ok) onClose()
   }
@@ -164,6 +197,24 @@ export function NodeEditPanel({ node, onClose, onSave }: NodeEditPanelProps) {
                   Nội dung Notion được chỉnh sửa trực tiếp trong trang tài liệu
                   (mở qua nút Điều hướng).
                 </p>
+              )}
+
+              {isNotionArticle && (
+                <div className="flex items-center justify-between border-t pt-4">
+                  <div className="space-y-0.5">
+                    <Label htmlFor="edit-published">Xuất bản</Label>
+                    <p className="text-xs text-muted-foreground">
+                      Đồng bộ với trạng thái xuất bản của trang Notion.
+                    </p>
+                  </div>
+                  <Checkbox
+                    id="edit-published"
+                    checked={isPublished}
+                    onCheckedChange={(checked: boolean | "indeterminate") =>
+                      setIsPublished(checked === true)
+                    }
+                  />
+                </div>
               )}
 
               {articleType === "jupyter" && (
