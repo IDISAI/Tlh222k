@@ -66,3 +66,30 @@ model UserProgress {
   @@id([clerkUserId, nodeId])
   @@index([nodeId])
 }
+
+// Notion-style hierarchical document (packages/core/src/notion). `slug` is set
+// only on ROOT documents backing a roadmap "notion" article node; child pages
+// are addressed by id inside the workspace UI. `content` is BlockNote JSON.
+model Document {
+  id               String   @id @default(cuid())
+  slug             String?  @unique
+  title            String
+  authorId         String // Clerk user id
+  isArchived       Boolean  @default(false)
+  parentDocumentId String?
+  content          String?
+  coverImage       String?
+  icon             String?
+  isPublished      Boolean  @default(false)
+  // ponytail: sibling sort key for dnd-kit reorder; drop when a fractional
+  // ordering scheme is ever needed.
+  position         Int      @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  parentDocument Document?  @relation("DocumentChildren", fields: [parentDocumentId], references: [id], onDelete: SetNull)
+  children       Document[] @relation("DocumentChildren")
+
+  @@index([parentDocumentId])
+  @@index([isPublished])
+}

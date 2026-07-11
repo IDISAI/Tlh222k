@@ -1,0 +1,111 @@
+"use server"
+
+import { del, put } from "@vercel/blob"
+
+import type {
+  CreateDocumentInput,
+  NotionDoc,
+  UpdateDocumentInput,
+} from "@workspace/core"
+import { NotionService } from "@workspace/core/notion/notion.service"
+import { auth } from "@clerk/nextjs/server"
+
+import { getRole } from "@/lib/auth"
+
+// Every action re-resolves the caller's role from the Clerk session and hands
+// it to the service, which enforces assertCanWrite — the admin proxy and the
+// page's getRole() gate are optimistic; THIS is the trust boundary.
+const service = new NotionService()
+
+const MAX_UPLOAD_BYTES = 10 * 1024 * 1024 // 10 MB
+
+export async function getById(id: string): Promise<NotionDoc | null> {
+  return service.getById(await getRole(), id)
+}
+
+export async function getChildren(
+  parentDocumentId: string
+): Promise<NotionDoc[]> {
+  return service.getChildren(await getRole(), parentDocumentId)
+}
+
+export async function create(input: CreateDocumentInput): Promise<NotionDoc> {
+  const { userId } = await auth()
+  return service.create(await getRole(), userId ?? "unknown", input)
+}
+
+export async function update(input: UpdateDocumentInput): Promise<NotionDoc> {
+  return service.update(await getRole(), input)
+}
+
+/**
+ * Cross-service title sync (QĐ-2): a roadmap node rename pushes its new title
+ * to the Document with the same slug. Best-effort — no-op if no doc is linked.
+ */
+export async function syncTitleBySlug(
+  slug: string,
+  title: string
+): Promise<void> {
+  const role = await getRole()
+  const doc = await service.getBySlug(role, slug)
+  if (doc) await service.update(role, { id: doc.id, title })
+}
+
+export async function archive(id: string): Promise<void> {
+  await service.archive(await getRole(), id)
+}
+
+export async function restore(id: string): Promise<void> {
+  await service.restore(await getRole(), id)
+}
+
+export async function remove(id: string): Promise<void> {
+  await service.remove(await getRole(), id)
+}
+
+export async function getTrash(): Promise<NotionDoc[]> {
+  return service.getTrash(await getRole())
+}
+
+export async function getSearch(): Promise<NotionDoc[]> {
+  return service.getSearch(await getRole())
+}
+
+export async function reorder(
+  parentDocumentId: string,
+  orderedIds: string[]
+): Promise<void> {
+  await service.reorder(await getRole(), parentDocumentId, orderedIds)
+}
+
+export async function removeIcon(id: string): Promise<NotionDoc> {
+  return service.removeIcon(await getRole(), id)
+}
+
+export async function removeCoverImage(id: string): Promise<NotionDoc> {
+  const role = await getRole()
+  const doc = await service.getById(role, id)
+  const updated = await service.removeCoverImage(role, id)
+  // Best-effort blob cleanup — an orphaned file must not fail the action.
+  if (doc?.coverImage) await del(doc.coverImage).catch(() => {})
+  return updated
+}
+
+/** Cover images + BlockNote file blocks → Vercel Blob (public). */
+export async function uploadFile(form: FormData): Promise<{ url: string }> {
+  const role = await getRole()
+  if (role !== "admin" && role !== "super-admin") {
+    throw new Error("PERMISSION_DENIED")
+  }
+  const file = form.get("file")
+  if (!(file instanceof File) || file.size === 0) {
+    throw new Error("NO_FILE")
+  }
+  if (file.size > MAX_UPLOAD_BYTES) {
+    throw new Error("FILE_TOO_LARGE")
+  }
+  const blob = await put(`notion/${crypto.randomUUID()}-${file.name}`, file, {
+    access: "public",
+  })
+  return { url: blob.url }
+}

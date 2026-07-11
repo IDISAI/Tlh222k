@@ -1,13 +1,13 @@
 import Link from "next/link"
 import { Geist_Mono, Inter } from "next/font/google"
-import { ClerkProvider, SignInButton, UserButton } from "@clerk/nextjs"
+import { ClerkProvider } from "@clerk/nextjs"
 
 import { RoadmapApolloProvider, ThemeToggle } from "@workspace/core"
 
 import "@workspace/ui/globals.css"
 import { ThemeProvider } from "@/components/theme-provider"
 import { cn } from "@workspace/ui/lib/utils"
-import { getIsAuthenticated } from "@/lib/auth"
+import { AuthHeader } from "@/components/auth-header"
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-sans" })
 
@@ -16,13 +16,11 @@ const fontMono = Geist_Mono({
   variable: "--font-mono",
 })
 
-export default async function RootLayout({
+export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode
 }>) {
-  const isAuthed = await getIsAuthenticated()
-
   return (
     <ClerkProvider>
       <html
@@ -46,18 +44,7 @@ export default async function RootLayout({
               </Link>
               <div className="flex items-center gap-2">
                 <ThemeToggle />
-                {isAuthed ? (
-                  <UserButton />
-                ) : (
-                  <SignInButton mode="redirect">
-                    <button
-                      type="button"
-                      className="rounded-md border px-3 py-1 text-sm font-medium transition-colors hover:bg-muted"
-                    >
-                      Sign In
-                    </button>
-                  </SignInButton>
-                )}
+                <AuthHeader />
               </div>
             </header>
             <RoadmapApolloProvider>{children}</RoadmapApolloProvider>

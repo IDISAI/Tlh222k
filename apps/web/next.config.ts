@@ -27,7 +27,7 @@ const ADMIN_DEST = ADMIN_URL
 const SUPER_ADMIN_DEST = SUPER_ADMIN_URL
 
 const nextConfig: NextConfig = {
-  transpilePackages: ["@workspace/ui", "@workspace/core"],
+  transpilePackages: ["@workspace/ui", "@workspace/core", "@workspace/db"],
   webpack(config) {
     config.resolve.alias = {
       ...(config.resolve.alias ?? {}),

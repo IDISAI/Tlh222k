@@ -155,12 +155,13 @@ export class RoadmapService {
       )
     }
 
-    // Node-slug navigation: role/skill slug → that node + its subtree.
+    // Node-slug navigation: role/skill/chapter slug → node + its subtree
+    // (chapter → its article children).
     const node = await this.prisma.node.findFirst({
       where: {
         slug,
         isDeleted: false,
-        nodeType: { in: ["role", "skill"] },
+        nodeType: { in: ["role", "skill", "chapter"] },
       },
     })
     if (!node) return null

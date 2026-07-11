@@ -32,7 +32,7 @@ const noScriptNextThemes = fileURLToPath(
 const nextConfig: NextConfig = {
   assetPrefix: isProd ? "/admin-static" : "http://localhost:3002",
   allowedDevOrigins: ["localhost:3000"],
-  transpilePackages: ["@workspace/ui", "@workspace/core"],
+  transpilePackages: ["@workspace/ui", "@workspace/core", "@workspace/db"],
   async rewrites() {
     return [
       { source: "/admin", destination: "/" },

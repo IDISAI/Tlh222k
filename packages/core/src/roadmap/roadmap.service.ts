@@ -104,12 +104,15 @@ export class RoadmapService {
     if (roadmap) {
       base = { roadmap, nodes: this.activeNodesOf(roadmap.id) }
     } else {
-      // Node-slug navigation: role/skill nodes expose their inner structure.
+      // Node-slug navigation: role/skill/chapter nodes expose their inner
+      // structure (chapter → its article children).
       const node = store.nodes.find(
         (n) =>
           n.slug === slug &&
           !n.isDeleted &&
-          (n.nodeType === "role" || n.nodeType === "skill")
+          (n.nodeType === "role" ||
+            n.nodeType === "skill" ||
+            n.nodeType === "chapter")
       )
       if (node) {
         const subtree = [node, ...this.descendantsOf(node.id)].filter(

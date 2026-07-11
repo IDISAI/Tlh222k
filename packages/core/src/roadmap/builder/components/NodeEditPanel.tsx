@@ -41,7 +41,6 @@ export function NodeEditPanel({ node, onClose, onSave }: NodeEditPanelProps) {
   const [articleType, setArticleType] = useState<ArticleType | null>(
     node.articleType
   )
-  const [notionPageId, setNotionPageId] = useState(node.notionPageId ?? "")
   const [jupyterUrl, setJupyterUrl] = useState(node.jupyterUrl ?? "")
   const [titleError, setTitleError] = useState("")
   const [saving, setSaving] = useState(false)
@@ -59,10 +58,6 @@ export function NodeEditPanel({ node, onClose, onSave }: NodeEditPanelProps) {
       // Req 9.2/9.6: article link fields are required per articleType.
       if (!articleType) {
         toast.error("Vui lòng chọn loại tài liệu (Notion hoặc Jupyter)")
-        return
-      }
-      if (articleType === "notion" && !notionPageId.trim()) {
-        toast.error("Notion Page ID là bắt buộc khi chọn loại Notion")
         return
       }
       if (articleType === "jupyter") {
@@ -83,7 +78,6 @@ export function NodeEditPanel({ node, onClose, onSave }: NodeEditPanelProps) {
     }
     if (isArticle && articleType) {
       input.articleType = articleType
-      input.notionPageId = articleType === "notion" ? notionPageId.trim() : ""
       input.jupyterUrl = articleType === "jupyter" ? jupyterUrl.trim() : ""
     }
 
@@ -166,15 +160,10 @@ export function NodeEditPanel({ node, onClose, onSave }: NodeEditPanelProps) {
               </div>
 
               {articleType === "notion" && (
-                <div className="space-y-1.5">
-                  <Label htmlFor="edit-notion">Notion Page ID *</Label>
-                  <Input
-                    id="edit-notion"
-                    value={notionPageId}
-                    placeholder="abc123xyz..."
-                    onChange={(e) => setNotionPageId(e.target.value)}
-                  />
-                </div>
+                <p className="text-xs text-muted-foreground">
+                  Nội dung Notion được chỉnh sửa trực tiếp trong trang tài liệu
+                  (mở qua "Điều hướng").
+                </p>
               )}
 
               {articleType === "jupyter" && (

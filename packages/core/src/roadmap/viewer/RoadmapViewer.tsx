@@ -22,6 +22,16 @@ export interface RoadmapViewerProps {
   backHref?: string
   /** Show the "chỉ xem" preview badge (admin). */
   readOnlyBadge?: boolean
+  /**
+   * Where an internal jupyter article opens. Web (viewers) → "/learn"
+   * (default, read-only viewer); admin/super-admin → "/notebooks" (editor).
+   */
+  notebookBasePath?: string
+  /**
+   * Where an internal notion article opens. Web (viewers) → "/notion"
+   * (default, read-only workspace); admin → its own "/notion" editor zone.
+   */
+  notionBasePath?: string
 }
 
 /**
@@ -38,6 +48,8 @@ export function RoadmapViewer({
   initialGraph = null,
   backHref,
   readOnlyBadge = false,
+  notebookBasePath = "/learn",
+  notionBasePath = "/notion",
 }: RoadmapViewerProps) {
   const [graph, setGraph] = useState<RoadmapGraph | null>(initialGraph)
   const [loading, setLoading] = useState(initialGraph === null)
@@ -127,6 +139,8 @@ export function RoadmapViewer({
         nodes={nodes}
         onClose={() => setSelectedId(null)}
         readOnly
+        notebookBasePath={notebookBasePath}
+        notionBasePath={notionBasePath}
       />
     </div>
   )

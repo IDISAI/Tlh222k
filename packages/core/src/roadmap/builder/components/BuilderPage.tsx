@@ -17,6 +17,12 @@ interface BuilderPageProps {
   role: CallerRole
   /** Back link target — the admin roadmap list. */
   listHref?: string
+  /**
+   * Cross-service title sync (QĐ-2): renaming a node backing a notion doc
+   * pushes the new title to that Document by slug. Injected as a Server Action
+   * by the admin page (web omits it — read-only).
+   */
+  onNodeTitleSync?: (slug: string, title: string) => void | Promise<void>
 }
 
 /**
@@ -28,8 +34,9 @@ export function BuilderPage({
   roadmapId,
   role,
   listHref = "/roadmaps",
+  onNodeTitleSync,
 }: BuilderPageProps) {
-  const canvas = useBuilderCanvas(roadmapId, role)
+  const canvas = useBuilderCanvas(roadmapId, role, onNodeTitleSync)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(true)
 

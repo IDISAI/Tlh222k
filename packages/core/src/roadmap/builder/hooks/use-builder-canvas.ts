@@ -19,7 +19,17 @@ import { TOAST_MESSAGES, serviceErrorMessage } from "../utils/toast-messages"
  * immediately, while membership, edges (parent links) and positions are
  * committed in one batch by `save()` (Req 3.10).
  */
-export function useBuilderCanvas(roadmapId: string, role: CallerRole) {
+export function useBuilderCanvas(
+  roadmapId: string,
+  role: CallerRole,
+  /**
+   * Node title ↔ Notion root-doc title are ONE title (QĐ-2). When an article
+   * node backing a notion doc is renamed, this pushes the new title to the
+   * matching Document (keyed by slug). Best-effort, cross-service; injected by
+   * the admin page so `packages/core` never imports app Server Actions.
+   */
+  onTitleSync?: (slug: string, title: string) => void | Promise<void>
+) {
   const service = useMemo(() => new RoadmapService(), [])
 
   const [roadmap, setRoadmap] = useState<Roadmap | null>(null)
@@ -239,6 +249,16 @@ export function useBuilderCanvas(roadmapId: string, role: CallerRole) {
       )
       try {
         await service.updateNode(id, input, role)
+        // Push a title rename to the linked notion doc (same slug). Only when
+        // the title actually changed and the node has a slug to key on.
+        if (
+          input.title !== undefined &&
+          input.title.trim() &&
+          input.title.trim() !== previous.title &&
+          previous.slug
+        ) {
+          void onTitleSync?.(previous.slug, input.title.trim())
+        }
         void refreshAllNodes()
         toast.success(TOAST_MESSAGES.UPDATE_SUCCESS)
         return true
@@ -248,7 +268,7 @@ export function useBuilderCanvas(roadmapId: string, role: CallerRole) {
         return false
       }
     },
-    [nodes, applyNodePatch, service, role, refreshAllNodes]
+    [nodes, applyNodePatch, service, role, refreshAllNodes, onTitleSync]
   )
 
   /**
