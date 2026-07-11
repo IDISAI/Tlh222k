@@ -11,7 +11,14 @@ not affect the JS `lint → typecheck → build` CI.
 ## Run (dev)
 
 ```bash
-cp .env.example .env
+pnpm dev
+```
+
+Root dev command starts Turbo apps and this Go service together. The dev
+launcher defaults `DEV_AUTH_ROLE` to `super-admin`; set it explicitly to use a
+different local role. To run only this service:
+
+```bash
 DEV_AUTH_ROLE=super-admin go run ./cmd/server   # listens on :3006
 ```
 
