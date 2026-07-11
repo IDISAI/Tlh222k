@@ -95,3 +95,63 @@ func TestFSStoreSaveLeavesNoTemporaryPairFiles(t *testing.T) {
 		t.Fatalf("metadata = %+v, want ml-cpu draft", meta)
 	}
 }
+
+func TestInstallPairSecondBackupReservationRollsBack(t *testing.T) {
+	dir := t.TempDir()
+	notebookPath := dir + string(os.PathSeparator) + "demo.ipynb"
+	metaPath := dir + string(os.PathSeparator) + "demo.meta.json"
+	oldNotebook := []byte("old notebook")
+	oldMeta := []byte("old metadata")
+	if err := os.WriteFile(notebookPath, oldNotebook, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(metaPath, oldMeta, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	notebookTmp, err := writeTemp(notebookPath, []byte("new notebook"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	metaTmp, err := writeTemp(metaPath, []byte("new metadata"))
+	if err != nil {
+		_ = os.Remove(notebookTmp)
+		t.Fatal(err)
+	}
+
+	reservations := 0
+	reserve := func(dir, pattern string) (string, error) {
+		reservations++
+		if reservations == 2 {
+			return "", errors.New("injected second-backup reservation failure")
+		}
+		return reservePath(dir, pattern)
+	}
+	err = installPair([]stagedFile{
+		{path: notebookPath, tmp: notebookTmp},
+		{path: metaPath, tmp: metaTmp},
+	}, reserve)
+	if err == nil {
+		t.Fatal("installPair unexpectedly succeeded")
+	}
+
+	gotNotebook, err := os.ReadFile(notebookPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gotMeta, err := os.ReadFile(metaPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(gotNotebook) != string(oldNotebook) || string(gotMeta) != string(oldMeta) {
+		t.Fatalf("canonical files changed: notebook=%q meta=%q", gotNotebook, gotMeta)
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range entries {
+		if strings.Contains(entry.Name(), ".tmp-") || strings.Contains(entry.Name(), ".backup-") {
+			t.Fatalf("rollback left temporary artifact: %s", entry.Name())
+		}
+	}
+}

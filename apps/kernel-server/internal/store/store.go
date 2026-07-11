@@ -119,44 +119,39 @@ func reservePath(dir, pattern string) (string, error) {
 
 // installPair replaces both files from prepared temps. Existing files are
 // moved aside first so a failed second rename can roll back the first one.
-func installPair(files []stagedFile) error {
-	for i := range files {
-		backup, err := reservePath(filepath.Dir(files[i].path), ".backup-*")
-		if err != nil {
-			for _, file := range files {
-				_ = os.Remove(file.tmp)
-			}
-			return err
-		}
-		files[i].backup = backup
-		if err := os.Rename(files[i].path, backup); err != nil {
-			if !errors.Is(err, os.ErrNotExist) {
-				for _, file := range files {
-					_ = os.Remove(file.tmp)
-				}
-				for j := 0; j < i; j++ {
-					if files[j].hadOld {
-						_ = os.Rename(files[j].backup, files[j].path)
-					}
-				}
-				return err
-			}
-		} else {
-			files[i].hadOld = true
-		}
-	}
-
+func installPair(
+	files []stagedFile,
+	reserve func(string, string) (string, error),
+) error {
 	installed := 0
 	rollback := func() {
 		for i := installed - 1; i >= 0; i-- {
 			_ = os.Remove(files[i].path)
 		}
 		for _, file := range files {
+			_ = os.Remove(file.tmp)
 			if file.hadOld {
 				_ = os.Rename(file.backup, file.path)
+			} else if file.backup != "" {
+				_ = os.Remove(file.backup)
 			}
-			_ = os.Remove(file.tmp)
-			_ = os.Remove(file.backup)
+		}
+	}
+
+	for i := range files {
+		backup, err := reserve(filepath.Dir(files[i].path), ".backup-*")
+		if err != nil {
+			rollback()
+			return err
+		}
+		files[i].backup = backup
+		if err := os.Rename(files[i].path, backup); err != nil {
+			if !errors.Is(err, os.ErrNotExist) {
+				rollback()
+				return err
+			}
+		} else {
+			files[i].hadOld = true
 		}
 	}
 
@@ -168,7 +163,7 @@ func installPair(files []stagedFile) error {
 		installed++
 	}
 	for _, file := range files {
-		if file.hadOld {
+		if file.backup != "" {
 			_ = os.Remove(file.backup)
 		}
 	}
@@ -202,7 +197,7 @@ func (s *FSStore) Save(slug string, notebook []byte, title string, published boo
 	if err := installPair([]stagedFile{
 		{path: s.notebookPath(slug), tmp: notebookTmp},
 		{path: s.metaPath(slug), tmp: metaTmp},
-	}); err != nil {
+	}, reservePath); err != nil {
 		return Meta{}, err
 	}
 	return meta, nil
