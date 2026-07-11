@@ -7,6 +7,7 @@ package store
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -15,6 +16,7 @@ import (
 )
 
 var ErrNotFound = errors.New("notebook not found")
+var ErrCorruptMeta = errors.New("corrupt notebook metadata")
 
 // slug is part of a filesystem path, so keep it strictly safe.
 var slugPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
@@ -60,6 +62,119 @@ func (s *FSStore) metaPath(slug string) string {
 	return filepath.Join(s.dir, slug+".meta.json")
 }
 
+// writeTemp writes a fully flushed file beside its destination. Keeping the
+// temp file in the same directory makes the later rename atomic on the same
+// filesystem.
+func writeTemp(path string, data []byte) (string, error) {
+	f, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".tmp-*")
+	if err != nil {
+		return "", err
+	}
+	tmp := f.Name()
+	cleanup := func() {
+		_ = f.Close()
+		_ = os.Remove(tmp)
+	}
+	if _, err := f.Write(data); err != nil {
+		cleanup()
+		return "", err
+	}
+	if err := f.Chmod(0o644); err != nil {
+		cleanup()
+		return "", err
+	}
+	if err := f.Sync(); err != nil {
+		cleanup()
+		return "", err
+	}
+	if err := f.Close(); err != nil {
+		_ = os.Remove(tmp)
+		return "", err
+	}
+	return tmp, nil
+}
+
+type stagedFile struct {
+	path   string
+	tmp    string
+	backup string
+	hadOld bool
+}
+
+func reservePath(dir, pattern string) (string, error) {
+	f, err := os.CreateTemp(dir, pattern)
+	if err != nil {
+		return "", err
+	}
+	path := f.Name()
+	if err := f.Close(); err != nil {
+		_ = os.Remove(path)
+		return "", err
+	}
+	if err := os.Remove(path); err != nil {
+		return "", err
+	}
+	return path, nil
+}
+
+// installPair replaces both files from prepared temps. Existing files are
+// moved aside first so a failed second rename can roll back the first one.
+func installPair(files []stagedFile) error {
+	for i := range files {
+		backup, err := reservePath(filepath.Dir(files[i].path), ".backup-*")
+		if err != nil {
+			for _, file := range files {
+				_ = os.Remove(file.tmp)
+			}
+			return err
+		}
+		files[i].backup = backup
+		if err := os.Rename(files[i].path, backup); err != nil {
+			if !errors.Is(err, os.ErrNotExist) {
+				for _, file := range files {
+					_ = os.Remove(file.tmp)
+				}
+				for j := 0; j < i; j++ {
+					if files[j].hadOld {
+						_ = os.Rename(files[j].backup, files[j].path)
+					}
+				}
+				return err
+			}
+		} else {
+			files[i].hadOld = true
+		}
+	}
+
+	installed := 0
+	rollback := func() {
+		for i := installed - 1; i >= 0; i-- {
+			_ = os.Remove(files[i].path)
+		}
+		for _, file := range files {
+			if file.hadOld {
+				_ = os.Rename(file.backup, file.path)
+			}
+			_ = os.Remove(file.tmp)
+			_ = os.Remove(file.backup)
+		}
+	}
+
+	for i := range files {
+		if err := os.Rename(files[i].tmp, files[i].path); err != nil {
+			rollback()
+			return err
+		}
+		installed++
+	}
+	for _, file := range files {
+		if file.hadOld {
+			_ = os.Remove(file.backup)
+		}
+	}
+	return nil
+}
+
 func (s *FSStore) Save(slug string, notebook []byte, title string, published bool, runtimeProfile string) (Meta, error) {
 	if runtimeProfile == "" {
 		runtimeProfile = DefaultRuntimeProfile
@@ -71,14 +186,23 @@ func (s *FSStore) Save(slug string, notebook []byte, title string, published boo
 		Published:      published,
 		RuntimeProfile: runtimeProfile,
 	}
-	if err := os.WriteFile(s.notebookPath(slug), notebook, 0o644); err != nil {
-		return Meta{}, err
-	}
 	metaBytes, err := json.MarshalIndent(meta, "", "  ")
 	if err != nil {
 		return Meta{}, err
 	}
-	if err := os.WriteFile(s.metaPath(slug), metaBytes, 0o644); err != nil {
+	notebookTmp, err := writeTemp(s.notebookPath(slug), notebook)
+	if err != nil {
+		return Meta{}, err
+	}
+	metaTmp, err := writeTemp(s.metaPath(slug), metaBytes)
+	if err != nil {
+		_ = os.Remove(notebookTmp)
+		return Meta{}, err
+	}
+	if err := installPair([]stagedFile{
+		{path: s.notebookPath(slug), tmp: notebookTmp},
+		{path: s.metaPath(slug), tmp: metaTmp},
+	}); err != nil {
 		return Meta{}, err
 	}
 	return meta, nil
@@ -92,10 +216,20 @@ func (s *FSStore) Load(slug string) ([]byte, Meta, error) {
 	if err != nil {
 		return nil, Meta{}, err
 	}
-	meta := Meta{Slug: slug, Published: true, RuntimeProfile: DefaultRuntimeProfile}
-	if metaBytes, err := os.ReadFile(s.metaPath(slug)); err == nil {
-		_ = json.Unmarshal(metaBytes, &meta)
+	// Missing metadata is treated as a draft. Never infer publication from the
+	// notebook file alone: a sidecar is the source of truth for visibility.
+	meta := Meta{Slug: slug, Published: false, RuntimeProfile: DefaultRuntimeProfile}
+	metaBytes, err := os.ReadFile(s.metaPath(slug))
+	if errors.Is(err, os.ErrNotExist) {
+		return notebook, meta, nil
 	}
+	if err != nil {
+		return notebook, meta, fmt.Errorf("%w: %v", ErrCorruptMeta, err)
+	}
+	if err := json.Unmarshal(metaBytes, &meta); err != nil {
+		return notebook, Meta{Slug: slug, Published: false, RuntimeProfile: DefaultRuntimeProfile}, fmt.Errorf("%w: %v", ErrCorruptMeta, err)
+	}
+	meta.Slug = slug
 	if meta.RuntimeProfile == "" {
 		meta.RuntimeProfile = DefaultRuntimeProfile
 	}
@@ -114,7 +248,9 @@ func (s *FSStore) List() ([]Meta, error) {
 			continue
 		}
 		slug := name[:len(name)-len(".ipynb")]
-		if _, meta, err := s.Load(slug); err == nil {
+		if _, meta, err := s.Load(slug); err != nil {
+			return nil, err
+		} else {
 			out = append(out, meta)
 		}
 	}

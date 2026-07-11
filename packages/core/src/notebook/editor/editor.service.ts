@@ -37,11 +37,18 @@ export function emptyNotebook(title = "Untitled notebook"): Notebook {
 export function createNotebookMeta(
   overrides: Partial<NotebookMeta> = {}
 ): NotebookMeta {
+  const runtimeProfile = overrides.runtimeProfile
   return {
-    published: false,
-    runtimeProfile: "data-science",
-    updatedAt: new Date().toISOString(),
-    ...overrides,
+    published:
+      typeof overrides.published === "boolean" ? overrides.published : false,
+    runtimeProfile:
+      typeof runtimeProfile === "string" && isRuntimeProfile(runtimeProfile)
+        ? runtimeProfile
+        : "data-science",
+    updatedAt:
+      typeof overrides.updatedAt === "string"
+        ? overrides.updatedAt
+        : new Date().toISOString(),
   }
 }
 

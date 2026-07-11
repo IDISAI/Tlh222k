@@ -95,6 +95,12 @@ export function NotebookEditor({
         onDownload={handleDownload}
       />
 
+      {editor.error && (
+        <p role="alert" className="px-4 text-sm text-destructive">
+          {editor.error} Changes remain dirty and can be retried.
+        </p>
+      )}
+
       <div className="mx-auto w-full max-w-4xl flex-1 space-y-2 overflow-y-auto p-4">
         {editor.cells.map((cell) => (
           <EditableCell

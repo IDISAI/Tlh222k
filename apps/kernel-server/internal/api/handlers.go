@@ -111,7 +111,9 @@ func (h *Handler) put(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, errors.New("invalid runtimeProfile"))
 		return
 	}
-	published := true
+	// Omitted publication metadata defaults to draft. Publication must be
+	// explicit so malformed/legacy clients cannot expose a notebook by default.
+	published := false
 	if body.Published != nil {
 		published = *body.Published
 	}

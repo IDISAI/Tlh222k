@@ -5,7 +5,7 @@
 import { NotebookService } from "../notebook.service"
 import type { Notebook } from "../types"
 import type { NotebookMeta, NotebookRecord, RuntimeProfile } from "../kernel/types"
-import { createNotebookMeta } from "./editor.service"
+import { createNotebookMeta, isRuntimeProfile } from "./editor.service"
 
 export interface NotebookSummary {
   slug: string
@@ -47,16 +47,27 @@ export class LocalNotebookStore implements NotebookStore {
         runtimeProfile?: string
         updatedAt?: string
       }
+      const payloadMeta = payload.meta ?? {}
+      const runtimeProfile =
+        typeof payloadMeta.runtimeProfile === "string" &&
+        isRuntimeProfile(payloadMeta.runtimeProfile)
+          ? payloadMeta.runtimeProfile
+          : typeof payload.runtimeProfile === "string" &&
+              isRuntimeProfile(payload.runtimeProfile)
+            ? payload.runtimeProfile
+            : undefined
+      const overrides: Partial<NotebookMeta> = {}
+      if (typeof payloadMeta.published === "boolean") {
+        overrides.published = payloadMeta.published
+      } else if (typeof payload.published === "boolean") {
+        overrides.published = payload.published
+      }
+      if (runtimeProfile !== undefined) overrides.runtimeProfile = runtimeProfile
+      const updatedAt = payloadMeta.updatedAt ?? payload.updatedAt
+      if (typeof updatedAt === "string") overrides.updatedAt = updatedAt
       return {
         notebook: service.parse(payload.notebook),
-        meta: createNotebookMeta({
-          ...payload.meta,
-          published: payload.meta?.published ?? payload.published,
-          runtimeProfile:
-            payload.meta?.runtimeProfile ??
-            (payload.runtimeProfile as RuntimeProfile | undefined),
-          updatedAt: payload.meta?.updatedAt ?? payload.updatedAt,
-        }),
+        meta: createNotebookMeta(overrides),
       }
     } catch {
       return null
@@ -86,13 +97,17 @@ export class LocalNotebookStore implements NotebookStore {
       try {
         const { slug, title, updatedAt, published, runtimeProfile } = JSON.parse(
           localStorage.getItem(k)!
-        ) as NotebookSummary
+        ) as Partial<NotebookSummary>
+        const profile =
+          typeof runtimeProfile === "string" && isRuntimeProfile(runtimeProfile)
+            ? runtimeProfile
+            : "data-science"
         out.push({
-          slug,
-          title,
-          updatedAt,
-          published: published ?? false,
-          runtimeProfile: runtimeProfile ?? "data-science",
+          slug: slug ?? "",
+          title: title ?? "",
+          updatedAt: updatedAt ?? "",
+          published: typeof published === "boolean" ? published : false,
+          runtimeProfile: profile,
         })
       } catch {
         // Skip corrupt entries.
@@ -176,9 +191,10 @@ export class HttpNotebookStore implements NotebookStore {
 
   async remove(slug: string): Promise<void> {
     if (!SLUG_PATTERN.test(slug)) return
-    await fetch(`${this.baseUrl}/api/notebooks/${slug}`, {
+    const res = await fetch(`${this.baseUrl}/api/notebooks/${slug}`, {
       method: "DELETE",
       headers: await this.headers(),
     })
+    if (!res.ok) throw new Error(`remove ${slug}: ${res.status}`)
   }
 }

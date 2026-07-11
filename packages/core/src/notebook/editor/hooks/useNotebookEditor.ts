@@ -8,7 +8,6 @@ import {
   changeCellType,
   deleteCell,
   duplicateCell,
-  emptyNotebook,
   emptyNotebookRecord,
   insertCell,
   moveCell,
@@ -24,6 +23,7 @@ export interface NotebookEditorApi {
   cells: NotebookCell[]
   selectedId: string | null
   saveState: SaveState
+  error: string | null
   setTitle: (title: string) => void
   select: (id: string | null) => void
   edit: (id: string, source: string) => void
@@ -38,6 +38,10 @@ export interface NotebookEditorApi {
 }
 
 const AUTOSAVE_MS = 1200
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : "Notebook persistence failed"
+}
 
 /**
  * Editor state for one notebook slug: loads from the store, tracks dirty state,
@@ -55,6 +59,7 @@ export function useNotebookEditor(
   const [loading, setLoading] = useState(initial === undefined)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [saveState, setSaveState] = useState<SaveState>("idle")
+  const [error, setError] = useState<string | null>(null)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Load persisted content on mount (falls back to a fresh notebook).
@@ -64,6 +69,11 @@ export function useNotebookEditor(
     void store.load(slug).then((loaded) => {
       if (cancelled) return
       setRecord(loaded ?? emptyNotebookRecord())
+      setLoading(false)
+    }).catch((cause: unknown) => {
+      if (cancelled) return
+      setError(errorMessage(cause))
+      setRecord(emptyNotebookRecord())
       setLoading(false)
     })
     return () => {
@@ -75,11 +85,17 @@ export function useNotebookEditor(
   const markDirty = useCallback(
     (next: NotebookRecord) => {
       setRecord(next)
+      setError(null)
       setSaveState("dirty")
       if (timer.current) clearTimeout(timer.current)
       timer.current = setTimeout(() => {
         setSaveState("saving")
-        void store.save(slug, next).then(() => setSaveState("saved"))
+        void store.save(slug, next)
+          .then(() => setSaveState("saved"))
+          .catch((cause: unknown) => {
+            setError(errorMessage(cause))
+            setSaveState("dirty")
+          })
       }, AUTOSAVE_MS)
     },
     [slug, store]
@@ -104,6 +120,7 @@ export function useNotebookEditor(
     cells: record.notebook.cells,
     selectedId,
     saveState,
+    error,
     setTitle: (title) =>
       markDirty({ ...record, notebook: { ...record.notebook, title } }),
     select: setSelectedId,
