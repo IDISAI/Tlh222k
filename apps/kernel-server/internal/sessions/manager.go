@@ -91,6 +91,45 @@ func (m *Manager) Get(owner, id string) (Session, error) {
 	return session, nil
 }
 
+func (m *Manager) Touch(owner, id string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	session, ok := m.sessions[id]
+	if !ok {
+		return ErrNotFound
+	}
+	if session.Owner != owner {
+		return ErrForbidden
+	}
+	now := m.clock.Now()
+	session.LastActivity = now
+	session.ExpiresAt = now.Add(m.options.IdleTimeout)
+	m.sessions[id] = session
+	return nil
+}
+
+func (m *Manager) Delete(ctx context.Context, owner, id string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	session, ok := m.sessions[id]
+	if !ok {
+		return ErrNotFound
+	}
+	if session.Owner != owner {
+		return ErrForbidden
+	}
+	if m.runtime == nil {
+		return errors.New("session runtime is not configured")
+	}
+	if err := m.runtime.Stop(ctx, session.Handle.ID); err != nil {
+		return err
+	}
+	delete(m.sessions, id)
+	return nil
+}
+
 func (m *Manager) ReapExpired(ctx context.Context) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()

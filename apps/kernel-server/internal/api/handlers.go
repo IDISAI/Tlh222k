@@ -5,17 +5,33 @@ package api
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/lh222k/kernel-server/internal/auth"
+	"github.com/lh222k/kernel-server/internal/proxy"
+	"github.com/lh222k/kernel-server/internal/sessions"
 	"github.com/lh222k/kernel-server/internal/store"
 )
 
 type Handler struct {
-	store store.Store
+	store    store.Store
+	sessions *sessions.Manager
+	tickets  *proxy.Tickets
+	jupyter  *proxy.Jupyter
 }
 
 func New(s store.Store) *Handler { return &Handler{store: s} }
+
+func NewWithSessions(s store.Store, manager *sessions.Manager, tickets *proxy.Tickets) *Handler {
+	return &Handler{
+		store:    s,
+		sessions: manager,
+		tickets:  tickets,
+		jupyter:  proxy.NewJupyter(manager, tickets),
+	}
+}
 
 // Register wires routes onto the mux. Admin-only routes are wrapped with
 // RequireAdmin; /api/published/* is public (web viewers).
@@ -30,6 +46,125 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /api/notebooks/{slug}", auth.RequireAdmin(h.remove))
 
 	mux.HandleFunc("GET /api/published/{slug}", h.published)
+
+	if h.sessions != nil {
+		mux.HandleFunc("POST /api/sessions", auth.RequireAuthenticated(h.createSession))
+		mux.HandleFunc("GET /api/sessions/{id}", auth.RequireAuthenticated(h.getSession))
+		mux.HandleFunc("POST /api/sessions/{id}/interrupt", auth.RequireAuthenticated(h.interruptSession))
+		mux.HandleFunc("POST /api/sessions/{id}/restart", auth.RequireAuthenticated(h.restartSession))
+		mux.HandleFunc("DELETE /api/sessions/{id}", auth.RequireAuthenticated(h.deleteSession))
+		mux.HandleFunc("/api/sessions/{id}/jupyter/{path...}", auth.RequireAuthenticated(h.jupyter.ServeHTTP))
+	}
+}
+
+type createSessionRequest struct {
+	Profile string `json:"profile"`
+}
+
+type sessionResponse struct {
+	ID               string          `json:"id"`
+	Profile          string          `json:"profile"`
+	Status           sessions.Status `json:"status"`
+	ProxyBaseURL     string          `json:"proxyBaseUrl"`
+	ConnectionTicket string          `json:"connectionTicket"`
+	ExpiresAt        time.Time       `json:"expiresAt"`
+}
+
+func (h *Handler) createSession(w http.ResponseWriter, r *http.Request) {
+	var body createSessionRequest
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&body); err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	if !store.ValidRuntimeProfile(body.Profile) {
+		writeErr(w, http.StatusBadRequest, errors.New("invalid profile"))
+		return
+	}
+	principal := auth.PrincipalFrom(r)
+	session, err := h.sessions.CreateOrResume(r.Context(), principal.Subject, body.Profile)
+	if err != nil {
+		if errors.Is(err, sessions.ErrCapacity) {
+			writeErr(w, http.StatusTooManyRequests, err)
+			return
+		}
+		writeErr(w, http.StatusInternalServerError, errors.New("session unavailable"))
+		return
+	}
+	h.writeSession(w, session)
+}
+
+func (h *Handler) getSession(w http.ResponseWriter, r *http.Request) {
+	session, ok := h.ownedSession(w, r)
+	if !ok {
+		return
+	}
+	h.writeSession(w, session)
+}
+
+func (h *Handler) interruptSession(w http.ResponseWriter, r *http.Request) {
+	h.controlSession(w, r, "interrupt")
+}
+
+func (h *Handler) restartSession(w http.ResponseWriter, r *http.Request) {
+	h.controlSession(w, r, "restart")
+}
+
+func (h *Handler) controlSession(w http.ResponseWriter, r *http.Request, action string) {
+	session, ok := h.ownedSession(w, r)
+	if !ok {
+		return
+	}
+	if err := h.jupyter.Control(r.Context(), session, action); err != nil {
+		writeErr(w, http.StatusBadGateway, errors.New("runtime control failed"))
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *Handler) deleteSession(w http.ResponseWriter, r *http.Request) {
+	principal := auth.PrincipalFrom(r)
+	if err := h.sessions.Delete(r.Context(), principal.Subject, r.PathValue("id")); err != nil {
+		writeOwnedSessionError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *Handler) ownedSession(w http.ResponseWriter, r *http.Request) (sessions.Session, bool) {
+	principal := auth.PrincipalFrom(r)
+	session, err := h.sessions.Get(principal.Subject, r.PathValue("id"))
+	if err != nil {
+		writeOwnedSessionError(w, err)
+		return sessions.Session{}, false
+	}
+	return session, true
+}
+
+func (h *Handler) writeSession(w http.ResponseWriter, session sessions.Session) {
+	ticket, expiresAt, err := h.tickets.Issue(session.ID, session.Owner)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, errors.New("ticket unavailable"))
+		return
+	}
+	writeJSON(w, http.StatusOK, sessionResponse{
+		ID:               session.ID,
+		Profile:          session.Profile,
+		Status:           session.Status,
+		ProxyBaseURL:     fmt.Sprintf("/api/sessions/%s/jupyter/", session.ID),
+		ConnectionTicket: ticket,
+		ExpiresAt:        expiresAt,
+	})
+}
+
+func writeOwnedSessionError(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, sessions.ErrForbidden):
+		writeErr(w, http.StatusForbidden, errors.New("forbidden"))
+	case errors.Is(err, sessions.ErrNotFound):
+		writeErr(w, http.StatusNotFound, errors.New("session not found"))
+	default:
+		writeErr(w, http.StatusInternalServerError, errors.New("session unavailable"))
+	}
 }
 
 type notebookResponse struct {

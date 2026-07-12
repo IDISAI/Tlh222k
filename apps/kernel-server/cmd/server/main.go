@@ -17,6 +17,7 @@ import (
 	"github.com/lh222k/kernel-server/internal/auth"
 	"github.com/lh222k/kernel-server/internal/config"
 	"github.com/lh222k/kernel-server/internal/httpx"
+	"github.com/lh222k/kernel-server/internal/proxy"
 	"github.com/lh222k/kernel-server/internal/runtime"
 	"github.com/lh222k/kernel-server/internal/sessions"
 	"github.com/lh222k/kernel-server/internal/store"
@@ -32,11 +33,6 @@ func main() {
 		log.Fatalf("store: %v", err)
 	}
 
-	mux := http.NewServeMux()
-	api.New(fsStore).Register(mux)
-
-	authn := auth.New(cfg.DevAuthRole, cfg.ClerkJWKSURL)
-	handler := httpx.CORS(cfg.AllowedOrigins, authn.Middleware(mux))
 	containerRuntime := runtime.NewDockerRuntime(nil, runtime.DefaultImages())
 	if err := containerRuntime.RemoveStaleContainers(processCtx); err != nil {
 		log.Fatalf("reconcile notebook containers: %v", err)
@@ -49,6 +45,16 @@ func main() {
 		Pids:        cfg.JupyterSessionPIDs,
 		Network:     cfg.JupyterDockerNetwork,
 	}, containerRuntime, sessions.SystemClock{})
+	ticketSecret := os.Getenv("SESSION_TICKET_SECRET")
+	if ticketSecret == "" {
+		log.Fatal("SESSION_TICKET_SECRET is required")
+	}
+	tickets := proxy.NewTickets([]byte(ticketSecret), time.Now)
+	mux := http.NewServeMux()
+	api.NewWithSessions(fsStore, sessionManager, tickets).Register(mux)
+
+	authn := auth.New(cfg.DevAuthRole, cfg.ClerkJWKSURL)
+	handler := httpx.CORS(cfg.AllowedOrigins, authn.Middleware(mux))
 	go reapSessions(processCtx, sessionManager)
 
 	if cfg.DevAuthRole != "" {
