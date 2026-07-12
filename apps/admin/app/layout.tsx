@@ -1,5 +1,5 @@
 import { Geist_Mono, Inter } from "next/font/google"
-import { ClerkProvider, UserButton } from "@clerk/nextjs"
+import { ClerkLoaded, ClerkProvider, UserButton } from "@clerk/nextjs"
 
 import { RoadmapApolloProvider, ThemeToggle } from "@workspace/core"
 
@@ -47,7 +47,18 @@ export default async function RootLayout({
               </a>
               <div className="flex items-center gap-2">
                 <ThemeToggle />
-                {isAuthed && <UserButton />}
+                {/* UserButton is a prebuilt Clerk UI component — it throws
+                    "Clerk was not loaded with Ui components" if it mounts
+                    before clerk-js finishes loading its UI bundle. That race
+                    bites hardest here because the multi-zone assetPrefix
+                    (:3002) loads clerk-js cross-origin. ClerkLoaded gates the
+                    render until the UI bundle is ready (same guard as web's
+                    auth-header). */}
+                {isAuthed && (
+                  <ClerkLoaded>
+                    <UserButton />
+                  </ClerkLoaded>
+                )}
               </div>
             </header>
             <RoadmapApolloProvider>{children}</RoadmapApolloProvider>
