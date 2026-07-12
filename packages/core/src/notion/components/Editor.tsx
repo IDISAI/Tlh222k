@@ -5,6 +5,7 @@ import "@blocknote/shadcn/style.css"
 
 import { useEffect, useState } from "react"
 import { useTheme } from "next-themes"
+import { codeBlockOptions } from "@blocknote/code-block"
 import { filterSuggestionItems, type PartialBlock } from "@blocknote/core"
 import {
   SuggestionMenuController,
@@ -90,6 +91,9 @@ function BlockNoteEditor({
 
   const editor = useCreateBlockNote({
     schema: notionSchema,
+    // Req 12.13: syntax highlighting + language picker for code blocks
+    // (shiki bundle covers JS/TS/Python/HTML/CSS/SQL/JSON/Bash and more).
+    codeBlock: codeBlockOptions,
     initialContent: parseContent(initialContent),
     uploadFile: uploadFile
       ? async (file: File) => {
