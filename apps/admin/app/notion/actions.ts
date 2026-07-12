@@ -170,7 +170,10 @@ export async function removeCoverImage(id: string): Promise<NotionDoc> {
   const doc = await service.getById(role, id)
   const updated = await service.removeCoverImage(role, id)
   // Best-effort blob cleanup — an orphaned file must not fail the action.
-  if (doc?.coverImage) await del(doc.coverImage).catch(() => {})
+  if (doc?.coverImage)
+    await del(doc.coverImage, {
+      token: process.env.BLOB_READ_WRITE_TOKEN,
+    }).catch(() => {})
   return updated
 }
 
@@ -189,6 +192,10 @@ export async function uploadFile(form: FormData): Promise<{ url: string }> {
   }
   const blob = await put(`notion/${crypto.randomUUID()}-${file.name}`, file, {
     access: "public",
+    // Explicit token forces token-auth over OIDC. Local dev runs in the
+    // "development" env where project OIDC isn't enabled, so OIDC-mode put()
+    // throws; the BLOB_READ_WRITE_TOKEN works local and on Vercel.
+    token: process.env.BLOB_READ_WRITE_TOKEN,
   })
   return { url: blob.url }
 }
