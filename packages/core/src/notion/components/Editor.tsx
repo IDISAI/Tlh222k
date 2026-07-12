@@ -2,6 +2,7 @@
 
 import "@blocknote/core/fonts/inter.css"
 import "@blocknote/shadcn/style.css"
+import "./notion-editor.css"
 
 import { useEffect, useState } from "react"
 import { codeBlockOptions } from "@blocknote/code-block"
