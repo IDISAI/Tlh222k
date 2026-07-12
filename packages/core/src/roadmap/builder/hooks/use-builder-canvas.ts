@@ -32,12 +32,14 @@ export function useBuilderCanvas(
   onTitleSync?: (slug: string, title: string) => void | Promise<void>,
   /**
    * Post-create hook (notion-article-node Req 2): creating an article node
-   * with articleType "notion" auto-creates the matching Document (same slug)
-   * and navigates into the workspace. Injected by the admin page.
+   * with articleType "notion" auto-creates the matching Document (same slug),
+   * parented under the chapter's root doc when the parent chapter is known.
+   * Injected by the admin page.
    */
   onCreateNotionDoc?: (
     slug: string,
-    title: string
+    title: string,
+    parentChapterSlug?: string
   ) => Promise<{ id: string } | null>
 ) {
   const service = useMemo(() => new RoadmapService(), [])
@@ -188,15 +190,23 @@ export function useBuilderCanvas(
         return null
       }
 
-      // Req 2: article notion node → Document with the SAME slug (join key).
+      // Req 2: article notion node → Document with the SAME slug (join key),
+      // parented under the chapter's root doc so it appears in the sidebar.
       if (
         input.nodeType === "article" &&
         input.articleType === "notion" &&
         onCreateNotionDoc
       ) {
-        const doc = await onCreateNotionDoc(node.slug, node.title).catch(
-          () => null
-        )
+        const parent = nodesRef.current.find((n) => n.id === input.parentId)
+        const chapterSlug =
+          parent?.nodeType === "chapter" && parent.slug
+            ? parent.slug
+            : undefined
+        const doc = await onCreateNotionDoc(
+          node.slug,
+          node.title,
+          chapterSlug
+        ).catch(() => null)
         if (!doc) {
           toast.warning(
             "Không thể tạo trang Notion. Node đã được tạo nhưng chưa được liên kết."
@@ -207,10 +217,9 @@ export function useBuilderCanvas(
             applyNodePatch(node.id, { notionPageId: doc.id }, { dirty: false })
             // Req 2.3/2.6: open the workspace only when the parent chapter is
             // known — the URL is rooted at the chapter slug.
-            const parent = nodesRef.current.find((n) => n.id === input.parentId)
-            if (parent?.nodeType === "chapter" && parent.slug) {
+            if (chapterSlug) {
               window.location.assign(
-                `/notion/${parent.slug}?page=${encodeURIComponent(node.slug)}`
+                `/notion/${chapterSlug}?page=${encodeURIComponent(node.slug)}`
               )
             }
           } catch (error) {

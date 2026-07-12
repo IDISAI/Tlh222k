@@ -27,7 +27,8 @@ interface BuilderPageProps {
   /** Auto-create the Document for a new notion article node (Req 2). */
   onCreateNotionDoc?: (
     slug: string,
-    title: string
+    title: string,
+    parentChapterSlug?: string
   ) => Promise<{ id: string } | null>
   /** Publish-state sync with the linked Document (Req 7). */
   onSyncPublish?: (notionPageId: string, isPublished: boolean) => Promise<void>

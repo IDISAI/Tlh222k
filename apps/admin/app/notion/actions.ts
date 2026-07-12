@@ -51,20 +51,47 @@ export async function syncTitleBySlug(
   if (doc) await service.update(role, { id: doc.id, title })
 }
 
+/** "css-grid-lab" → "Css grid lab" as a starter title for a fresh root doc. */
+function titleFromSlug(slug: string): string {
+  const words = slug.replace(/-/g, " ").trim()
+  return words.charAt(0).toUpperCase() + words.slice(1) || "Untitled"
+}
+
 /**
  * Auto-create the Document backing a new notion article node with the SAME
- * slug (join key) — notion-article-node Req 2.1/2.2. Returns null on failure
- * so the canvas can leave the node unlinked instead of throwing.
+ * slug (join key) — notion-article-node Req 2.1/2.2. The doc is parented
+ * under the chapter's ROOT doc (A1 model) so it shows up in the workspace
+ * sidebar tree; the root is auto-created here when the admin never opened
+ * the chapter workspace before. Returns null on failure so the canvas can
+ * leave the node unlinked instead of throwing.
  */
 export async function createDocumentForNode(
   slug: string,
-  title: string
+  title: string,
+  parentChapterSlug?: string
 ): Promise<{ id: string } | null> {
   const { userId } = await auth()
+  const role = await getRole()
+  const authorId = userId ?? "unknown"
   try {
-    const doc = await service.create(await getRole(), userId ?? "unknown", {
+    let parentDocumentId: string | undefined
+    if (parentChapterSlug) {
+      let root = await service.getBySlug(role, parentChapterSlug)
+      if (!root) {
+        root = await service
+          .create(role, authorId, {
+            slug: parentChapterSlug,
+            title: titleFromSlug(parentChapterSlug),
+          })
+          // Unique-slug race: the loser refetches.
+          .catch(() => service.getBySlug(role, parentChapterSlug))
+      }
+      parentDocumentId = root?.id
+    }
+    const doc = await service.create(role, authorId, {
       slug,
       title,
+      parentDocumentId,
     })
     return { id: doc.id }
   } catch {

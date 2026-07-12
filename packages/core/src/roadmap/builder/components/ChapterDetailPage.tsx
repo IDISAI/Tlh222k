@@ -21,7 +21,8 @@ interface ChapterDetailPageProps {
   onNodeTitleSync?: (slug: string, title: string) => void | Promise<void>
   onCreateNotionDoc?: (
     slug: string,
-    title: string
+    title: string,
+    parentChapterSlug?: string
   ) => Promise<{ id: string } | null>
   onSyncPublish?: (notionPageId: string, isPublished: boolean) => Promise<void>
 }
