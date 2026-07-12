@@ -2,7 +2,11 @@ import Link from "next/link"
 import { Geist_Mono, Inter } from "next/font/google"
 import { ClerkProvider } from "@clerk/nextjs"
 
-import { RoadmapApolloProvider, ThemeToggle } from "@workspace/core"
+import {
+  isDevAuthBypass,
+  RoadmapApolloProvider,
+  ThemeToggle,
+} from "@workspace/core"
 
 import "@workspace/ui/globals.css"
 import { ThemeProvider } from "@/components/theme-provider"
@@ -21,36 +25,38 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode
 }>) {
-  return (
-    <ClerkProvider>
-      <html
-        lang="en"
-        suppressHydrationWarning
-        className={cn(
-          "antialiased",
-          fontMono.variable,
-          "font-sans",
-          inter.variable
-        )}
-      >
-        <body>
-          <ThemeProvider>
-            <header className="flex items-center justify-between border-b p-3">
-              <Link
-                href="/"
-                className="font-heading text-sm font-bold uppercase italic"
-              >
-                Roadmap
-              </Link>
-              <div className="flex items-center gap-2">
-                <ThemeToggle />
-                <AuthHeader />
-              </div>
-            </header>
-            <RoadmapApolloProvider>{children}</RoadmapApolloProvider>
-          </ThemeProvider>
-        </body>
-      </html>
-    </ClerkProvider>
+  const tree = (
+    <html
+      lang="en"
+      suppressHydrationWarning
+      className={cn(
+        "antialiased",
+        fontMono.variable,
+        "font-sans",
+        inter.variable
+      )}
+    >
+      <body>
+        <ThemeProvider>
+          <header className="flex items-center justify-between border-b p-3">
+            <Link
+              href="/"
+              className="font-heading text-sm font-bold uppercase italic"
+            >
+              Roadmap
+            </Link>
+            <div className="flex items-center gap-2">
+              <ThemeToggle />
+              <AuthHeader />
+            </div>
+          </header>
+          <RoadmapApolloProvider>{children}</RoadmapApolloProvider>
+        </ThemeProvider>
+      </body>
+    </html>
   )
+
+  // Dev bypass: skip <ClerkProvider> so the client never loads Clerk's external
+  // hosted JS (blocked by the localhost-only preview / headless QA sandbox).
+  return isDevAuthBypass() ? tree : <ClerkProvider>{tree}</ClerkProvider>
 }

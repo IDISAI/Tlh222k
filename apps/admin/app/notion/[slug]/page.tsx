@@ -2,9 +2,8 @@ import { redirect } from "next/navigation"
 
 import { NotionWorkspace } from "@workspace/core"
 import { NotionService } from "@workspace/core/notion/notion.service"
-import { auth } from "@clerk/nextjs/server"
 
-import { getRole } from "@/lib/auth"
+import { getRole, getUserId } from "@/lib/auth"
 import { FORBIDDEN_PATH } from "@/lib/paths"
 
 import {

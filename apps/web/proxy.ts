@@ -1,12 +1,15 @@
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server"
 import { NextResponse } from "next/server"
+import { isDevAuthBypass } from "@workspace/core"
 
 // Next.js 16: request-time logic lives in `proxy.ts` (renamed from middleware).
 // This is an *optimistic* gate — protected pages must still verify server-side.
 const isProtected = createRouteMatcher(["/dashboard(.*)"])
 const isAuthPage = createRouteMatcher(["/sign-in(.*)", "/sign-up(.*)"])
 
-export default clerkMiddleware(async (auth, req) => {
+// Dev bypass: skip clerkMiddleware so no request reaches Clerk. Every route is
+// let through; server code resolves the role from NEXT_PUBLIC_DEV_AUTH_ROLE.
+const clerkGate = clerkMiddleware(async (auth, req) => {
   const { userId } = await auth()
 
   // Already signed in and visiting the auth pages → /roadmaps (Req 4.6).
@@ -29,6 +32,8 @@ export default clerkMiddleware(async (auth, req) => {
     return NextResponse.redirect(url)
   }
 })
+
+export default isDevAuthBypass() ? () => NextResponse.next() : clerkGate
 
 export const config = {
   matcher: [

@@ -4,20 +4,46 @@
     {
       "name": "web",
       "runtimeExecutable": "pnpm",
-      "runtimeArgs": ["--filter", "web", "dev"],
-      "port": 3000
+      "runtimeArgs": [
+        "--filter",
+        "web",
+        "dev"
+      ],
+      "port": 3000,
+      "autoPort": false
     },
     {
       "name": "admin",
       "runtimeExecutable": "pnpm",
-      "runtimeArgs": ["--filter", "admin", "dev"],
-      "port": 3002
+      "runtimeArgs": [
+        "--filter",
+        "admin",
+        "dev"
+      ],
+      "port": 3002,
+      "autoPort": false
     },
     {
       "name": "super-admin",
       "runtimeExecutable": "pnpm",
-      "runtimeArgs": ["--filter", "super-admin", "dev"],
-      "port": 3003
+      "runtimeArgs": [
+        "--filter",
+        "super-admin",
+        "dev"
+      ],
+      "port": 3003,
+      "autoPort": false
+    },
+    {
+      "name": "svc-roadmap",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": [
+        "--filter",
+        "svc-roadmap",
+        "dev"
+      ],
+      "port": 3005,
+      "autoPort": false
     }
   ]
 }

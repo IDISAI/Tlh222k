@@ -8,9 +8,8 @@ import type {
   UpdateDocumentInput,
 } from "@workspace/core"
 import { NotionService } from "@workspace/core/notion/notion.service"
-import { auth } from "@clerk/nextjs/server"
 
-import { getRole } from "@/lib/auth"
+import { getRole, getUserId } from "@/lib/auth"
 
 // Every action re-resolves the caller's role from the Clerk session and hands
 // it to the service, which enforces assertCanWrite — the admin proxy and the
@@ -30,7 +29,7 @@ export async function getChildren(
 }
 
 export async function create(input: CreateDocumentInput): Promise<NotionDoc> {
-  const { userId } = await auth()
+  const userId = await getUserId()
   return service.create(await getRole(), userId ?? "unknown", input)
 }
 
@@ -70,7 +69,7 @@ export async function createDocumentForNode(
   title: string,
   parentChapterSlug?: string
 ): Promise<{ id: string } | null> {
-  const { userId } = await auth()
+  const userId = await getUserId()
   const role = await getRole()
   const authorId = userId ?? "unknown"
   try {
