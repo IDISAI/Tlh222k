@@ -5,6 +5,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -55,20 +56,53 @@ func main() {
 	}
 	log.Printf("kernel-server listening on :%s (storage: %s)", cfg.Port, cfg.StorageDir)
 	server := &http.Server{Addr: ":" + cfg.Port, Handler: handler}
+	serverErrors := make(chan error, 1)
 	go func() {
-		<-processCtx.Done()
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-		if err := server.Shutdown(shutdownCtx); err != nil {
-			log.Printf("server shutdown: %v", err)
-		}
-		if err := sessionManager.StopAll(shutdownCtx); err != nil {
-			log.Printf("stop notebook sessions: %v", err)
-		}
+		serverErrors <- server.ListenAndServe()
 	}()
-	if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-		log.Fatal(err)
+
+	var serveErr error
+	select {
+	case <-processCtx.Done():
+	case serveErr = <-serverErrors:
 	}
+	stop()
+	if err := shutdownServices(server, sessionManager, 10*time.Second); err != nil {
+		log.Printf("graceful shutdown: %v", err)
+	}
+	if serveErr == nil {
+		serveErr = <-serverErrors
+	}
+	if serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
+		log.Fatal(serveErr)
+	}
+}
+
+type shutdownServer interface {
+	Shutdown(context.Context) error
+}
+
+type sessionStopper interface {
+	StopAll(context.Context) error
+}
+
+func shutdownServices(server shutdownServer, sessions sessionStopper, timeout time.Duration) error {
+	httpCtx, cancelHTTP := context.WithTimeout(context.Background(), timeout)
+	httpErr := server.Shutdown(httpCtx)
+	cancelHTTP()
+
+	cleanupCtx, cancelCleanup := context.WithTimeout(context.Background(), timeout)
+	cleanupErr := sessions.StopAll(cleanupCtx)
+	cancelCleanup()
+
+	var errs []error
+	if httpErr != nil {
+		errs = append(errs, fmt.Errorf("server shutdown: %w", httpErr))
+	}
+	if cleanupErr != nil {
+		errs = append(errs, fmt.Errorf("stop notebook sessions: %w", cleanupErr))
+	}
+	return errors.Join(errs...)
 }
 
 func reapSessions(ctx context.Context, manager *sessions.Manager) {
