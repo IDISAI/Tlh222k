@@ -53,7 +53,7 @@ export default async function AdminNotionPage({
   const { page } = await searchParams
   const role = await getRole()
   if (role !== "admin" && role !== "super-admin") redirect(FORBIDDEN_PATH)
-  const { userId } = await auth()
+  const userId = await getUserId()
   const authorId = userId ?? "unknown"
 
   // Root doc = the roadmap CHAPTER (A1). Auto-created on first admin visit.
