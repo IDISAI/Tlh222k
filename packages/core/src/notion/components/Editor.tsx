@@ -4,7 +4,6 @@ import "@blocknote/core/fonts/inter.css"
 import "@blocknote/shadcn/style.css"
 
 import { useEffect, useState } from "react"
-import { useTheme } from "next-themes"
 import { codeBlockOptions } from "@blocknote/code-block"
 import { filterSuggestionItems, type PartialBlock } from "@blocknote/core"
 import { vi } from "@blocknote/core/locales"
@@ -106,8 +105,6 @@ function BlockNoteEditor({
   uploadFile,
   getPages,
 }: EditorProps) {
-  const { resolvedTheme } = useTheme()
-
   // Block specs are schema-global; the page picker inside linkToPage reads
   // this module-level ref (see ./blocks).
   useEffect(() => {
@@ -140,7 +137,11 @@ function BlockNoteEditor({
     <BlockNoteView
       editor={editor}
       editable={editable}
-      theme={resolvedTheme === "dark" ? "dark" : "light"}
+      // Notion-style surface is always light. The @blocknote/shadcn chrome is
+      // Tailwind-light regardless, but `theme` also sets data-color-scheme which
+      // drives the shiki code-block theme — leaving it system-derived made code
+      // blocks render github-dark (black box) on the light chrome. Force light.
+      theme="light"
       onChange={() => onChange?.(JSON.stringify(editor.document))}
       slashMenu={false}
     >
