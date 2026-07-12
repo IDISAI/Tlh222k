@@ -1,5 +1,6 @@
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server"
 import { NextResponse } from "next/server"
+import { isDevAuthBypass } from "@workspace/core"
 import { roleFromClaims } from "@workspace/core/navigation/role"
 
 const PUBLIC_PREFIX = process.env.NODE_ENV === "production" ? "/admin" : ""
@@ -12,7 +13,9 @@ function publicPath(pathname: string) {
   return `${PUBLIC_PREFIX}${pathname === "/" ? "" : pathname}`
 }
 
-export default clerkMiddleware(async (auth, req) => {
+// Dev bypass: skip clerkMiddleware entirely so no request reaches Clerk; server
+// code resolves the role from NEXT_PUBLIC_DEV_AUTH_ROLE (mirrors web/proxy.ts).
+const clerkGate = clerkMiddleware(async (auth, req) => {
   // The sign-in and forbidden pages are public (Req 1.2/1.3 exceptions).
   if (isSignIn(req) || isForbidden(req)) return
 
@@ -39,6 +42,8 @@ export default clerkMiddleware(async (auth, req) => {
     return NextResponse.redirect(url)
   }
 })
+
+export default isDevAuthBypass() ? () => NextResponse.next() : clerkGate
 
 export const config = {
   matcher: [
