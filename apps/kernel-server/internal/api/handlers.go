@@ -24,12 +24,12 @@ type Handler struct {
 
 func New(s store.Store) *Handler { return &Handler{store: s} }
 
-func NewWithSessions(s store.Store, manager *sessions.Manager, tickets *proxy.Tickets) *Handler {
+func NewWithSessions(s store.Store, manager *sessions.Manager, tickets *proxy.Tickets, allowedOrigins []string) *Handler {
 	return &Handler{
 		store:    s,
 		sessions: manager,
 		tickets:  tickets,
-		jupyter:  proxy.NewJupyter(manager, tickets),
+		jupyter:  proxy.NewJupyter(manager, tickets, allowedOrigins),
 	}
 }
 
@@ -53,7 +53,7 @@ func (h *Handler) Register(mux *http.ServeMux) {
 		mux.HandleFunc("POST /api/sessions/{id}/interrupt", auth.RequireAuthenticated(h.interruptSession))
 		mux.HandleFunc("POST /api/sessions/{id}/restart", auth.RequireAuthenticated(h.restartSession))
 		mux.HandleFunc("DELETE /api/sessions/{id}", auth.RequireAuthenticated(h.deleteSession))
-		mux.HandleFunc("/api/sessions/{id}/jupyter/{path...}", auth.RequireAuthenticated(h.jupyter.ServeHTTP))
+		mux.HandleFunc("/api/sessions/{id}/jupyter/{path...}", h.jupyter.ServeHTTP)
 	}
 }
 

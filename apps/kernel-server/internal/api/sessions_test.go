@@ -33,7 +33,7 @@ func routeManager(t *testing.T, owner string) (*sessions.Manager, sessions.Sessi
 func TestSessionRouteReturns401WithoutPrincipal(t *testing.T) {
 	manager, session := routeManager(t, "user-1")
 	mux := http.NewServeMux()
-	NewWithSessions(nil, manager, proxy.NewTickets([]byte("secret"), time.Now)).Register(mux)
+	NewWithSessions(nil, manager, proxy.NewTickets([]byte("secret"), time.Now), nil).Register(mux)
 	recorder := httptest.NewRecorder()
 	mux.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/sessions/"+session.ID, nil))
 
@@ -45,7 +45,7 @@ func TestSessionRouteReturns401WithoutPrincipal(t *testing.T) {
 func TestSessionRouteReturns403ForDifferentOwner(t *testing.T) {
 	manager, session := routeManager(t, "different-owner")
 	mux := http.NewServeMux()
-	NewWithSessions(nil, manager, proxy.NewTickets([]byte("secret"), time.Now)).Register(mux)
+	NewWithSessions(nil, manager, proxy.NewTickets([]byte("secret"), time.Now), nil).Register(mux)
 	handler := auth.New("admin", "").Middleware(mux)
 	recorder := httptest.NewRecorder()
 	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/sessions/"+session.ID, nil))

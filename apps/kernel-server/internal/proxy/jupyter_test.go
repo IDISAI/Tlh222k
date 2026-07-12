@@ -39,7 +39,7 @@ func newTestManager(t *testing.T, endpoint string) (*sessions.Manager, sessions.
 func proxyServer(t *testing.T, manager *sessions.Manager, tickets *Tickets) *httptest.Server {
 	t.Helper()
 	mux := http.NewServeMux()
-	mux.HandleFunc("/api/sessions/{id}/jupyter/{path...}", auth.RequireAuthenticated(NewJupyter(manager, tickets).ServeHTTP))
+	mux.HandleFunc("/api/sessions/{id}/jupyter/{path...}", auth.RequireAuthenticated(NewJupyter(manager, tickets, nil).ServeHTTP))
 	return httptest.NewServer(auth.New("admin", "").Middleware(mux))
 }
 

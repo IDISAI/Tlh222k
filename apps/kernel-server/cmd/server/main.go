@@ -51,7 +51,7 @@ func main() {
 	}
 	tickets := proxy.NewTickets([]byte(ticketSecret), time.Now)
 	mux := http.NewServeMux()
-	api.NewWithSessions(fsStore, sessionManager, tickets).Register(mux)
+	api.NewWithSessions(fsStore, sessionManager, tickets, cfg.AllowedOrigins).Register(mux)
 
 	authn := auth.New(cfg.DevAuthRole, cfg.ClerkJWKSURL)
 	handler := httpx.CORS(cfg.AllowedOrigins, authn.Middleware(mux))

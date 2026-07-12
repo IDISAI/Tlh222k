@@ -42,26 +42,37 @@ func (t *Tickets) Issue(sessionID, subject string) (string, time.Time, error) {
 }
 
 func (t *Tickets) Validate(ticket, sessionID, subject string) error {
-	payloadPart, signaturePart, ok := splitTicket(ticket)
-	if !ok {
-		return ErrInvalidTicket
-	}
-	signature, err := base64.RawURLEncoding.DecodeString(signaturePart)
-	if err != nil || !hmac.Equal(signature, t.sign(payloadPart)) {
-		return ErrInvalidTicket
-	}
-	payloadBytes, err := base64.RawURLEncoding.DecodeString(payloadPart)
-	if err != nil {
-		return ErrInvalidTicket
-	}
-	var payload ticketPayload
-	if err := json.Unmarshal(payloadBytes, &payload); err != nil {
-		return ErrInvalidTicket
-	}
-	if payload.SessionID != sessionID || payload.Subject != subject || t.now().Unix() >= payload.Expires {
+	verifiedSubject, err := t.Verify(ticket, sessionID)
+	if err != nil || verifiedSubject != subject {
 		return ErrInvalidTicket
 	}
 	return nil
+}
+
+// Verify validates a short-lived connection ticket and returns its signed
+// subject. Proxy routes use this subject as their authentication principal;
+// browser WebSocket clients cannot attach Clerk Authorization headers.
+func (t *Tickets) Verify(ticket, sessionID string) (string, error) {
+	payloadPart, signaturePart, ok := splitTicket(ticket)
+	if !ok {
+		return "", ErrInvalidTicket
+	}
+	signature, err := base64.RawURLEncoding.DecodeString(signaturePart)
+	if err != nil || !hmac.Equal(signature, t.sign(payloadPart)) {
+		return "", ErrInvalidTicket
+	}
+	payloadBytes, err := base64.RawURLEncoding.DecodeString(payloadPart)
+	if err != nil {
+		return "", ErrInvalidTicket
+	}
+	var payload ticketPayload
+	if err := json.Unmarshal(payloadBytes, &payload); err != nil {
+		return "", ErrInvalidTicket
+	}
+	if payload.SessionID != sessionID || payload.Subject == "" || t.now().Unix() >= payload.Expires {
+		return "", ErrInvalidTicket
+	}
+	return payload.Subject, nil
 }
 
 func (t *Tickets) sign(payload string) []byte {

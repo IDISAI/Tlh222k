@@ -10,18 +10,18 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/lh222k/kernel-server/internal/auth"
 	"github.com/lh222k/kernel-server/internal/sessions"
 	"nhooyr.io/websocket"
 )
 
 type Jupyter struct {
-	manager *sessions.Manager
-	tickets *Tickets
+	manager        *sessions.Manager
+	tickets        *Tickets
+	originPatterns []string
 }
 
-func NewJupyter(manager *sessions.Manager, tickets *Tickets) *Jupyter {
-	return &Jupyter{manager: manager, tickets: tickets}
+func NewJupyter(manager *sessions.Manager, tickets *Tickets, allowedOrigins []string) *Jupyter {
+	return &Jupyter{manager: manager, tickets: tickets, originPatterns: originPatterns(allowedOrigins)}
 }
 
 func (p *Jupyter) Control(ctx context.Context, session sessions.Session, action string) error {
@@ -73,19 +73,19 @@ func (p *Jupyter) Control(ctx context.Context, session sessions.Session, action 
 }
 
 func (p *Jupyter) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	principal := auth.PrincipalFrom(r)
 	sessionID := r.PathValue("id")
 	ticket := clientTicket(r)
-	if ticket == "" || p.tickets.Validate(ticket, sessionID, principal.Subject) != nil {
+	subject, err := p.tickets.Verify(ticket, sessionID)
+	if ticket == "" || err != nil {
 		http.Error(w, `{"error":"invalid connection ticket"}`, http.StatusUnauthorized)
 		return
 	}
-	session, err := p.manager.Get(principal.Subject, sessionID)
+	session, err := p.manager.Get(subject, sessionID)
 	if err != nil {
 		writeSessionError(w, err)
 		return
 	}
-	if err := p.manager.Touch(principal.Subject, sessionID); err != nil {
+	if err := p.manager.Touch(subject, sessionID); err != nil {
 		writeSessionError(w, err)
 		return
 	}
@@ -154,7 +154,7 @@ func (p *Jupyter) serveWebSocket(w http.ResponseWriter, r *http.Request, session
 	}
 	defer upstream.CloseNow()
 
-	acceptOptions := &websocket.AcceptOptions{}
+	acceptOptions := &websocket.AcceptOptions{OriginPatterns: p.originPatterns}
 	if selected := upstream.Subprotocol(); selected != "" {
 		acceptOptions.Subprotocols = []string{selected}
 	}
@@ -177,12 +177,27 @@ func (p *Jupyter) serveWebSocket(w http.ResponseWriter, r *http.Request, session
 			if err := destination.Write(ctx, messageType, payload); err != nil {
 				return
 			}
+			if err := p.manager.Touch(session.Owner, session.ID); err != nil {
+				return
+			}
 		}
 	}
 	go relay(upstream, client)
 	go relay(client, upstream)
 	<-finished
 	cancel()
+}
+
+func originPatterns(origins []string) []string {
+	patterns := make([]string, 0, len(origins))
+	for _, origin := range origins {
+		parsed, err := url.Parse(origin)
+		if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" {
+			continue
+		}
+		patterns = append(patterns, parsed.Host)
+	}
+	return patterns
 }
 
 func clientTicket(r *http.Request) string {
