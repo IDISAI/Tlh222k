@@ -1,6 +1,9 @@
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server"
 import { NextResponse } from "next/server"
-import { isDevAuthBypass } from "@workspace/core"
+// Deep import (not the "@workspace/core" barrel): the barrel re-exports roadmap
+// browser components (BroadcastChannel in update-signal.ts) which crash the Edge
+// middleware runtime. dev-auth.ts only pulls pure role/types.
+import { isDevAuthBypass } from "@workspace/core/navigation/dev-auth"
 
 // Next.js 16: request-time logic lives in `proxy.ts` (renamed from middleware).
 // This is an *optimistic* gate — protected pages must still verify server-side.
