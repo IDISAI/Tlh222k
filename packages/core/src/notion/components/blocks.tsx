@@ -360,7 +360,7 @@ export function customSlashMenuItems(editor: NotionEditor) {
   ]
 }
 
-/** "@" suggestion items: pages (from `getPages`) + today's date (Req 12.14). */
+/** "@" suggestion items: pages (from `getPages`) + relative dates (Req 12.14). */
 export async function mentionMenuItems(
   editor: NotionEditor,
   getPages?: () => Promise<NotionPageRef[]>
@@ -371,10 +371,19 @@ export async function mentionMenuItems(
     docId: string
     label: string
   }) => {
-    editor.insertInlineContent([
-      { type: "mention", props },
-      " ",
-    ])
+    editor.insertInlineContent([{ type: "mention", props }, " "])
+  }
+  const dateItem = (label: string, offsetDays: number, aliases: string[]) => {
+    const d = new Date()
+    d.setDate(d.getDate() + offsetDays)
+    const formatted = d.toLocaleDateString("vi-VN")
+    return {
+      title: `📅 ${label} — ${formatted}`,
+      aliases,
+      group: "Ngày",
+      onItemClick: () =>
+        insertMention({ kind: "date", docId: "", label: formatted }),
+    }
   }
   return [
     ...pages.map((page) => ({
@@ -384,16 +393,8 @@ export async function mentionMenuItems(
       onItemClick: () =>
         insertMention({ kind: "page", docId: page.id, label: page.title }),
     })),
-    {
-      title: `📅 Hôm nay — ${new Date().toLocaleDateString("vi-VN")}`,
-      aliases: ["date", "ngày", "today", "hôm nay"],
-      group: "Ngày",
-      onItemClick: () =>
-        insertMention({
-          kind: "date",
-          docId: "",
-          label: new Date().toLocaleDateString("vi-VN"),
-        }),
-    },
+    dateItem("Hôm nay", 0, ["date", "ngày", "today", "hôm nay"]),
+    dateItem("Ngày mai", 1, ["tomorrow", "ngày mai", "mai"]),
+    dateItem("Hôm qua", -1, ["yesterday", "hôm qua", "qua"]),
   ]
 }
