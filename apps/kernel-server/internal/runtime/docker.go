@@ -90,6 +90,23 @@ func (r *DockerRuntime) Stop(ctx context.Context, containerID string) error {
 	return nil
 }
 
+func (r *DockerRuntime) RemoveStaleContainers(ctx context.Context) error {
+	output, err := r.runner.Run(ctx, "docker", "ps", "--all", "--quiet", "--filter", "label=notebook.session")
+	if err != nil {
+		return fmt.Errorf("list stale notebook containers: %w: %s", err, strings.TrimSpace(string(output)))
+	}
+	containerIDs := strings.Fields(string(output))
+	if len(containerIDs) == 0 {
+		return nil
+	}
+	args := append([]string{"rm", "--force"}, containerIDs...)
+	output, err = r.runner.Run(ctx, "docker", args...)
+	if err != nil {
+		return fmt.Errorf("remove stale notebook containers: %w: %s", err, strings.TrimSpace(string(output)))
+	}
+	return nil
+}
+
 func (r *DockerRuntime) imageFor(profile string) (string, error) {
 	var image string
 	switch profile {

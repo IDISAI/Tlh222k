@@ -114,6 +114,31 @@ func (m *Manager) ReapExpired(ctx context.Context) error {
 	return errors.Join(errs...)
 }
 
+func (m *Manager) StopAll(ctx context.Context) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if m.runtime == nil {
+		if len(m.sessions) == 0 {
+			return nil
+		}
+		return errors.New("session runtime is not configured")
+	}
+
+	var errs []error
+	for id, session := range m.sessions {
+		if session.Status != StatusActive {
+			continue
+		}
+		if err := m.runtime.Stop(ctx, session.Handle.ID); err != nil {
+			errs = append(errs, fmt.Errorf("stop session %s: %w", id, err))
+			continue
+		}
+		delete(m.sessions, id)
+	}
+	return errors.Join(errs...)
+}
+
 func (m *Manager) activeCount() int {
 	count := 0
 	for _, session := range m.sessions {

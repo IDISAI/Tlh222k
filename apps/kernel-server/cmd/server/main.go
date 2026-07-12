@@ -37,6 +37,9 @@ func main() {
 	authn := auth.New(cfg.DevAuthRole, cfg.ClerkJWKSURL)
 	handler := httpx.CORS(cfg.AllowedOrigins, authn.Middleware(mux))
 	containerRuntime := runtime.NewDockerRuntime(nil, runtime.DefaultImages())
+	if err := containerRuntime.RemoveStaleContainers(processCtx); err != nil {
+		log.Fatalf("reconcile notebook containers: %v", err)
+	}
 	sessionManager := sessions.NewManager(sessions.Options{
 		MaxSessions: cfg.JupyterMaxSessions,
 		IdleTimeout: cfg.JupyterSessionIdle,
@@ -58,6 +61,9 @@ func main() {
 		defer cancel()
 		if err := server.Shutdown(shutdownCtx); err != nil {
 			log.Printf("server shutdown: %v", err)
+		}
+		if err := sessionManager.StopAll(shutdownCtx); err != nil {
+			log.Printf("stop notebook sessions: %v", err)
 		}
 	}()
 	if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {

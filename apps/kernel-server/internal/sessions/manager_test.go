@@ -3,8 +3,10 @@ package sessions_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"testing"
 	"time"
 
@@ -16,6 +18,7 @@ import (
 type fakeRuntime struct {
 	starts   int
 	stops    int
+	stopped  []string
 	startErr error
 }
 
@@ -24,11 +27,12 @@ func (f *fakeRuntime) Start(context.Context, sessions.StartRequest) (sessions.Ru
 	if f.startErr != nil {
 		return sessions.RuntimeHandle{}, f.startErr
 	}
-	return sessions.RuntimeHandle{ID: "ctr-1", Endpoint: "http://nb-1:8888", Token: "jupyter"}, nil
+	return sessions.RuntimeHandle{ID: fmt.Sprintf("ctr-%d", f.starts), Endpoint: "http://nb-1:8888", Token: "jupyter"}, nil
 }
 
-func (f *fakeRuntime) Stop(context.Context, string) error {
+func (f *fakeRuntime) Stop(_ context.Context, containerID string) error {
 	f.stops++
+	f.stopped = append(f.stopped, containerID)
 	return nil
 }
 
@@ -128,6 +132,24 @@ func TestReapIdleStopsRuntime(t *testing.T) {
 	}
 	if err := manager.ReapExpired(context.Background()); err != nil || runtime.stops != 1 {
 		t.Fatalf("second reap error/stops = %v/%d, want nil/1", err, runtime.stops)
+	}
+}
+
+func TestStopAllStopsEveryActiveRuntime(t *testing.T) {
+	runtime := &fakeRuntime{}
+	manager := sessions.NewManager(managerOptions(), runtime, &fakeClock{now: time.Unix(100, 0)})
+
+	for _, owner := range []string{"user-1", "user-2"} {
+		if _, err := manager.CreateOrResume(context.Background(), owner, "data-science"); err != nil {
+			t.Fatalf("create session for %s: %v", owner, err)
+		}
+	}
+	if err := manager.StopAll(context.Background()); err != nil {
+		t.Fatalf("stop all: %v", err)
+	}
+	slices.Sort(runtime.stopped)
+	if !slices.Equal(runtime.stopped, []string{"ctr-1", "ctr-2"}) {
+		t.Fatalf("stopped containers = %#v, want ctr-1 and ctr-2", runtime.stopped)
 	}
 }
 

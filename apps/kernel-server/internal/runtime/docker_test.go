@@ -108,3 +108,37 @@ func TestDockerRuntimeStopForceRemovesContainer(t *testing.T) {
 		t.Fatalf("stop command = %q %#v, want docker rm --force container-1", command.name, command.args)
 	}
 }
+
+func TestDockerRuntimeRemovesOnlyStaleNotebookSessionContainers(t *testing.T) {
+	runner := &recordingRunner{output: []byte("container-1\ncontainer-2\n")}
+	runtime := NewDockerRuntime(runner, Images{})
+
+	if err := runtime.RemoveStaleContainers(context.Background()); err != nil {
+		t.Fatalf("remove stale containers: %v", err)
+	}
+	if len(runner.commands) != 2 {
+		t.Fatalf("commands = %d, want 2", len(runner.commands))
+	}
+	if command := runner.commands[0]; command.name != "docker" || !slices.Equal(command.args, []string{
+		"ps", "--all", "--quiet", "--filter", "label=notebook.session",
+	}) {
+		t.Fatalf("list command = %q %#v, want label-scoped docker ps", command.name, command.args)
+	}
+	if command := runner.commands[1]; command.name != "docker" || !slices.Equal(command.args, []string{
+		"rm", "--force", "container-1", "container-2",
+	}) {
+		t.Fatalf("remove command = %q %#v, want force removal of listed containers", command.name, command.args)
+	}
+}
+
+func TestDockerRuntimeSkipsRemovalWhenNoStaleContainersExist(t *testing.T) {
+	runner := &recordingRunner{}
+	runtime := NewDockerRuntime(runner, Images{})
+
+	if err := runtime.RemoveStaleContainers(context.Background()); err != nil {
+		t.Fatalf("remove stale containers: %v", err)
+	}
+	if len(runner.commands) != 1 {
+		t.Fatalf("commands = %d, want only label-scoped docker ps", len(runner.commands))
+	}
+}
