@@ -42,6 +42,26 @@ interface EditorProps {
   getPages?: () => Promise<NotionPageRef[]>
 }
 
+/**
+ * BlockNote's slash menu keys each group section by its `group` title, so the
+ * same group appearing in two non-adjacent spots (defaults + multi-column +
+ * custom all use "Khác"/"Khối cơ bản") renders duplicate React keys. Reorder so
+ * every group is contiguous, preserving first-seen group + item order.
+ */
+function groupContiguous<T extends { group?: string }>(items: T[]): T[] {
+  const order: string[] = []
+  const buckets = new Map<string, T[]>()
+  for (const item of items) {
+    const g = item.group ?? ""
+    if (!buckets.has(g)) {
+      buckets.set(g, [])
+      order.push(g)
+    }
+    buckets.get(g)!.push(item)
+  }
+  return order.flatMap((g) => buckets.get(g)!)
+}
+
 function parseContent(content: string | null): PartialBlock[] | undefined {
   if (!content) return undefined
   try {
@@ -129,11 +149,11 @@ function BlockNoteEditor({
         triggerCharacter="/"
         getItems={async (query) =>
           filterSuggestionItems(
-            [
+            groupContiguous([
               ...getDefaultReactSlashMenuItems(editor),
               ...getMultiColumnSlashMenuItems(editor),
               ...customSlashMenuItems(editor),
-            ],
+            ]),
             query
           )
         }
