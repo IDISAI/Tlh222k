@@ -5,7 +5,6 @@ import "@blocknote/shadcn/style.css"
 import "./notion-editor.css"
 
 import { useEffect, useState } from "react"
-import { codeBlockOptions } from "@blocknote/code-block"
 import { filterSuggestionItems, type PartialBlock } from "@blocknote/core"
 import { vi } from "@blocknote/core/locales"
 import {
@@ -114,10 +113,10 @@ function BlockNoteEditor({
   }, [getPages])
 
   const editor = useCreateBlockNote({
+    // Code-block syntax highlighting + language picker live in the schema via
+    // createCodeBlockSpec(codeBlockOptions) (see ./blocks) — the `codeBlock`
+    // option here has no effect on a custom schema.
     schema: notionSchema,
-    // Req 12.13: syntax highlighting + language picker for code blocks
-    // (shiki bundle covers JS/TS/Python/HTML/CSS/SQL/JSON/Bash and more).
-    codeBlock: codeBlockOptions,
     // Req 12.7: multi-column drop cursor lets a block be dragged beside
     // another to form 2-3 columns. Vietnamese UI dictionary for the whole
     // editor, plus the column labels from the multi-column package.

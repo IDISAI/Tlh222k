@@ -3,10 +3,12 @@
 import { useEffect, useState } from "react"
 import {
   BlockNoteSchema,
+  createCodeBlockSpec,
   defaultBlockSpecs,
   defaultInlineContentSpecs,
   insertOrUpdateBlockForSlashMenu,
 } from "@blocknote/core"
+import { codeBlockOptions } from "@blocknote/code-block"
 import {
   createReactBlockSpec,
   createReactInlineContentSpec,
@@ -319,6 +321,11 @@ export const notionSchema = withMultiColumn(
   BlockNoteSchema.create({
     blockSpecs: {
       ...defaultBlockSpecs,
+      // Override the plain default codeBlock with the shiki-highlighted spec
+      // (Req 12.13): syntax highlighting + a language picker. Passing
+      // `codeBlock: codeBlockOptions` to useCreateBlockNote does NOT enhance a
+      // custom schema — the spec itself must be the highlighted one.
+      codeBlock: createCodeBlockSpec(codeBlockOptions),
       callout: Callout(),
       embed: Embed(),
       linkToPage: LinkToPage(),
