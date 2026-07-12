@@ -7,12 +7,18 @@ import { useEffect, useState } from "react"
 import { useTheme } from "next-themes"
 import { codeBlockOptions } from "@blocknote/code-block"
 import { filterSuggestionItems, type PartialBlock } from "@blocknote/core"
+import { vi } from "@blocknote/core/locales"
 import {
   SuggestionMenuController,
   getDefaultReactSlashMenuItems,
   useCreateBlockNote,
 } from "@blocknote/react"
 import { BlockNoteView } from "@blocknote/shadcn"
+import {
+  getMultiColumnSlashMenuItems,
+  locales as multiColumnLocales,
+  multiColumnDropCursor,
+} from "@blocknote/xl-multi-column"
 
 import { Skeleton } from "@workspace/ui/components/skeleton"
 
@@ -94,6 +100,11 @@ function BlockNoteEditor({
     // Req 12.13: syntax highlighting + language picker for code blocks
     // (shiki bundle covers JS/TS/Python/HTML/CSS/SQL/JSON/Bash and more).
     codeBlock: codeBlockOptions,
+    // Req 12.7: multi-column drop cursor lets a block be dragged beside
+    // another to form 2-3 columns. Vietnamese UI dictionary for the whole
+    // editor, plus the column labels from the multi-column package.
+    dropCursor: multiColumnDropCursor,
+    dictionary: { ...vi, multi_column: multiColumnLocales.vi },
     initialContent: parseContent(initialContent),
     uploadFile: uploadFile
       ? async (file: File) => {
@@ -113,13 +124,14 @@ function BlockNoteEditor({
       onChange={() => onChange?.(JSON.stringify(editor.document))}
       slashMenu={false}
     >
-      {/* "/" — defaults + callout/embed/link_to_page (Req 12.19). */}
+      {/* "/" — defaults + callout/embed/link_to_page + columns (Req 12.19). */}
       <SuggestionMenuController
         triggerCharacter="/"
         getItems={async (query) =>
           filterSuggestionItems(
             [
               ...getDefaultReactSlashMenuItems(editor),
+              ...getMultiColumnSlashMenuItems(editor),
               ...customSlashMenuItems(editor),
             ],
             query

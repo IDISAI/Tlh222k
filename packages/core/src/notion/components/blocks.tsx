@@ -11,6 +11,7 @@ import {
   createReactBlockSpec,
   createReactInlineContentSpec,
 } from "@blocknote/react"
+import { withMultiColumn } from "@blocknote/xl-multi-column"
 import {
   FileText,
   Lightbulb,
@@ -308,19 +309,26 @@ const Mention = createReactInlineContentSpec(
 
 // ── Schema + slash/mention menu items ────────────────────────────────────────
 
-/** The ONE BlockNote schema both zones render (Req 12). */
-export const notionSchema = BlockNoteSchema.create({
-  blockSpecs: {
-    ...defaultBlockSpecs,
-    callout: Callout(),
-    embed: Embed(),
-    linkToPage: LinkToPage(),
-  },
-  inlineContentSpecs: {
-    ...defaultInlineContentSpecs,
-    mention: Mention,
-  },
-})
+/**
+ * The ONE BlockNote schema both zones render (Req 12). `withMultiColumn` adds
+ * the columnList/column blocks so content can be laid out in 2-3 side-by-side
+ * columns (Req 12.7); it must wrap the base schema so the column blocks can
+ * host any of our custom blocks inside them.
+ */
+export const notionSchema = withMultiColumn(
+  BlockNoteSchema.create({
+    blockSpecs: {
+      ...defaultBlockSpecs,
+      callout: Callout(),
+      embed: Embed(),
+      linkToPage: LinkToPage(),
+    },
+    inlineContentSpecs: {
+      ...defaultInlineContentSpecs,
+      mention: Mention,
+    },
+  })
+)
 
 export type NotionEditor = typeof notionSchema.BlockNoteEditor
 
