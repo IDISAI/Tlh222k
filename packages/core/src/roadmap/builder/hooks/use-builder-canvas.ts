@@ -113,6 +113,7 @@ export function useBuilderCanvas(
   }, [service, roadmapId, role])
 
   useEffect(() => {
+    console.log("[builder-diag] mount effect fired")
     void load()
   }, [load])
 
