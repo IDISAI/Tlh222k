@@ -18,6 +18,7 @@ import {
 import {
   ChevronRight,
   ChevronsLeft,
+  CornerUpRight,
   File,
   MoreHorizontal,
   Plus,
@@ -26,6 +27,14 @@ import {
 } from "lucide-react"
 
 import { Button } from "@workspace/ui/components/button"
+import {
+  CommandDialog,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@workspace/ui/components/command"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -49,6 +58,8 @@ interface SidebarProps {
   onArchive: (id: string) => Promise<void>
   onRestore: (id: string) => Promise<void>
   onRemove: (id: string) => Promise<void>
+  /** Re-parent a page ("Chuyển vào trang khác"); null = top level. */
+  onMove: (id: string, parentDocumentId: string | null) => Promise<void>
   onCollapse: () => void
   onOpenSearch: () => void
 }
@@ -60,6 +71,9 @@ interface SidebarProps {
 export function Sidebar(props: SidebarProps) {
   const { root, canEdit, onCollapse, onOpenSearch } = props
   const [width, setWidth] = useState(260)
+  // "Chuyển vào trang khác" target — the page whose parent we're changing.
+  const [moveTarget, setMoveTarget] = useState<NotionDoc | null>(null)
+  const treeProps: TreeProps = { ...props, onRequestMove: setMoveTarget }
 
   const startResize = (e: React.PointerEvent) => {
     e.preventDefault()
@@ -113,7 +127,7 @@ export function Sidebar(props: SidebarProps) {
       )}
 
       <div className="flex-1 overflow-y-auto px-2 py-1">
-        <DocItem {...props} doc={root} level={0} isRoot />
+        <DocItem {...treeProps} doc={root} level={0} isRoot />
       </div>
 
       {canEdit && (
@@ -129,6 +143,16 @@ export function Sidebar(props: SidebarProps) {
             />
           </TrashBox>
         </div>
+      )}
+
+      {canEdit && (
+        <MovePageDialog
+          target={moveTarget}
+          rootId={root.id}
+          getSearch={props.actions.getSearch}
+          onMove={props.onMove}
+          onClose={() => setMoveTarget(null)}
+        />
       )}
 
       {/* Resize handle */}
@@ -170,7 +194,10 @@ function SidebarAction({
 
 // ── Tree ─────────────────────────────────────────────────────────────────────
 
-type TreeProps = Omit<SidebarProps, "onCollapse" | "onOpenSearch">
+type TreeProps = Omit<SidebarProps, "onCollapse" | "onOpenSearch"> & {
+  /** Open the "Chuyển vào trang khác" picker for this page. */
+  onRequestMove: (doc: NotionDoc) => void
+}
 
 function DocItem({
   doc,
@@ -252,7 +279,12 @@ function DocItem({
                 >
                   <MoreHorizontal />
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="start" className="w-44">
+                <DropdownMenuContent align="start" className="w-52">
+                  <DropdownMenuItem
+                    onClick={() => tree.onRequestMove(doc)}
+                  >
+                    <CornerUpRight className="size-4" /> Chuyển vào trang khác
+                  </DropdownMenuItem>
                   <DropdownMenuItem
                     onClick={() => void tree.onArchive(doc.id)}
                   >
@@ -381,5 +413,87 @@ function SortableDocItem(
       }}
       dragProps={{ ...attributes, ...listeners }}
     />
+  )
+}
+
+/**
+ * "Chuyển vào trang khác" picker: pick a destination page (or the top level)
+ * to re-parent `target` under. The moved page itself is excluded; the service
+ * rejects a move into the page's own subtree, so cycles can't form even though
+ * descendants aren't filtered client-side (the lazy tree hasn't loaded them).
+ */
+function MovePageDialog({
+  target,
+  rootId,
+  getSearch,
+  onMove,
+  onClose,
+}: {
+  target: NotionDoc | null
+  rootId: string
+  getSearch?: () => Promise<NotionDoc[]>
+  onMove: (id: string, parentDocumentId: string | null) => Promise<void>
+  onClose: () => void
+}) {
+  const [docs, setDocs] = useState<NotionDoc[]>([])
+
+  // Exclude the moved page and the chapter root (root is offered as the
+  // explicit "top level" choice instead).
+  useEffect(() => {
+    if (!target || !getSearch) return
+    let cancelled = false
+    void getSearch().then((result) => {
+      if (!cancelled) {
+        setDocs(result.filter((d) => d.id !== target.id && d.id !== rootId))
+      }
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [target, getSearch, rootId])
+
+  const pick = (parentId: string) => {
+    if (target) void onMove(target.id, parentId)
+    onClose()
+  }
+
+  return (
+    <CommandDialog
+      open={target !== null}
+      onOpenChange={(open: boolean) => {
+        if (!open) onClose()
+      }}
+      title="Chuyển trang"
+      description={`Chọn trang đích cho “${target?.title ?? ""}”`}
+    >
+      <CommandInput placeholder="Tìm trang đích..." />
+      <CommandList>
+        <CommandEmpty>Không tìm thấy trang nào.</CommandEmpty>
+        <CommandGroup heading="Cấp cao nhất">
+          {/* Top level of THIS chapter workspace = a direct child of the
+              chapter root doc (A1 model), not a detached orphan. */}
+          <CommandItem value="__top-level__" onSelect={() => pick(rootId)}>
+            <CornerUpRight className="size-4" />
+            <span>Chuyển lên cấp cao nhất</span>
+          </CommandItem>
+        </CommandGroup>
+        <CommandGroup heading="Trang">
+          {docs.map((doc) => (
+            <CommandItem
+              key={doc.id}
+              value={`${doc.title}-${doc.id}`}
+              onSelect={() => pick(doc.id)}
+            >
+              {doc.icon ? (
+                <span className="text-base">{doc.icon}</span>
+              ) : (
+                <File className="size-4" />
+              )}
+              <span className="truncate">{doc.title}</span>
+            </CommandItem>
+          ))}
+        </CommandGroup>
+      </CommandList>
+    </CommandDialog>
   )
 }

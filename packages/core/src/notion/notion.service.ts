@@ -146,6 +146,41 @@ export class NotionService {
     return toDoc(doc)
   }
 
+  /**
+   * Re-parent a document (drag-to-nest in the sidebar). `newParentId = null`
+   * moves it to the top level. Rejects a move into the doc's own subtree so
+   * the tree can never form a cycle. Position is appended under the new parent.
+   */
+  async move(
+    callerRole: CallerRole,
+    id: string,
+    newParentId: string | null
+  ): Promise<NotionDoc> {
+    assertCanWrite(callerRole)
+    if (id === newParentId) throw new NotionServiceError("NOT_FOUND")
+    const doc = await prisma.document.findUnique({ where: { id } })
+    if (!doc) throw new NotionServiceError("NOT_FOUND")
+
+    if (newParentId) {
+      // Cycle guard: newParentId must not be id or any of id's descendants.
+      const subtree = new Set(await this.subtreeIds(id))
+      if (subtree.has(newParentId)) throw new NotionServiceError("NOT_FOUND")
+      const parent = await prisma.document.findUnique({
+        where: { id: newParentId },
+      })
+      if (!parent) throw new NotionServiceError("NOT_FOUND")
+    }
+
+    const position = await prisma.document.count({
+      where: { parentDocumentId: newParentId },
+    })
+    const moved = await prisma.document.update({
+      where: { id },
+      data: { parentDocumentId: newParentId, position },
+    })
+    return toDoc(moved)
+  }
+
   /** Soft-delete the doc and its whole subtree (spec: archive cascade). */
   async archive(callerRole: CallerRole, id: string): Promise<void> {
     assertCanWrite(callerRole)

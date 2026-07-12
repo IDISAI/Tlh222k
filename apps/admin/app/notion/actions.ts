@@ -154,6 +154,14 @@ export async function reorder(
   await service.reorder(await getRole(), parentDocumentId, orderedIds)
 }
 
+/** Drag-to-nest: re-parent a doc in the sidebar tree (null = top level). */
+export async function move(
+  id: string,
+  parentDocumentId: string | null
+): Promise<NotionDoc> {
+  return service.move(await getRole(), id, parentDocumentId)
+}
+
 export async function removeIcon(id: string): Promise<NotionDoc> {
   return service.removeIcon(await getRole(), id)
 }

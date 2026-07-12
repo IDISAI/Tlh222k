@@ -324,6 +324,21 @@ export function NotionWorkspace({
     [actions, bump, selectedId, root.id]
   )
 
+  // Drag-to-nest / "Chuyển vào trang khác": re-parent a page. The service
+  // rejects moving a page into its own subtree (cycle guard).
+  const handleMove = useCallback(
+    async (id: string, parentDocumentId: string | null) => {
+      if (!actions.move) return
+      try {
+        await actions.move(id, parentDocumentId)
+        bump()
+      } catch {
+        toast.error("Không thể chuyển trang vào vị trí này.")
+      }
+    },
+    [actions, bump]
+  )
+
   const publicUrl = root.slug ? `${origin}/notion/${root.slug}` : null
 
   return (
@@ -340,6 +355,7 @@ export function NotionWorkspace({
           onArchive={handleArchive}
           onRestore={handleRestore}
           onRemove={handleRemove}
+          onMove={handleMove}
           onCollapse={() => setCollapsed(true)}
           onOpenSearch={() => setSearchOpen(true)}
         />

@@ -64,6 +64,8 @@ export interface NotionWriteActions {
   getTrash(): Promise<NotionDoc[]>
   getSearch(): Promise<NotionDoc[]>
   reorder(parentDocumentId: string, orderedIds: string[]): Promise<void>
+  /** Drag-to-nest: re-parent a doc (null = top level). Guards against cycles. */
+  move(id: string, parentDocumentId: string | null): Promise<NotionDoc>
   removeIcon(id: string): Promise<NotionDoc>
   removeCoverImage(id: string): Promise<NotionDoc>
   /** FormData with a "file" entry → public URL (@vercel/blob in the app). */
