@@ -17,7 +17,11 @@ test("dev launcher starts Turbo apps and kernel-server", () => {
       args: ["turbo", "dev"],
       env: { NEXT_PUBLIC_KERNEL_SERVER_URL: "http://localhost:3006" },
     },
-    { command: "go", args: ["run", "./cmd/server"] },
+    {
+      command: "go",
+      args: ["run", "./cmd/server"],
+      env: { SESSION_TICKET_SECRET: "development-only-ticket-secret" },
+    },
   ])
 })
 

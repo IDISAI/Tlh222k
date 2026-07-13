@@ -1,2 +1,2 @@
--r requirements-data-science.txt
-torch==2.7.0
+# CPU PyTorch is installed in Dockerfile from PyTorch CPU index. Keeping this
+# file documents profile intent without allowing PyPI to pull CUDA packages.

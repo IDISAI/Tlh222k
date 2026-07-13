@@ -1,8 +1,7 @@
 import { redirect } from "next/navigation"
-import { NotebookEditor } from "@workspace/core"
-
 import { getRole } from "@/lib/auth"
 import { FORBIDDEN_PATH } from "@/lib/paths"
+import { NotebookEditorClient } from "./notebook-editor-client"
 
 export const metadata = { title: "Notebook editor" }
 
@@ -22,5 +21,5 @@ export default async function AdminNotebookEditorPage({
   const role = await getRole()
   if (role !== "admin" && role !== "super-admin") redirect(FORBIDDEN_PATH)
 
-  return <NotebookEditor slug={slug} />
+  return <NotebookEditorClient slug={slug} />
 }

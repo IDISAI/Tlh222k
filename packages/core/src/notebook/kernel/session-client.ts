@@ -12,6 +12,11 @@ export class SandboxSessionClient {
     this.getToken = getToken
   }
 
+  /** Resolve server-returned proxy path against kernel-server origin. */
+  resolveProxyUrl(proxyBaseUrl: string): string {
+    return new URL(proxyBaseUrl, `${this.baseUrl}/`).toString()
+  }
+
   create(profile: RuntimeProfile): Promise<SandboxSession> {
     return this.request<SandboxSession>("/api/sessions", {
       method: "POST",

@@ -5,10 +5,11 @@ ARG PROFILE=data-science
 USER root
 COPY runtime/requirements-data-science.txt runtime/requirements-ml-cpu.txt /tmp/notebook-requirements/
 RUN case "$PROFILE" in \
-      data-science|ml-cpu) ;; \
+      data-science) python -m pip install --no-cache-dir -r /tmp/notebook-requirements/requirements-data-science.txt ;; \
+      ml-cpu) python -m pip install --no-cache-dir -r /tmp/notebook-requirements/requirements-data-science.txt \
+        && python -m pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu torch==2.7.0+cpu ;; \
       *) echo "unsupported PROFILE: $PROFILE" >&2; exit 1 ;; \
     esac \
-    && python -m pip install --no-cache-dir -r "/tmp/notebook-requirements/requirements-${PROFILE}.txt" \
     && rm -rf /tmp/notebook-requirements
 
 COPY runtime/course_grading.py /opt/course/course_grading.py

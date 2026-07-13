@@ -12,7 +12,14 @@ const commands = [
     args: ["turbo", "dev"],
     env: { NEXT_PUBLIC_KERNEL_SERVER_URL: kernelServerUrl },
   },
-  { command: "go", args: ["run", "./cmd/server"] },
+  {
+    command: "go",
+    args: ["run", "./cmd/server"],
+    env: {
+      SESSION_TICKET_SECRET:
+        process.env.SESSION_TICKET_SECRET || "development-only-ticket-secret",
+    },
+  },
 ]
 
 if (process.argv.includes("--dry-run")) {
@@ -52,7 +59,11 @@ const children = [
   }),
   spawn("go", commands[1].args, {
     cwd: kernelDir,
-    env: { ...process.env, DEV_AUTH_ROLE: process.env.DEV_AUTH_ROLE || "super-admin" },
+    env: {
+      ...process.env,
+      ...commands[1].env,
+      DEV_AUTH_ROLE: process.env.DEV_AUTH_ROLE || "super-admin",
+    },
     stdio: "inherit",
   }),
 ]

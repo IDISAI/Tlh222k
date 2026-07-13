@@ -7,6 +7,8 @@ import { Skeleton } from "@workspace/ui/components/skeleton"
 
 import { NotebookService } from "../../notebook.service"
 import type { NotebookRecord } from "../../kernel/types"
+import { JupyterSandboxAdapter, SandboxSessionClient } from "../../kernel"
+import { useNotebookRuntime } from "../../runtime/use-notebook-runtime"
 import {
   HttpNotebookStore,
   LocalNotebookStore,
@@ -51,6 +53,17 @@ export function NotebookEditor({
     [store, getToken]
   )
   const editor = useNotebookEditor(slug, notebookStore, initial)
+  const snapshot = useMemo(() => editor.snapshot(), [editor.cells, editor.title])
+  const adapter = useMemo(
+    () => KERNEL_SERVER_URL && getToken
+      ? new JupyterSandboxAdapter(
+          new SandboxSessionClient(KERNEL_SERVER_URL, getToken),
+          "data-science"
+        )
+      : null,
+    [getToken]
+  )
+  const runtime = useNotebookRuntime(snapshot, adapter)
 
   const handleDownload = () => {
     const raw = service.serialize(editor.snapshot())
@@ -113,6 +126,8 @@ export function NotebookEditor({
             onMove={(direction) => editor.move(cell.id, direction)}
             onDuplicate={() => editor.duplicate(cell.id)}
             onDelete={() => editor.remove(cell.id)}
+            runtime={runtime.cells[cell.id]}
+            onRun={cell.cellType === "code" ? () => void runtime.runCell(cell.id) : undefined}
           />
         ))}
 

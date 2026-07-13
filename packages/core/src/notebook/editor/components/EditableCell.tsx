@@ -8,6 +8,8 @@ import { cn } from "@workspace/ui/lib/utils"
 import type { CellType, NotebookCell } from "../../types"
 import { CodeCellEditor } from "./CodeCellEditor"
 import { MarkdownCellEditor } from "./MarkdownCellEditor"
+import { OutputRenderer } from "../../viewer/components/OutputRenderer"
+import type { RuntimeCellState } from "../../runtime/use-notebook-runtime"
 
 interface EditableCellProps {
   cell: NotebookCell
@@ -18,6 +20,8 @@ interface EditableCellProps {
   onMove: (direction: "up" | "down") => void
   onDuplicate: () => void
   onDelete: () => void
+  runtime?: RuntimeCellState
+  onRun?: () => void
 }
 
 /** One editable cell: prompt gutter + editor + hover toolbar. */
@@ -30,9 +34,13 @@ export function EditableCell({
   onMove,
   onDuplicate,
   onDelete,
+  runtime,
+  onRun,
 }: EditableCellProps) {
   const isCode = cell.cellType === "code"
-  const prompt = isCode ? `In [${cell.executionCount ?? " "}]:` : ""
+  const prompt = isCode
+    ? `In [${runtime?.running ? "*" : (runtime?.executionCount ?? cell.executionCount ?? " ")}]:`
+    : ""
 
   return (
     <div
@@ -72,7 +80,7 @@ export function EditableCell({
         )}
         onClick={(e) => e.stopPropagation()}
       >
-        <IconButton label="Run (kernel: Phase 3)" disabled>
+        <IconButton label="Run cell" disabled={!isCode || !onRun || runtime?.running} onClick={onRun}>
           <Play className="size-3.5" />
         </IconButton>
         <IconButton
@@ -94,6 +102,11 @@ export function EditableCell({
           <Trash2 className="size-3.5" />
         </IconButton>
       </div>
+      {isCode && runtime && runtime.outputs.length > 0 && (
+        <div className="absolute top-full right-0 left-16 z-10 space-y-2 rounded-b-md border border-t-0 bg-background p-3 shadow-sm">
+          {runtime.outputs.map((output, index) => <OutputRenderer key={index} output={output} />)}
+        </div>
+      )}
     </div>
   )
 }

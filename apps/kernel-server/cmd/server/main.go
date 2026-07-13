@@ -35,7 +35,12 @@ func main() {
 
 	containerRuntime := runtime.NewDockerRuntime(nil, runtime.DefaultImages())
 	if err := containerRuntime.RemoveStaleContainers(processCtx); err != nil {
-		log.Fatalf("reconcile notebook containers: %v", err)
+		// Keep local notebook editing available when Docker Desktop is stopped.
+		// Production has no dev auth bypass, so a missing sandbox runtime remains fatal.
+		if cfg.DevAuthRole == "" {
+			log.Fatalf("reconcile notebook containers: %v", err)
+		}
+		log.Printf("sandbox runtime unavailable; notebook execution disabled: %v", err)
 	}
 	sessionManager := sessions.NewManager(sessions.Options{
 		MaxSessions: cfg.JupyterMaxSessions,

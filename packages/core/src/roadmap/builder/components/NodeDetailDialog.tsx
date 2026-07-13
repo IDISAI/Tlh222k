@@ -64,6 +64,27 @@ export function nodeNavigationUrl(
   return null
 }
 
+/** Host rewrites remove zone prefixes before child Next apps render. */
+export function zoneAwareNodeNavigationUrl(
+  node: RoadmapNode,
+  notebookBasePath: string,
+  pathname: string
+): string | null {
+  const zone = pathname === "/admin" || pathname.startsWith("/admin/")
+    ? "/admin"
+    : pathname === "/super-admin" || pathname.startsWith("/super-admin/")
+      ? "/super-admin"
+      : ""
+  const base = zone && !notebookBasePath.startsWith(`${zone}/`)
+    ? `${zone}${notebookBasePath}`
+    : notebookBasePath
+  const target = nodeNavigationUrl(node, base)
+  if (!zone || !target?.startsWith("/") || target.startsWith(`${zone}/`)) {
+    return target
+  }
+  return `${zone}${target}`
+}
+
 /**
  * NodeDetail panel — full node info shown as a right-side slide-in sidebar (not
  * a centered dialog) on double-click, with the three actions Chỉnh sửa / Xóa /
@@ -103,7 +124,9 @@ export function NodeDetailDialog({
     if (isExternal) {
       window.open(navUrl, "_blank", "noopener,noreferrer")
     } else {
-      window.location.assign(navUrl)
+      window.location.assign(
+        zoneAwareNodeNavigationUrl(node, notebookBasePath, window.location.pathname) ?? navUrl
+      )
     }
   }
 

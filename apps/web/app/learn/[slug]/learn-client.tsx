@@ -1,8 +1,14 @@
 "use client"
 
-import { useCallback, useState } from "react"
+import { useMemo, useState } from "react"
+import { useAuth, useClerk } from "@clerk/nextjs"
 
-import { ExerciseView, NotebookView, type Notebook } from "@workspace/core"
+import {
+  InteractiveNotebook,
+  JupyterSandboxAdapter,
+  SandboxSessionClient,
+  type Notebook,
+} from "@workspace/core"
 import {
   Tabs,
   TabsContent,
@@ -21,12 +27,20 @@ interface LearnClientProps {
 /** /learn/[slug]: Kaggle-Learn-style Tutorial | Exercise tab pair. */
 export function LearnClient({ tutorial, exercise }: LearnClientProps) {
   const [tab, setTab] = useState<LearnTab>("tutorial")
-
-  // The web app owns worker bundling; `new URL(..., import.meta.url)` resolves
-  // against this file's directory (where pyodide.worker.ts lives).
-  const createWorker = useCallback(
-    () => new Worker(new URL("./pyodide.worker.ts", import.meta.url)),
-    []
+  const { getToken, isSignedIn } = useAuth()
+  const clerk = useClerk()
+  const kernelUrl = process.env.NEXT_PUBLIC_KERNEL_SERVER_URL
+  const tutorialAdapter = useMemo(
+    () => isSignedIn && kernelUrl
+      ? new JupyterSandboxAdapter(new SandboxSessionClient(kernelUrl, getToken), "data-science")
+      : null,
+    [getToken, isSignedIn, kernelUrl]
+  )
+  const exerciseAdapter = useMemo(
+    () => isSignedIn && kernelUrl && exercise
+      ? new JupyterSandboxAdapter(new SandboxSessionClient(kernelUrl, getToken), "data-science")
+      : null,
+    [exercise, getToken, isSignedIn, kernelUrl]
   )
 
   return (
@@ -44,18 +58,22 @@ export function LearnClient({ tutorial, exercise }: LearnClientProps) {
       </div>
 
       <TabsContent value="tutorial">
-        <NotebookView
+        <InteractiveNotebook
           notebook={tutorial}
-          exerciseTitle={exercise?.title ?? undefined}
-          onStartExercise={
-            exercise !== null ? () => setTab("exercise") : undefined
-          }
+          adapter={tutorialAdapter}
+          signedIn={Boolean(isSignedIn && kernelUrl)}
+          onSignIn={() => void clerk.openSignIn()}
         />
       </TabsContent>
 
       <TabsContent value="exercise">
         {exercise && (
-          <ExerciseView notebook={exercise} createWorker={createWorker} />
+          <InteractiveNotebook
+            notebook={exercise}
+            adapter={exerciseAdapter}
+            signedIn={Boolean(isSignedIn && kernelUrl)}
+            onSignIn={() => void clerk.openSignIn()}
+          />
         )}
       </TabsContent>
     </Tabs>

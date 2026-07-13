@@ -20,6 +20,7 @@
   },
   "dependencies": {
     "@apollo/client": "^3.13.8",
+    "@jupyterlab/services": "^7.6.1",
     "@workspace/ui": "workspace:*",
     "@xyflow/react": "^12",
     "graphql": "^16.10.0",
@@ -27,11 +28,11 @@
     "react-markdown": "^9"
   },
   "devDependencies": {
+    "@testing-library/react": "^16.3.0",
+    "@testing-library/user-event": "^14.6.1",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
-    "@testing-library/react": "^16.3.0",
-    "@testing-library/user-event": "^14.6.1",
     "@workspace/eslint-config": "workspace:*",
     "@workspace/typescript-config": "workspace:*",
     "eslint": "^9",
