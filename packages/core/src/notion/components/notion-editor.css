@@ -9,13 +9,14 @@
  * text, so highlighted and plain code are both readable.
  */
 .bn-container [data-content-type="codeBlock"] {
-  background-color: #f6f5f4; /* Notion canvas-soft */
-  color: #1f2328; /* near-black ink */
-  border: 1px solid #e6e6e6; /* hairline */
+  /* Airbnb tokens (docs/design-system.md): surface-soft / ink / hairline. */
+  background-color: #f7f7f7;
+  color: #222222;
+  border: 1px solid #dddddd;
 }
 
 /* Language picker select sits top-right; BlockNote colors it white for the dark
    surface — flip to dark ink for the light surface. */
 .bn-container [data-content-type="codeBlock"] > div > select {
-  color: #1f2328;
+  color: #222222;
 }
