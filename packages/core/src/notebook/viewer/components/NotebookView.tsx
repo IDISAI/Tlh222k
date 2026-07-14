@@ -3,7 +3,7 @@
 import { useMemo } from "react"
 import { cn } from "@workspace/ui/lib/utils"
 
-import type { Notebook, TocEntry } from "../../types"
+import type { Notebook } from "../../types"
 import { NotebookService } from "../../notebook.service"
 import { useActiveHeading } from "../hooks/useActiveHeading"
 import { CellRenderer } from "./CellRenderer"
@@ -34,17 +34,6 @@ export function NotebookView({
   className,
 }: NotebookViewProps) {
   const toc = useMemo(() => service.extractToc(notebook), [notebook])
-
-  const headingsByCell = useMemo(() => {
-    const map = new Map<string, TocEntry[]>()
-    for (const entry of toc) {
-      const list = map.get(entry.cellId)
-      if (list) list.push(entry)
-      else map.set(entry.cellId, [entry])
-    }
-    return map
-  }, [toc])
-
   const slugs = useMemo(() => toc.map((e) => e.slug), [toc])
   const activeSlug = useActiveHeading(slugs)
 
@@ -60,7 +49,6 @@ export function NotebookView({
           <CellRenderer
             key={cell.id}
             cell={cell}
-            headings={headingsByCell.get(cell.id)}
           />
         ))}
       </article>

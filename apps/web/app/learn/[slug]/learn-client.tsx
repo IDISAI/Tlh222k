@@ -76,8 +76,8 @@ export function LearnClient({ slug, tutorial, exercise }: LearnClientProps) {
           adapter={tutorialAdapter}
           signedIn={Boolean(isSignedIn && kernelUrl)}
           onSignIn={() => void clerk.openSignIn()}
-          exerciseTitle={exercise?.title}
-          onStartExercise={exercise ? () => setTab("exercise") : undefined}
+          exerciseTitle={exercise?.title ?? "Exercise"}
+          onStartExercise={() => setTab("exercise")}
         />
       </TabsContent>
 

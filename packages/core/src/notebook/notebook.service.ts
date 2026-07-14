@@ -81,10 +81,12 @@ export class NotebookService {
 
   /** TOC from markdown-cell headings, in document order. */
   extractToc(notebook: Notebook): TocEntry[] {
-    const slug = createSlugger()
     const entries: TocEntry[] = []
     for (const cell of notebook.cells) {
       if (cell.cellType !== "markdown") continue
+      // Per-cell slugger mirrors MarkdownCell's own ID computation so TOC
+      // anchors always match the rendered heading ids.
+      const slug = createSlugger()
       for (const match of cell.source.matchAll(HEADING_PATTERN)) {
         const text = stripInlineMarkdown(match[2]!)
         entries.push({

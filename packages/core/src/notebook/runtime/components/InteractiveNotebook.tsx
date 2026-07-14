@@ -5,7 +5,7 @@ import { Play, RotateCcw, Square } from "lucide-react"
 import { Button } from "@workspace/ui/components/button"
 
 import type { KernelAdapter } from "../../kernel"
-import type { Notebook, TocEntry } from "../../types"
+import type { Notebook } from "../../types"
 import { NotebookService } from "../../notebook.service"
 import { MarkdownCell } from "../../viewer/components/MarkdownCell"
 import { StartExerciseCard } from "../../viewer/components/StartExerciseCard"
@@ -39,15 +39,6 @@ export function InteractiveNotebook({
   const toc = useMemo(() => service.extractToc(notebook), [notebook])
   const slugs = useMemo(() => toc.map((e) => e.slug), [toc])
   const activeSlug = useActiveHeading(slugs)
-  const headingsByCell = useMemo(() => {
-    const map = new Map<string, TocEntry[]>()
-    for (const entry of toc) {
-      const list = map.get(entry.cellId)
-      if (list) list.push(entry)
-      else map.set(entry.cellId, [entry])
-    }
-    return map
-  }, [toc])
 
   return (
     <div className="mx-auto flex w-full max-w-6xl gap-10 px-4 py-6">
@@ -119,7 +110,6 @@ export function InteractiveNotebook({
                 <MarkdownCell
                   key={cell.id}
                   source={cell.source}
-                  headings={headingsByCell.get(cell.id)}
                 />
               )
             }

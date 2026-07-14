@@ -1,21 +1,19 @@
 "use client"
 
-import type { NotebookCell, TocEntry } from "../../types"
+import type { NotebookCell } from "../../types"
 import { CodeCell } from "./CodeCell"
 import { MarkdownCell } from "./MarkdownCell"
 import { OutputRenderer } from "./OutputRenderer"
 
 export interface CellRendererProps {
   cell: NotebookCell
-  /** TOC entries for this cell's headings (markdown cells only). */
-  headings?: TocEntry[]
 }
 
 /** Dispatches one notebook cell to its renderer. */
-export function CellRenderer({ cell, headings }: CellRendererProps) {
+export function CellRenderer({ cell }: CellRendererProps) {
   switch (cell.cellType) {
     case "markdown":
-      return <MarkdownCell source={cell.source} headings={headings} />
+      return <MarkdownCell source={cell.source} />
     case "code":
       return (
         <div className="space-y-2">

@@ -1,21 +1,41 @@
 "use client"
 
+import { useMemo } from "react"
 import Markdown, { type Components } from "react-markdown"
 
-import type { TocEntry } from "../../types"
+import { createSlugger } from "../../utils/slugify"
+
+// Mirrors NotebookService internals — keep in sync if the pattern changes.
+const HEADING_RE = /^(#{1,6})\s+(.+?)\s*#*\s*$/gm
+function stripMd(text: string): string {
+  return text
+    .replace(/\*\*([^*]+)\*\*/g, "$1")
+    .replace(/\*([^*]+)\*/g, "$1")
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
+    .trim()
+}
 
 interface MarkdownCellProps {
   source: string
-  /** TOC entries for this cell's headings, in source order (anchor ids). */
-  headings?: TocEntry[]
 }
 
 /** Kaggle-Learn-style markdown rendering for tutorial prose. */
-export function MarkdownCell({ source, headings = [] }: MarkdownCellProps) {
-  // Headings render in source order, so a simple queue assigns each rendered
-  // heading the slug the service computed for it (keeps TOC anchors in sync).
+export function MarkdownCell({ source }: MarkdownCellProps) {
+  // Derive heading anchor IDs directly from source with a per-cell slugger —
+  // the same algorithm extractToc uses — so IDs are identical on server and
+  // client regardless of prop serialization across the RSC boundary.
+  const slugs = useMemo(() => {
+    const slug = createSlugger()
+    const result: string[] = []
+    for (const match of source.matchAll(HEADING_RE)) {
+      result.push(slug(stripMd(match[2]!)))
+    }
+    return result
+  }, [source])
+
   let headingIndex = 0
-  const nextSlug = () => headings[headingIndex++]?.slug
+  const nextSlug = () => slugs[headingIndex++]
 
   const components: Components = {
     h1: ({ children }) => (
