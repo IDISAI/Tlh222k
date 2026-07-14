@@ -106,11 +106,23 @@ export function NotebookEditor({
           editor.insert(editor.selectedId, "below", "markdown")
         }
         onDownload={handleDownload}
+        onRunAll={
+          adapter ? () => void runtime.runAll().catch(() => undefined) : undefined
+        }
+        running={runtime.status === "busy" || runtime.status === "starting"}
+        published={editor.meta.published}
+        onTogglePublish={() => editor.setPublished(!editor.meta.published)}
       />
 
       {editor.error && (
         <p role="alert" className="px-4 text-sm text-destructive">
           {editor.error} Changes remain dirty and can be retried.
+        </p>
+      )}
+
+      {runtime.error && (
+        <p role="alert" className="px-4 text-sm text-destructive">
+          {runtime.error}
         </p>
       )}
 
@@ -127,7 +139,9 @@ export function NotebookEditor({
             onDuplicate={() => editor.duplicate(cell.id)}
             onDelete={() => editor.remove(cell.id)}
             runtime={runtime.cells[cell.id]}
-            onRun={cell.cellType === "code" ? () => void runtime.runCell(cell.id) : undefined}
+            onRun={cell.cellType === "code"
+              ? () => void runtime.runCell(cell.id).catch(() => undefined)
+              : undefined}
           />
         ))}
 

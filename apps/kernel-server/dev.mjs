@@ -10,7 +10,11 @@ const commands = [
   {
     command: "pnpm",
     args: ["turbo", "dev"],
-    env: { NEXT_PUBLIC_KERNEL_SERVER_URL: kernelServerUrl },
+    env: {
+      NEXT_PUBLIC_KERNEL_SERVER_URL: kernelServerUrl,
+      NEXT_PUBLIC_DEV_AUTH_ROLE:
+        process.env.NEXT_PUBLIC_DEV_AUTH_ROLE || "super-admin",
+    },
   },
   {
     command: "go",
@@ -18,6 +22,8 @@ const commands = [
     env: {
       SESSION_TICKET_SECRET:
         process.env.SESSION_TICKET_SECRET || "development-only-ticket-secret",
+      // Host-run kernel-server cannot resolve Docker network DNS names.
+      JUPYTER_HOST_PROXY: "1",
     },
   },
 ]

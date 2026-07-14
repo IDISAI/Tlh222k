@@ -39,7 +39,9 @@ services:
     volumes:
       - notebook-metadata:/app/storage/notebooks
       - /var/run/docker.sock:/var/run/docker.sock
-    networks: [notebook-internal]
+    # default (non-internal) carries the published :3006; runtime containers
+    # join only notebook-internal and stay offline.
+    networks: [notebook-internal, default]
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3006/health"]
       interval: 5s

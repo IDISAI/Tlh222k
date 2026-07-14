@@ -11,6 +11,18 @@ export function normalizeRole(raw: unknown): UserRole {
   return v === "admin" || v === "super-admin" ? v : "viewer"
 }
 
+/** Resolve the explicit local-development auth bypass. Never active in production. */
+export function devAuthRole(
+  nodeEnv: string | undefined,
+  raw: string | undefined
+): UserRole | null {
+  if (nodeEnv === "production" || typeof raw !== "string") return null
+  const value = raw.trim().toLowerCase().replace(/_/g, "-")
+  return value === "viewer" || value === "admin" || value === "super-admin"
+    ? value
+    : null
+}
+
 type RoleClaims =
   | {
       metadata?: { role?: unknown }

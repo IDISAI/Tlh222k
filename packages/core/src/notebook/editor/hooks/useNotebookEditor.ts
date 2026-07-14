@@ -35,6 +35,8 @@ export interface NotebookEditorApi {
   /** The current notebook snapshot (for download / serialize). */
   snapshot: () => Notebook
   meta: NotebookMeta
+  /** Publish/unpublish for the public web viewer (/learn). */
+  setPublished: (published: boolean) => void
 }
 
 const AUTOSAVE_MS = 1200
@@ -143,5 +145,7 @@ export function useNotebookEditor(
       patchCells(moveCell(record.notebook.cells, id, direction)),
     snapshot: () => record.notebook,
     meta: record.meta,
+    setPublished: (published) =>
+      markDirty({ ...record, meta: { ...record.meta, published } }),
   }
 }

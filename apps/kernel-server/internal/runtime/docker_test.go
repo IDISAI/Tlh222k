@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"context"
+	"errors"
 	"slices"
 	"strings"
 	"testing"
@@ -14,14 +15,65 @@ type recordedCommand struct {
 	args []string
 }
 
+func TestDockerRuntimeStopsContainerWhenJupyterReadinessFails(t *testing.T) {
+	runner := &recordingRunner{output: []byte("container-1\n")}
+	runtime := NewDockerRuntime(runner, Images{DataScience: "data-image"}, WithReadyCheck(func(context.Context, string, string) error {
+		return errors.New("not ready")
+	}))
+
+	_, err := runtime.Start(context.Background(), sessions.StartRequest{
+		SessionID: "session-1", Profile: "data-science", CPU: "1", Memory: "2g", Pids: 128, Network: "notebook-internal",
+	})
+	if err == nil || !strings.Contains(err.Error(), "wait for Jupyter runtime: not ready") {
+		t.Fatalf("start error = %v, want readiness error", err)
+	}
+	if len(runner.commands) != 2 {
+		t.Fatalf("commands = %d, want docker run then cleanup", len(runner.commands))
+	}
+	if command := runner.commands[1]; command.name != "docker" || !slices.Equal(command.args, []string{"rm", "--force", "container-1"}) {
+		t.Fatalf("cleanup command = %q %#v, want docker rm --force container-1", command.name, command.args)
+	}
+}
+
+func TestDockerRuntimeUsesLoopbackPortForHostDevelopment(t *testing.T) {
+	runner := &recordingRunner{outputs: [][]byte{[]byte("container-1\n"), []byte("127.0.0.1:49152\n")}}
+	runtime := NewDockerRuntime(runner, Images{DataScience: "data-image"}, WithHostProxy(), WithReadyCheck(func(_ context.Context, endpoint, _ string) error {
+		if endpoint != "http://127.0.0.1:49152" {
+			return errors.New("unexpected endpoint " + endpoint)
+		}
+		return nil
+	}))
+
+	_, err := runtime.Start(context.Background(), sessions.StartRequest{
+		SessionID: "session-1", Profile: "data-science", CPU: "1", Memory: "2g", Pids: 128, Network: "notebook-internal",
+	})
+	if err != nil {
+		t.Fatalf("start runtime: %v", err)
+	}
+	if !slices.Contains(runner.commands[0].args, "--publish") || !slices.Contains(runner.commands[0].args, "127.0.0.1::8888") {
+		t.Fatalf("docker run args = %#v, want loopback publish", runner.commands[0].args)
+	}
+	if slices.Contains(runner.commands[0].args, "--network") {
+		t.Fatalf("docker run args = %#v, dev host proxy must use Docker's publishable default bridge", runner.commands[0].args)
+	}
+	if len(runner.commands) != 2 || !slices.Equal(runner.commands[1].args, []string{"port", "container-1", "8888/tcp"}) {
+		t.Fatalf("port command = %#v, want docker port", runner.commands)
+	}
+}
+
 type recordingRunner struct {
 	commands []recordedCommand
 	output   []byte
+	outputs  [][]byte
 	err      error
 }
 
 func (r *recordingRunner) Run(_ context.Context, name string, args ...string) ([]byte, error) {
+	index := len(r.commands)
 	r.commands = append(r.commands, recordedCommand{name: name, args: slices.Clone(args)})
+	if index < len(r.outputs) {
+		return r.outputs[index], r.err
+	}
 	return r.output, r.err
 }
 
@@ -30,7 +82,7 @@ func TestDockerRuntimeStartUsesLockedDownRunArguments(t *testing.T) {
 	runtime := NewDockerRuntime(runner, Images{
 		DataScience: "local/notebook-data-science:dev",
 		MLCPU:       "local/notebook-ml-cpu:dev",
-	})
+	}, WithReadyCheck(func(context.Context, string, string) error { return nil }))
 
 	handle, err := runtime.Start(context.Background(), sessions.StartRequest{
 		SessionID: "session-1",
@@ -52,8 +104,13 @@ func TestDockerRuntimeStartUsesLockedDownRunArguments(t *testing.T) {
 	}
 	wantPrefix := []string{
 		"run", "--detach", "--network", "notebook-internal", "--read-only",
-		"--tmpfs", "/tmp:rw,noexec,nosuid,size=256m",
-		"--tmpfs", "/home/jovyan:rw,nosuid,size=512m",
+		"--tmpfs", "/tmp:rw,noexec,nosuid,size=256m,mode=1777",
+		"--tmpfs", "/home/jovyan/.cache:rw,nosuid,size=256m,mode=1777",
+		"--tmpfs", "/home/jovyan/.config:rw,nosuid,size=128m,mode=1777",
+		"--tmpfs", "/home/jovyan/.ipython:rw,nosuid,size=128m,mode=1777",
+		"--tmpfs", "/home/jovyan/.jupyter:rw,nosuid,size=128m,mode=1777",
+		"--tmpfs", "/home/jovyan/.local:rw,nosuid,size=256m,mode=1777",
+		"--tmpfs", "/home/jovyan/work:rw,nosuid,size=512m,mode=1777",
 		"--cap-drop", "ALL", "--security-opt", "no-new-privileges",
 		"--pids-limit", "128", "--cpus", "1", "--memory", "2g",
 		"--user", "1000:100", "--label", "notebook.session=session-1",

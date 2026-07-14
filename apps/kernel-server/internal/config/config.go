@@ -27,6 +27,10 @@ type Config struct {
 	JupyterSessionMemory string
 	JupyterSessionPIDs   int
 	JupyterDockerNetwork string
+	// Publish runtime containers on host loopback instead of joining the Docker
+	// network. Only for kernel-server running directly on the host (local dev);
+	// containerized kernel-server must leave this unset.
+	JupyterHostProxy bool
 }
 
 func getenv(key, fallback string) string {
@@ -64,5 +68,6 @@ func Load() Config {
 		JupyterSessionMemory: getenv("JUPYTER_SESSION_MEMORY", "2g"),
 		JupyterSessionPIDs:   getenvPositiveInt("JUPYTER_SESSION_PIDS", 128),
 		JupyterDockerNetwork: getenv("JUPYTER_DOCKER_NETWORK", "notebook-internal"),
+		JupyterHostProxy:     os.Getenv("JUPYTER_HOST_PROXY") == "1",
 	}
 }

@@ -33,7 +33,11 @@ func main() {
 		log.Fatalf("store: %v", err)
 	}
 
-	containerRuntime := runtime.NewDockerRuntime(nil, runtime.DefaultImages())
+	runtimeOptions := []runtime.DockerRuntimeOption{}
+	if cfg.JupyterHostProxy {
+		runtimeOptions = append(runtimeOptions, runtime.WithHostProxy())
+	}
+	containerRuntime := runtime.NewDockerRuntime(nil, runtime.DefaultImages(), runtimeOptions...)
 	if err := containerRuntime.RemoveStaleContainers(processCtx); err != nil {
 		// Keep local notebook editing available when Docker Desktop is stopped.
 		// Production has no dev auth bypass, so a missing sandbox runtime remains fatal.

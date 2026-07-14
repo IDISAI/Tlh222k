@@ -9,6 +9,7 @@ import {
   SandboxSessionClient,
   type Notebook,
 } from "@workspace/core"
+import { devAuthRole } from "@workspace/core/navigation/role"
 import {
   Tabs,
   TabsContent,
@@ -27,9 +28,13 @@ interface LearnClientProps {
 /** /learn/[slug]: Kaggle-Learn-style Tutorial | Exercise tab pair. */
 export function LearnClient({ tutorial, exercise }: LearnClientProps) {
   const [tab, setTab] = useState<LearnTab>("tutorial")
-  const { getToken, isSignedIn } = useAuth()
+  const { getToken, isSignedIn: clerkSignedIn } = useAuth()
   const clerk = useClerk()
   const kernelUrl = process.env.NEXT_PUBLIC_KERNEL_SERVER_URL
+  // Dev-only bypass mirrors the server side: kernel-server skips JWT checks too.
+  const isSignedIn =
+    clerkSignedIn ||
+    Boolean(devAuthRole(process.env.NODE_ENV, process.env.NEXT_PUBLIC_DEV_AUTH_ROLE))
   const tutorialAdapter = useMemo(
     () => isSignedIn && kernelUrl
       ? new JupyterSandboxAdapter(new SandboxSessionClient(kernelUrl, getToken), "data-science")

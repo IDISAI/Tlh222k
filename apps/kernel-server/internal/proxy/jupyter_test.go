@@ -88,6 +88,38 @@ func TestProxyStripsClientTicketAndInjectsJupyterToken(t *testing.T) {
 	}
 }
 
+func TestProxyStripsUpstreamCORSHeaders(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Tornado reflects the request Origin; the middleware already sets CORS.
+		w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3002")
+		w.Header().Set("Access-Control-Allow-Credentials", "true")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer upstream.Close()
+
+	manager, session := newTestManager(t, upstream.URL)
+	tickets := NewTickets([]byte("test-secret"), time.Now)
+	ticket, _, err := tickets.Issue(session.ID, session.Owner)
+	if err != nil {
+		t.Fatalf("issue ticket: %v", err)
+	}
+	server := proxyServer(t, manager, tickets)
+	defer server.Close()
+
+	requestURL := fmt.Sprintf("%s/api/sessions/%s/jupyter/api/status?ticket=%s", server.URL, session.ID, url.QueryEscape(ticket))
+	response, err := http.Get(requestURL)
+	if err != nil {
+		t.Fatalf("proxy request: %v", err)
+	}
+	defer response.Body.Close()
+	if got := response.Header.Values("Access-Control-Allow-Origin"); len(got) != 0 {
+		t.Fatalf("Access-Control-Allow-Origin = %v, want stripped from upstream response", got)
+	}
+	if got := response.Header.Values("Access-Control-Allow-Credentials"); len(got) != 0 {
+		t.Fatalf("Access-Control-Allow-Credentials = %v, want stripped from upstream response", got)
+	}
+}
+
 func TestWebSocketRelayPreservesBinaryMessage(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if got := r.Header.Get("Authorization"); got != "token internal-jupyter-token" {

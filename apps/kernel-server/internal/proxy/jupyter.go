@@ -117,6 +117,16 @@ func (p *Jupyter) serveHTTP(w http.ResponseWriter, r *http.Request, session sess
 		request.Host = upstream.Host
 		request.Header.Set("Authorization", "token "+session.Handle.Token)
 	}
+	// Tornado reflects CORS headers; kernel-server's CORS middleware already
+	// set them, and duplicates make the browser reject the response.
+	proxy.ModifyResponse = func(response *http.Response) error {
+		for header := range response.Header {
+			if strings.HasPrefix(header, "Access-Control-") {
+				response.Header.Del(header)
+			}
+		}
+		return nil
+	}
 	proxy.ServeHTTP(w, r)
 }
 

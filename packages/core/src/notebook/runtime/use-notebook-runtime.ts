@@ -17,7 +17,25 @@ export function useNotebookRuntime(notebook: Notebook, adapter: KernelAdapter | 
   const [status, setStatus] = useState<KernelStatus>(adapter?.status ?? "uninitialized")
   const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => setCells(initialCells(notebook)), [notebook])
+  // Merge instead of reset: the editor re-snapshots on every keystroke, and a
+  // full reset would wipe outputs of already-executed cells.
+  useEffect(() => {
+    setCells((current) =>
+      Object.fromEntries(
+        notebook.cells.map((cell) => [
+          cell.id,
+          current[cell.id]
+            ? { ...current[cell.id]!, source: cell.source }
+            : {
+                source: cell.source,
+                outputs: cell.outputs,
+                executionCount: cell.executionCount,
+                running: false,
+              },
+        ])
+      )
+    )
+  }, [notebook])
   useEffect(() => {
     setStatus(adapter?.status ?? "uninitialized")
     return adapter?.subscribeStatus(setStatus)

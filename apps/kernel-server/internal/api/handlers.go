@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"time"
 
@@ -87,6 +88,7 @@ func (h *Handler) createSession(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, http.StatusTooManyRequests, err)
 			return
 		}
+		log.Printf("create notebook session: %v", err)
 		writeErr(w, http.StatusInternalServerError, errors.New("session unavailable"))
 		return
 	}

@@ -1,5 +1,6 @@
 "use client"
 
+import { useEffect, useState } from "react"
 import { AlertTriangle, Eraser, ExternalLink, PencilLine } from "lucide-react"
 import { Badge } from "@workspace/ui/components/badge"
 import { Button } from "@workspace/ui/components/button"
@@ -100,6 +101,12 @@ export function NodeDetailDialog({
   readOnly = false,
   notebookBasePath = "/learn",
 }: NodeDetailDialogProps) {
+  const [pathname, setPathname] = useState<string | null>(null)
+
+  useEffect(() => {
+    setPathname(window.location.pathname)
+  }, [])
+
   if (!node) return null
 
   const Icon = NODE_TYPE_ICONS[node.nodeType]
@@ -108,6 +115,9 @@ export function NodeDetailDialog({
     : null
   const childCount = childrenOf(nodes, node.id).length
   const navUrl = nodeNavigationUrl(node, notebookBasePath)
+  const resolvedNavUrl = pathname
+    ? (zoneAwareNodeNavigationUrl(node, notebookBasePath, pathname) ?? navUrl)
+    : navUrl
   const isArticle = node.nodeType === "article"
   const canNavigate = navUrl !== null && node.nodeType !== "chapter"
   // Same-origin routes (role/skill, internal notebook) stay in this zone;
@@ -164,15 +174,15 @@ export function NodeDetailDialog({
           {isArticle && (
             <div className="space-y-1">
               <Label>Tài liệu</Label>
-              {navUrl ? (
+              {resolvedNavUrl ? (
                 <a
-                  href={navUrl}
+                  href={resolvedNavUrl}
                   {...(isExternal
                     ? { target: "_blank", rel: "noopener noreferrer" }
                     : {})}
                   className="block truncate text-xs text-primary underline underline-offset-2"
                 >
-                  {navUrl}
+                  {resolvedNavUrl}
                 </a>
               ) : (
                 <p className="flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-400">
