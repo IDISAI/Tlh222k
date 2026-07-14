@@ -24,6 +24,8 @@ interface EditableCellProps {
   onDelete: () => void
   runtime?: RuntimeCellState
   onRun?: () => void
+  /** Shift+Enter: run then focus the next cell (Colab behavior). */
+  onRunAdvance?: () => void
 }
 
 /** One editable cell, Colab-style: run gutter + editor + hover toolbar. */
@@ -39,6 +41,7 @@ export function EditableCell({
   onDelete,
   runtime,
   onRun,
+  onRunAdvance,
 }: EditableCellProps) {
   const isCode = cell.cellType === "code"
 
@@ -70,6 +73,8 @@ export function EditableCell({
               source={cell.source}
               onChange={onChange}
               onFocus={onSelect}
+              onRun={onRun}
+              onRunAdvance={onRunAdvance}
             />
           ) : (
             <MarkdownCellEditor

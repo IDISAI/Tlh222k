@@ -1,7 +1,7 @@
 "use client"
 
-import { useMemo } from "react"
-import { Plus } from "lucide-react"
+import { Fragment, useMemo } from "react"
+import { Code2, FileText, Plus } from "lucide-react"
 import { Button } from "@workspace/ui/components/button"
 import { Skeleton } from "@workspace/ui/components/skeleton"
 
@@ -112,6 +112,13 @@ export function NotebookEditor({
         running={runtime.status === "busy" || runtime.status === "starting"}
         published={editor.meta.published}
         onTogglePublish={() => editor.setPublished(!editor.meta.published)}
+        kernelStatus={adapter ? runtime.status : undefined}
+        onInterrupt={
+          adapter ? () => void runtime.interrupt().catch(() => undefined) : undefined
+        }
+        onRestart={
+          adapter ? () => void runtime.restart().catch(() => undefined) : undefined
+        }
       />
 
       {editor.error && (
@@ -126,37 +133,86 @@ export function NotebookEditor({
         </p>
       )}
 
-      <div className="mx-auto w-full max-w-4xl flex-1 space-y-2 overflow-y-auto p-4">
-        {editor.cells.map((cell) => (
-          <EditableCell
-            key={cell.id}
-            cell={cell}
-            selected={editor.selectedId === cell.id}
-            onSelect={() => editor.select(cell.id)}
-            onDeselect={() => editor.select(null)}
-            onChange={(source) => editor.edit(cell.id, source)}
-            onToggleType={(type) => editor.setType(cell.id, type)}
-            onMove={(direction) => editor.move(cell.id, direction)}
-            onDuplicate={() => editor.duplicate(cell.id)}
-            onDelete={() => editor.remove(cell.id)}
-            runtime={runtime.cells[cell.id]}
-            onRun={cell.cellType === "code"
-              ? () => void runtime.runCell(cell.id).catch(() => undefined)
-              : undefined}
-          />
+      <div className="mx-auto w-full max-w-4xl flex-1 overflow-y-auto p-4">
+        {editor.cells.map((cell, index) => (
+          <Fragment key={cell.id}>
+            <EditableCell
+              cell={cell}
+              selected={editor.selectedId === cell.id}
+              onSelect={() => editor.select(cell.id)}
+              onDeselect={() => editor.select(null)}
+              onChange={(source) => editor.edit(cell.id, source)}
+              onToggleType={(type) => editor.setType(cell.id, type)}
+              onMove={(direction) => editor.move(cell.id, direction)}
+              onDuplicate={() => editor.duplicate(cell.id)}
+              onDelete={() => editor.remove(cell.id)}
+              runtime={runtime.cells[cell.id]}
+              onRun={cell.cellType === "code"
+                ? () => void runtime.runCell(cell.id).catch(() => undefined)
+                : undefined}
+              onRunAdvance={cell.cellType === "code"
+                ? () => {
+                    void runtime.runCell(cell.id).catch(() => undefined)
+                    const next = editor.cells[index + 1]
+                    if (next) editor.select(next.id)
+                    else editor.insert(cell.id, "below", "code")
+                  }
+                : undefined}
+            />
+            <CellInsertDivider
+              onAddCode={() => editor.insert(cell.id, "below", "code")}
+              onAddMarkdown={() => editor.insert(cell.id, "below", "markdown")}
+            />
+          </Fragment>
         ))}
 
-        <div className="flex justify-center pt-2">
-          <Button
-            type="button"
-            size="sm"
-            variant="ghost"
-            onClick={() => editor.insert(null, "below", "code")}
-          >
-            <Plus className="size-4" /> Thêm cell
-          </Button>
-        </div>
+        {editor.cells.length === 0 && (
+          <div className="flex justify-center pt-2">
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              onClick={() => editor.insert(null, "below", "code")}
+            >
+              <Plus className="size-4" /> Thêm cell
+            </Button>
+          </div>
+        )}
       </div>
+    </div>
+  )
+}
+
+/** Hover zone between cells with Colab's "+ Code / + Text" quick-insert. */
+function CellInsertDivider({
+  onAddCode,
+  onAddMarkdown,
+}: {
+  onAddCode: () => void
+  onAddMarkdown: () => void
+}) {
+  return (
+    <div className="flex h-8 items-center justify-center gap-2 opacity-0 transition-opacity focus-within:opacity-100 hover:opacity-100">
+      <div className="h-px flex-1 bg-border" />
+      <Button
+        type="button"
+        size="sm"
+        variant="outline"
+        className="h-6 rounded-full px-2 text-xs"
+        onClick={onAddCode}
+      >
+        <Code2 className="size-3" /> Code
+      </Button>
+      <Button
+        type="button"
+        size="sm"
+        variant="outline"
+        className="h-6 rounded-full px-2 text-xs"
+        onClick={onAddMarkdown}
+      >
+        <FileText className="size-3" /> Text
+      </Button>
+      <div className="h-px flex-1 bg-border" />
     </div>
   )
 }

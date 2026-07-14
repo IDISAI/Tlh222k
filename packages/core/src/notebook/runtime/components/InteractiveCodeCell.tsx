@@ -28,7 +28,12 @@ export function InteractiveCodeCell({
       </div>
       <div className="min-w-0 flex-1">
         <div className="rounded-md border bg-muted/40 transition-colors focus-within:border-primary focus-within:ring-1 focus-within:ring-primary/30">
-          <CodeCellEditor source={cell.source} onChange={onChange} />
+          <CodeCellEditor
+            source={cell.source}
+            onChange={onChange}
+            onRun={disabled ? undefined : onRun}
+            onRunAdvance={disabled ? undefined : onRun}
+          />
         </div>
         {cell.outputs.length > 0 && (
           <div className="space-y-2 px-3 py-2">

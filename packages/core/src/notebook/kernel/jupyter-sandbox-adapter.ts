@@ -32,6 +32,9 @@ export class JupyterSandboxAdapter implements KernelAdapter {
   private startPromise: Promise<void> | null = null
   private statusValue: KernelStatus = "uninitialized"
   private readonly subscribers = new Set<(status: KernelStatus) => void>()
+  // Cells queue like Colab instead of rejecting while another one runs.
+  private queue: Promise<unknown> = Promise.resolve()
+  private disposed = false
 
   constructor(
     private readonly client: SessionClient,
@@ -58,13 +61,37 @@ export class JupyterSandboxAdapter implements KernelAdapter {
     return this.startPromise
   }
 
-  async execute(
+  execute(
     code: string,
     callbacks: ExecuteCallbacks = {}
   ): Promise<ExecuteResult> {
+    const task = this.queue.then(() => this.runExecution(code, callbacks))
+    this.queue = task.catch(() => undefined)
+    return task
+  }
+
+  private async runExecution(
+    code: string,
+    callbacks: ExecuteCallbacks
+  ): Promise<ExecuteResult> {
+    try {
+      return await this.executeOnce(code, callbacks)
+    } catch (error) {
+      // A dead sandbox (idle-reaped, docker restart, dropped WebSocket) is
+      // recoverable: reconnect once with a fresh session, Colab-style.
+      if (this.disposed || this.connectionHealthy()) throw error
+      this.resetConnection()
+      return this.executeOnce(code, callbacks)
+    }
+  }
+
+  private async executeOnce(
+    code: string,
+    callbacks: ExecuteCallbacks
+  ): Promise<ExecuteResult> {
+    if (this.disposed) throw new Error("Kernel adapter disposed")
     await this.start()
     if (!this.kernel) throw new Error("Jupyter kernel unavailable")
-    if (this.status === "busy") throw new Error("Another cell is running")
 
     this.setStatus("busy")
     const future = this.kernel.requestExecute({ code, stop_on_error: true })
@@ -81,6 +108,26 @@ export class JupyterSandboxAdapter implements KernelAdapter {
     }
   }
 
+  private connectionHealthy(): boolean {
+    return Boolean(
+      this.kernel &&
+        !this.kernel.isDisposed &&
+        this.kernel.connectionStatus === "connected"
+    )
+  }
+
+  /** Drop the broken kernel/session so the next start() dials fresh. */
+  private resetConnection(): void {
+    const session = this.session
+    this.kernel?.dispose()
+    this.manager?.dispose()
+    this.kernel = null
+    this.manager = null
+    this.session = null
+    this.startPromise = null
+    if (session) void this.client.remove(session.id).catch(() => undefined)
+  }
+
   async interrupt(): Promise<void> {
     if (!this.session) return
     await this.client.interrupt(this.session.id)
@@ -95,16 +142,10 @@ export class JupyterSandboxAdapter implements KernelAdapter {
   }
 
   dispose(): void {
-    this.kernel?.dispose()
-    this.manager?.dispose()
-    const session = this.session
-    this.kernel = null
-    this.manager = null
-    this.session = null
-    this.startPromise = null
+    this.disposed = true
+    this.resetConnection()
     this.setStatus("uninitialized")
     this.subscribers.clear()
-    if (session) void this.client.remove(session.id)
   }
 
   private async connect(): Promise<void> {

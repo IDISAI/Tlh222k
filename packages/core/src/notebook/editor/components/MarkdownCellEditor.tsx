@@ -147,6 +147,13 @@ export function MarkdownCellEditor({
           spellCheck={false}
           onFocus={onFocus}
           onChange={(e) => onChange(e.target.value)}
+          onKeyDown={(e) => {
+            // Shift+Enter renders the markdown, like Colab/Jupyter.
+            if (e.key === "Enter" && e.shiftKey) {
+              e.preventDefault()
+              onClose?.()
+            }
+          }}
           className="w-full resize-none bg-transparent px-4 py-3 font-mono text-sm leading-6 outline-none"
           rows={3}
           placeholder="# Markdown"
