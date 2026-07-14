@@ -106,7 +106,11 @@ export function EditableCell({
       <div
         className={cn(
           "absolute right-2 bottom-full z-10 mb-1 items-center gap-0.5 rounded-md border bg-background p-0.5 shadow-sm",
-          selected && isCode ? "flex" : "hidden group-hover:flex"
+          !selected
+              ? "hidden group-hover:flex"
+              : isCode
+                ? "flex"
+                : "hidden" // markdown editing — never show, prevents overlap
         )}
         onClick={(e) => e.stopPropagation()}
       >

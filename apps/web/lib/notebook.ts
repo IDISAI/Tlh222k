@@ -60,5 +60,9 @@ export async function loadExerciseNotebook(
   slug: string
 ): Promise<Notebook | null> {
   if (!SLUG_PATTERN.test(slug)) return null
-  return readNotebook(`${slug}.exercise.ipynb`)
+  // Admin-published exercise wins over committed fixtures.
+  return (
+    (await fetchPublished(`${slug}-exercise`)) ??
+    (await readNotebook(`${slug}.exercise.ipynb`))
+  )
 }

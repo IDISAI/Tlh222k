@@ -30,7 +30,7 @@ export default async function LearnPage({
   // here. External jupyter nodes (Colab URL) never reach /learn.
   if (!tutorial) return <NotebookNotReady slug={slug} />
 
-  return <LearnClient tutorial={tutorial} exercise={exercise} />
+  return <LearnClient slug={slug} tutorial={tutorial} exercise={exercise} />
 }
 
 function NotebookNotReady({ slug }: { slug: string }) {
