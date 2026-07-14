@@ -61,13 +61,20 @@ export function EditableCell({
       <div className="min-w-0 flex-1">
         <div
           className={cn(
-            "rounded-md border transition-colors",
+            "relative overflow-hidden rounded-md border transition-all",
             selected
-              ? "border-primary ring-1 ring-primary/30"
-              : "border-transparent group-hover:border-border",
+              ? "border-primary/50 shadow-md ring-2 ring-primary/15"
+              : "border-transparent group-hover:border-border group-hover:shadow-sm",
             isCode && "bg-muted/40"
           )}
         >
+          {/* Colab-style accent bar on the active cell. */}
+          <span
+            className={cn(
+              "absolute inset-y-0 left-0 z-10 w-1 rounded-r bg-primary transition-opacity",
+              selected ? "opacity-100" : "opacity-0"
+            )}
+          />
           {isCode ? (
             <CodeCellEditor
               source={cell.source}

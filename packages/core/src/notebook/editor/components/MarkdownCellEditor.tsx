@@ -2,6 +2,11 @@
 
 import { useEffect, useRef } from "react"
 import type { ReactNode } from "react"
+import { EditorState, Prec } from "@codemirror/state"
+import { EditorView, keymap, placeholder } from "@codemirror/view"
+import { markdown } from "@codemirror/lang-markdown"
+import { oneDark } from "@codemirror/theme-one-dark"
+import { basicSetup } from "codemirror"
 import {
   Bold,
   Code2,
@@ -27,9 +32,20 @@ interface MarkdownCellEditorProps {
   onClose?: () => void
 }
 
+const editorTheme = EditorView.theme({
+  "&": { backgroundColor: "transparent", fontSize: "13px" },
+  "&.cm-focused": { outline: "none" },
+  ".cm-content": {
+    fontFamily: "var(--font-mono, ui-monospace, monospace)",
+    padding: "10px 0",
+  },
+  ".cm-gutters": { display: "none" },
+  ".cm-line": { padding: "0 16px" },
+})
+
 /**
  * Markdown cell, Colab-style: rendered preview when idle; while editing, a
- * formatting toolbar over a source/live-preview split view.
+ * formatting toolbar over a highlighted source / live-preview split view.
  */
 export function MarkdownCellEditor({
   source,
@@ -38,19 +54,68 @@ export function MarkdownCellEditor({
   onFocus,
   onClose,
 }: MarkdownCellEditorProps) {
-  const ref = useRef<HTMLTextAreaElement>(null)
+  const containerRef = useRef<HTMLDivElement>(null)
+  const viewRef = useRef<EditorView | null>(null)
+  const callbacks = useRef({ onChange, onFocus, onClose })
+  callbacks.current = { onChange, onFocus, onClose }
 
   useEffect(() => {
     if (!editing) return
-    const el = ref.current
-    if (!el) return
-    el.style.height = "auto"
-    el.style.height = `${el.scrollHeight}px`
-  }, [editing, source])
-
-  useEffect(() => {
-    if (editing) ref.current?.focus()
+    const parent = containerRef.current
+    if (!parent) return
+    const extensions = [
+      basicSetup,
+      markdown(),
+      editorTheme,
+      EditorView.lineWrapping,
+      placeholder("# Markdown"),
+      Prec.highest(
+        keymap.of([
+          {
+            key: "Shift-Enter",
+            run: () => {
+              // Shift+Enter renders the markdown, like Colab/Jupyter.
+              callbacks.current.onClose?.()
+              return true
+            },
+          },
+        ])
+      ),
+      EditorView.updateListener.of((update) => {
+        if (update.docChanged) {
+          callbacks.current.onChange(update.state.doc.toString())
+        }
+        if (update.focusChanged && update.view.hasFocus) {
+          callbacks.current.onFocus?.()
+        }
+      }),
+    ]
+    // ponytail: theme picked at mount, same ceiling as CodeCellEditor.
+    if (document.documentElement.classList.contains("dark")) {
+      extensions.push(oneDark)
+    }
+    const view = new EditorView({
+      state: EditorState.create({ doc: source, extensions }),
+      parent,
+    })
+    viewRef.current = view
+    view.focus()
+    return () => {
+      viewRef.current = null
+      view.destroy()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- editor is created per edit session; source updates flow through the effect below
   }, [editing])
+
+  // External source changes (undo/redo, load) replace the document.
+  useEffect(() => {
+    const view = viewRef.current
+    if (!view) return
+    const current = view.state.doc.toString()
+    if (current !== source) {
+      view.dispatch({ changes: { from: 0, to: current.length, insert: source } })
+    }
+  }, [source])
 
   if (!editing) {
     return (
@@ -68,29 +133,30 @@ export function MarkdownCellEditor({
 
   /** Wrap the selection with inline markers, e.g. bold / italic / code. */
   const wrap = (before: string, after: string) => {
-    const el = ref.current
-    if (!el) return
-    const { selectionStart: start, selectionEnd: end, value } = el
-    onChange(
-      value.slice(0, start) + before + value.slice(start, end) + after + value.slice(end)
-    )
-    requestAnimationFrame(() => {
-      el.focus()
-      el.setSelectionRange(start + before.length, end + before.length)
+    const view = viewRef.current
+    if (!view) return
+    const { from, to } = view.state.selection.main
+    view.dispatch({
+      changes: [
+        { from, insert: before },
+        { from: to, insert: after },
+      ],
+      selection: { anchor: from + before.length, head: to + before.length },
     })
+    view.focus()
   }
 
   /** Prefix the current line, e.g. heading / list / quote. */
   const prefixLine = (prefix: string) => {
-    const el = ref.current
-    if (!el) return
-    const { selectionStart: start, value } = el
-    const lineStart = value.lastIndexOf("\n", start - 1) + 1
-    onChange(value.slice(0, lineStart) + prefix + value.slice(lineStart))
-    requestAnimationFrame(() => {
-      el.focus()
-      el.setSelectionRange(start + prefix.length, start + prefix.length)
+    const view = viewRef.current
+    if (!view) return
+    const { head } = view.state.selection.main
+    const line = view.state.doc.lineAt(head)
+    view.dispatch({
+      changes: { from: line.from, insert: prefix },
+      selection: { anchor: head + prefix.length },
     })
+    view.focus()
   }
 
   return (
@@ -141,23 +207,7 @@ export function MarkdownCellEditor({
       </div>
 
       <div className="grid md:grid-cols-2 md:divide-x">
-        <textarea
-          ref={ref}
-          value={source}
-          spellCheck={false}
-          onFocus={onFocus}
-          onChange={(e) => onChange(e.target.value)}
-          onKeyDown={(e) => {
-            // Shift+Enter renders the markdown, like Colab/Jupyter.
-            if (e.key === "Enter" && e.shiftKey) {
-              e.preventDefault()
-              onClose?.()
-            }
-          }}
-          className="w-full resize-none bg-transparent px-4 py-3 font-mono text-sm leading-6 outline-none"
-          rows={3}
-          placeholder="# Markdown"
-        />
+        <div ref={containerRef} className="cm-cell min-w-0" />
         <div className="hidden min-w-0 px-4 py-3 md:block">
           {source.trim() ? (
             <MarkdownCell source={source} />

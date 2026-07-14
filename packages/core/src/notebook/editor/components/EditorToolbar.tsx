@@ -1,6 +1,19 @@
 "use client"
 
-import { Code2, Download, FileText, Globe, Play, Square, RotateCcw } from "lucide-react"
+import { useState } from "react"
+import {
+  Check,
+  Code2,
+  Download,
+  FileText,
+  Globe,
+  Link2,
+  Play,
+  Redo2,
+  RotateCcw,
+  Square,
+  Undo2,
+} from "lucide-react"
 import { Button } from "@workspace/ui/components/button"
 import { cn } from "@workspace/ui/lib/utils"
 
@@ -17,9 +30,15 @@ interface EditorToolbarProps {
   running?: boolean
   published: boolean
   onTogglePublish: () => void
+  /** Public viewer URL shown/copied once published. */
+  learnUrl?: string
   kernelStatus?: KernelStatus
   onInterrupt?: () => void
   onRestart?: () => void
+  onUndo?: () => void
+  onRedo?: () => void
+  canUndo?: boolean
+  canRedo?: boolean
 }
 
 const SAVE_LABEL: Record<SaveState, string> = {
@@ -47,10 +66,35 @@ export function EditorToolbar({
   running,
   published,
   onTogglePublish,
+  learnUrl,
   kernelStatus,
   onInterrupt,
   onRestart,
+  onUndo,
+  onRedo,
+  canUndo,
+  canRedo,
 }: EditorToolbarProps) {
+  const [copied, setCopied] = useState(false)
+
+  const copyLearnUrl = () => {
+    if (!learnUrl) return
+    const markCopied = () => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    }
+    void navigator.clipboard.writeText(learnUrl).then(markCopied, () => {
+      // Clipboard API needs focus + permission; textarea copy works everywhere.
+      const el = document.createElement("textarea")
+      el.value = learnUrl
+      document.body.appendChild(el)
+      el.select()
+      document.execCommand("copy")
+      el.remove()
+      markCopied()
+    })
+  }
+
   return (
     <div className="flex flex-wrap items-center gap-2 border-b px-4 py-2">
       <Button type="button" size="sm" variant="outline" onClick={onAddCode}>
@@ -58,6 +102,31 @@ export function EditorToolbar({
       </Button>
       <Button type="button" size="sm" variant="outline" onClick={onAddMarkdown}>
         <FileText className="size-4" /> Markdown
+      </Button>
+
+      <div className="mx-1 h-5 w-px bg-border" />
+
+      <Button
+        type="button"
+        size="icon-sm"
+        variant="ghost"
+        disabled={!canUndo}
+        title="Hoàn tác (Ctrl+Z)"
+        aria-label="Hoàn tác"
+        onClick={onUndo}
+      >
+        <Undo2 className="size-4" />
+      </Button>
+      <Button
+        type="button"
+        size="icon-sm"
+        variant="ghost"
+        disabled={!canRedo}
+        title="Làm lại (Ctrl+Shift+Z)"
+        aria-label="Làm lại"
+        onClick={onRedo}
+      >
+        <Redo2 className="size-4" />
       </Button>
 
       <div className="mx-1 h-5 w-px bg-border" />
@@ -113,6 +182,25 @@ export function EditorToolbar({
         <span className="text-xs text-muted-foreground">
           {SAVE_LABEL[saveState]}
         </span>
+        {published && learnUrl && (
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            title={learnUrl}
+            onClick={copyLearnUrl}
+          >
+            {copied ? (
+              <>
+                <Check className="size-4 text-green-600" /> Đã copy
+              </>
+            ) : (
+              <>
+                <Link2 className="size-4" /> Copy link
+              </>
+            )}
+          </Button>
+        )}
         <Button
           type="button"
           size="sm"

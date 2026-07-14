@@ -37,7 +37,14 @@ export interface NotebookEditorApi {
   meta: NotebookMeta
   /** Publish/unpublish for the public web viewer (/learn). */
   setPublished: (published: boolean) => void
+  undo: () => void
+  redo: () => void
+  canUndo: boolean
+  canRedo: boolean
 }
+
+/** Consecutive source edits of the same cell coalesce into one history entry. */
+const HISTORY_LIMIT = 100
 
 const AUTOSAVE_MS = 1200
 
@@ -93,8 +100,15 @@ export function useNotebookEditor(
     }
   }, [slug, store, initial, defaultTitle])
 
-  // Debounced autosave whenever the notebook becomes dirty.
-  const markDirty = useCallback(
+  // Undo/redo history. Kept in refs (no re-render per keystroke); the
+  // canUndo/canRedo booleans re-render via this counter.
+  const pastRef = useRef<NotebookRecord[]>([])
+  const futureRef = useRef<NotebookRecord[]>([])
+  const lastEditKeyRef = useRef<string | null>(null)
+  const [historyVersion, setHistoryVersion] = useState(0)
+
+  // Debounced autosave for any record change (edits, undo, redo).
+  const scheduleSave = useCallback(
     (next: NotebookRecord) => {
       setRecord(next)
       setError(null)
@@ -113,6 +127,52 @@ export function useNotebookEditor(
     [slug, store]
   )
 
+  /**
+   * Record a change. `editKey` (e.g. `edit:<cellId>`) coalesces consecutive
+   * keystrokes in one cell into a single undo step; structural changes pass
+   * no key and always get their own step.
+   */
+  const markDirty = useCallback(
+    (next: NotebookRecord, editKey?: string) => {
+      setRecord((current) => {
+        if (!editKey || editKey !== lastEditKeyRef.current) {
+          pastRef.current.push(current)
+          if (pastRef.current.length > HISTORY_LIMIT) pastRef.current.shift()
+        }
+        return current
+      })
+      lastEditKeyRef.current = editKey ?? null
+      futureRef.current = []
+      setHistoryVersion((v) => v + 1)
+      scheduleSave(next)
+    },
+    [scheduleSave]
+  )
+
+  const undo = useCallback(() => {
+    const previous = pastRef.current.pop()
+    if (!previous) return
+    setRecord((current) => {
+      futureRef.current.push(current)
+      return current
+    })
+    lastEditKeyRef.current = null
+    setHistoryVersion((v) => v + 1)
+    scheduleSave(previous)
+  }, [scheduleSave])
+
+  const redo = useCallback(() => {
+    const next = futureRef.current.pop()
+    if (!next) return
+    setRecord((current) => {
+      pastRef.current.push(current)
+      return current
+    })
+    lastEditKeyRef.current = null
+    setHistoryVersion((v) => v + 1)
+    scheduleSave(next)
+  }, [scheduleSave])
+
   useEffect(
     () => () => {
       if (timer.current) clearTimeout(timer.current)
@@ -121,8 +181,8 @@ export function useNotebookEditor(
   )
 
   const patchCells = useCallback(
-    (cells: NotebookCell[]) =>
-      markDirty({ ...record, notebook: { ...record.notebook, cells } }),
+    (cells: NotebookCell[], editKey?: string) =>
+      markDirty({ ...record, notebook: { ...record.notebook, cells } }, editKey),
     [record, markDirty]
   )
 
@@ -134,10 +194,13 @@ export function useNotebookEditor(
     saveState,
     error,
     setTitle: (title) =>
-      markDirty({ ...record, notebook: { ...record.notebook, title } }),
+      markDirty(
+        { ...record, notebook: { ...record.notebook, title } },
+        "edit:title"
+      ),
     select: setSelectedId,
     edit: (id, source) =>
-      patchCells(updateSource(record.notebook.cells, id, source)),
+      patchCells(updateSource(record.notebook.cells, id, source), `edit:${id}`),
     setType: (id, type) =>
       patchCells(changeCellType(record.notebook.cells, id, type)),
     insert: (id, where, type) => {
@@ -157,5 +220,10 @@ export function useNotebookEditor(
     meta: record.meta,
     setPublished: (published) =>
       markDirty({ ...record, meta: { ...record.meta, published } }),
+    undo,
+    redo,
+    // historyVersion ties these to the render cycle (refs alone don't).
+    canUndo: historyVersion >= 0 && pastRef.current.length > 0,
+    canRedo: historyVersion >= 0 && futureRef.current.length > 0,
   }
 }

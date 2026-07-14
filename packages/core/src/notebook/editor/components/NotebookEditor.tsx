@@ -36,6 +36,9 @@ const service = new NotebookService()
 // admin editor and the web /learn viewer read/write the same store.
 const KERNEL_SERVER_URL = process.env.NEXT_PUBLIC_KERNEL_SERVER_URL
 
+// Public web zone origin — the copyable /learn link for published notebooks.
+const WEB_URL = process.env.NEXT_PUBLIC_WEB_URL ?? "http://localhost:3000"
+
 /**
  * Colab-style notebook editor (Phase 2): edit markdown/code cells, restructure,
  * autosave. Execution (Run) is disabled until Phase 3 wires a KernelAdapter.
@@ -91,8 +94,33 @@ export function NotebookEditor({
     )
   }
 
+  // Structural undo/redo. CodeMirror and native inputs own their in-field
+  // text history, so only handle the shortcut outside them.
+  const handleHistoryKeys = (e: React.KeyboardEvent) => {
+    if (!(e.ctrlKey || e.metaKey)) return
+    const target = e.target as HTMLElement
+    if (
+      target.closest(".cm-editor") ||
+      target instanceof HTMLTextAreaElement ||
+      target instanceof HTMLInputElement
+    ) {
+      return
+    }
+    if (e.key.toLowerCase() === "z") {
+      e.preventDefault()
+      if (e.shiftKey) editor.redo()
+      else editor.undo()
+    } else if (e.key.toLowerCase() === "y") {
+      e.preventDefault()
+      editor.redo()
+    }
+  }
+
   return (
-    <div className="flex h-[calc(100svh-57px)] flex-col">
+    <div
+      className="flex h-[calc(100svh-57px)] flex-col"
+      onKeyDown={handleHistoryKeys}
+    >
       <div className="px-4 pt-4">
         <input
           value={editor.title}
@@ -115,6 +143,11 @@ export function NotebookEditor({
         running={runtime.status === "busy" || runtime.status === "starting"}
         published={editor.meta.published}
         onTogglePublish={() => editor.setPublished(!editor.meta.published)}
+        learnUrl={`${WEB_URL}/learn/${slug}`}
+        onUndo={editor.undo}
+        onRedo={editor.redo}
+        canUndo={editor.canUndo}
+        canRedo={editor.canRedo}
         kernelStatus={adapter ? runtime.status : undefined}
         onInterrupt={
           adapter ? () => void runtime.interrupt().catch(() => undefined) : undefined
