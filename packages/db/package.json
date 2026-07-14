@@ -15,6 +15,7 @@
     "db:push:sqlite": "prisma db push --schema prisma/schema.prisma",
     "db:push:postgres": "prisma db push --schema prisma/schema.postgres.prisma",
     "seed": "tsx prisma/seed.ts",
+    "seed:ai": "tsx prisma/seed-ai-roadmap.ts",
     "build": "prisma generate --schema prisma/schema.prisma",
     "lint": "eslint",
     "typecheck": "tsc --noEmit"

@@ -174,6 +174,14 @@ func (p *Jupyter) serveWebSocket(w http.ResponseWriter, r *http.Request, session
 	}
 	defer client.CloseNow()
 
+	// Default read limit is 32KB, which drops any display_data larger than
+	// that (a matplotlib PNG easily exceeds it) and kills the kernel channel
+	// mid-execute. Jupyter server itself caps messages at 10MB (Tornado
+	// websocket_max_message_size); 64MB leaves headroom for both directions.
+	const maxKernelMessage = 64 << 20
+	upstream.SetReadLimit(maxKernelMessage)
+	client.SetReadLimit(maxKernelMessage)
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	finished := make(chan struct{}, 2)

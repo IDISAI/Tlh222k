@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"testing"
 	"time"
 
@@ -173,5 +174,53 @@ func TestWebSocketRelayPreservesBinaryMessage(t *testing.T) {
 	}
 	if string(got) != string(want) {
 		t.Fatalf("payload = %v, want %v", got, want)
+	}
+}
+
+// A matplotlib PNG display_data easily exceeds nhooyr's 32KB default read
+// limit; the relay must not drop it (it used to kill the kernel channel).
+func TestWebSocketRelayPreservesLargeMessage(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		connection, err := websocket.Accept(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer connection.CloseNow()
+		connection.SetReadLimit(64 << 20)
+		messageType, payload, err := connection.Read(r.Context())
+		if err != nil {
+			return
+		}
+		_ = connection.Write(r.Context(), messageType, payload)
+	}))
+	defer upstream.Close()
+
+	manager, session := newTestManager(t, upstream.URL)
+	tickets := NewTickets([]byte("test-secret"), time.Now)
+	ticket, _, err := tickets.Issue(session.ID, session.Owner)
+	if err != nil {
+		t.Fatalf("issue ticket: %v", err)
+	}
+	server := proxyServer(t, manager, tickets)
+	defer server.Close()
+
+	wsURL := "ws" + server.URL[len("http"):] + fmt.Sprintf("/api/sessions/%s/jupyter/api/kernels/kernel-1/channels?ticket=%s", session.ID, url.QueryEscape(ticket))
+	connection, _, err := websocket.Dial(context.Background(), wsURL, nil)
+	if err != nil {
+		t.Fatalf("dial proxy websocket: %v", err)
+	}
+	defer connection.CloseNow()
+	connection.SetReadLimit(64 << 20)
+
+	want := strings.Repeat("x", 256<<10) // 256KB, 8x the default limit
+	if err := connection.Write(context.Background(), websocket.MessageText, []byte(want)); err != nil {
+		t.Fatalf("write large message: %v", err)
+	}
+	_, got, err := connection.Read(context.Background())
+	if err != nil {
+		t.Fatalf("read large message: %v", err)
+	}
+	if len(got) != len(want) {
+		t.Fatalf("payload length = %d, want %d", len(got), len(want))
 	}
 }
