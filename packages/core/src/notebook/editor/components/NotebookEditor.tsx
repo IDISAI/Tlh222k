@@ -26,6 +26,8 @@ interface NotebookEditorProps {
   initial?: NotebookRecord | null
   /** Supplies a Clerk session JWT for kernel-server's admin write routes. */
   getToken?: () => Promise<string | null>
+  /** Title for a brand-new slug (from the index create form). */
+  defaultTitle?: string
 }
 
 const service = new NotebookService()
@@ -43,6 +45,7 @@ export function NotebookEditor({
   store,
   initial,
   getToken,
+  defaultTitle,
 }: NotebookEditorProps) {
   const notebookStore = useMemo<NotebookStore>(
     () =>
@@ -52,7 +55,7 @@ export function NotebookEditor({
         : new LocalNotebookStore()),
     [store, getToken]
   )
-  const editor = useNotebookEditor(slug, notebookStore, initial)
+  const editor = useNotebookEditor(slug, notebookStore, initial, defaultTitle)
   const snapshot = useMemo(() => editor.snapshot(), [editor.cells, editor.title])
   const adapter = useMemo(
     () => KERNEL_SERVER_URL && getToken

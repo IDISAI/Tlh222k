@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
 
+import { NotebookService } from "../notebook.service"
 import { HttpNotebookStore, LocalNotebookStore } from "./store"
 
 const rawNotebook = {
@@ -43,6 +44,17 @@ describe("LocalNotebookStore metadata compatibility", () => {
     await expect(store.load("invalid-profile")).resolves.toMatchObject({
       meta: { published: true, runtimeProfile: "data-science" },
     })
+  })
+})
+
+describe("NotebookService title round trip", () => {
+  it("persists an edited title through serialize -> parse", () => {
+    const service = new NotebookService()
+    const notebook = service.parse(rawNotebook)
+    notebook.title = "Renamed"
+
+    const reloaded = service.parse(service.serialize(notebook))
+    expect(reloaded.title).toBe("Renamed")
   })
 })
 

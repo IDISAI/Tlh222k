@@ -60,7 +60,9 @@ export class NotebookService {
     return {
       nbformat: 4,
       nbformat_minor: 5,
-      metadata: notebook.metadata,
+      // Editor edits notebook.title, not metadata.title — write it back so
+      // the title survives the save/load round trip.
+      metadata: { ...notebook.metadata, title: notebook.title },
       cells: notebook.cells.map((cell) => {
         const raw: RawCell = {
           id: cell.id,

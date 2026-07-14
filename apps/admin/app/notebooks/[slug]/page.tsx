@@ -14,12 +14,15 @@ export const metadata = { title: "Notebook editor" }
  */
 export default async function AdminNotebookEditorPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ slug: string }>
+  searchParams: Promise<{ title?: string }>
 }) {
   const { slug } = await params
+  const { title } = await searchParams
   const role = await getRole()
   if (role !== "admin" && role !== "super-admin") redirect(FORBIDDEN_PATH)
 
-  return <NotebookEditorClient slug={slug} />
+  return <NotebookEditorClient slug={slug} defaultTitle={title} />
 }

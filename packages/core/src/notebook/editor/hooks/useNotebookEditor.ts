@@ -53,7 +53,9 @@ function errorMessage(error: unknown): string {
 export function useNotebookEditor(
   slug: string,
   store: NotebookStore,
-  initial?: NotebookRecord | null
+  initial?: NotebookRecord | null,
+  /** Title for a brand-new slug; the fresh notebook is persisted immediately. */
+  defaultTitle?: string
 ): NotebookEditorApi {
   const [record, setRecord] = useState<NotebookRecord>(
     () => initial ?? emptyNotebookRecord()
@@ -70,7 +72,15 @@ export function useNotebookEditor(
     let cancelled = false
     void store.load(slug).then((loaded) => {
       if (cancelled) return
-      setRecord(loaded ?? emptyNotebookRecord())
+      if (loaded) {
+        setRecord(loaded)
+      } else {
+        // New slug: seed with the create-form title and persist right away so
+        // the notebook shows up in the index before the first edit.
+        const fresh = emptyNotebookRecord(defaultTitle)
+        setRecord(fresh)
+        void store.save(slug, fresh).catch(() => undefined)
+      }
       setLoading(false)
     }).catch((cause: unknown) => {
       if (cancelled) return
@@ -81,7 +91,7 @@ export function useNotebookEditor(
     return () => {
       cancelled = true
     }
-  }, [slug, store, initial])
+  }, [slug, store, initial, defaultTitle])
 
   // Debounced autosave whenever the notebook becomes dirty.
   const markDirty = useCallback(

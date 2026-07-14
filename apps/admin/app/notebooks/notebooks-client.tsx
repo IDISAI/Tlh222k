@@ -57,7 +57,10 @@ export function NotebooksIndexClient() {
         className="flex gap-2"
         onSubmit={(e) => {
           e.preventDefault()
-          if (slug) router.push(`/notebooks/${slug}`)
+          if (slug)
+            router.push(
+              `/notebooks/${slug}?title=${encodeURIComponent(title.trim())}`
+            )
         }}
       >
         <Input
