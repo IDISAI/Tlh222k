@@ -15,6 +15,11 @@ import {
   Undo2,
 } from "lucide-react"
 import { Button } from "@workspace/ui/components/button"
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@workspace/ui/components/popover"
 import { cn } from "@workspace/ui/lib/utils"
 
 import type { KernelStatus } from "../../kernel"
@@ -182,38 +187,86 @@ export function EditorToolbar({
         <span className="text-xs text-muted-foreground">
           {SAVE_LABEL[saveState]}
         </span>
-        {published && learnUrl && (
-          <Button
-            type="button"
-            size="sm"
-            variant="ghost"
-            title={learnUrl}
-            onClick={copyLearnUrl}
-          >
-            {copied ? (
+
+        <Popover>
+          <PopoverTrigger
+            render={
+              <Button
+                type="button"
+                size="sm"
+                variant={published ? "default" : "outline"}
+                title={
+                  published
+                    ? "Đang hiển thị trên /learn — bấm để xem tùy chọn"
+                    : "Xuất bản lên /learn"
+                }
+              >
+                <Globe className="size-4" />{" "}
+                {published ? "Đã xuất bản" : "Xuất bản"}
+              </Button>
+            }
+          />
+          <PopoverContent side="bottom" align="end" className="w-80 gap-3">
+            {published ? (
               <>
-                <Check className="size-4 text-green-600" /> Đã copy
+                <p className="flex items-center gap-2 text-sm font-medium">
+                  <Globe className="size-4 text-primary" />
+                  Notebook đang hiển thị công khai
+                </p>
+                {learnUrl && (
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      readOnly
+                      value={learnUrl}
+                      className="min-w-0 flex-1 rounded-md border bg-muted px-2 py-1.5 text-xs focus:outline-none"
+                      onClick={(e) =>
+                        (e.target as HTMLInputElement).select()
+                      }
+                    />
+                    <Button
+                      type="button"
+                      size="icon-sm"
+                      variant="outline"
+                      title={copied ? "Đã copy!" : "Copy link"}
+                      onClick={copyLearnUrl}
+                    >
+                      {copied ? (
+                        <Check className="size-4 text-green-600" />
+                      ) : (
+                        <Link2 className="size-4" />
+                      )}
+                    </Button>
+                  </div>
+                )}
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="w-full"
+                  onClick={onTogglePublish}
+                >
+                  Hủy xuất bản
+                </Button>
               </>
             ) : (
               <>
-                <Link2 className="size-4" /> Copy link
+                <p className="text-sm text-muted-foreground">
+                  Xuất bản để người dùng xem và chạy notebook trên trang{" "}
+                  <code className="text-xs">/learn</code>.
+                </p>
+                <Button
+                  type="button"
+                  size="sm"
+                  className="w-full"
+                  onClick={onTogglePublish}
+                >
+                  <Globe className="size-4" /> Xuất bản ngay
+                </Button>
               </>
             )}
-          </Button>
-        )}
-        <Button
-          type="button"
-          size="sm"
-          variant={published ? "default" : "outline"}
-          onClick={onTogglePublish}
-          title={
-            published
-              ? "Đang hiển thị trên trang /learn — bấm để gỡ"
-              : "Xuất bản lên trang /learn"
-          }
-        >
-          <Globe className="size-4" /> {published ? "Đã xuất bản" : "Xuất bản"}
-        </Button>
+          </PopoverContent>
+        </Popover>
+
         <Button type="button" size="sm" variant="outline" onClick={onDownload}>
           <Download className="size-4" /> .ipynb
         </Button>
