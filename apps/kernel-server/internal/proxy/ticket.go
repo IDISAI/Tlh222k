@@ -9,7 +9,11 @@ import (
 	"time"
 )
 
-const ticketLifetime = 5 * time.Minute
+// Tickets are only honored while their session still exists and belongs to the
+// same subject (checked per request), and idle sessions are reaped in minutes —
+// so a long nominal lifetime does not widen the replay window. 5 minutes broke
+// long-lived pages: @jupyterlab/services keeps polling with its start ticket.
+const ticketLifetime = 12 * time.Hour
 
 var ErrInvalidTicket = errors.New("invalid connection ticket")
 

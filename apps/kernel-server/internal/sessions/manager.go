@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"time"
 )
 
 type Manager struct {
@@ -36,6 +37,12 @@ func (m *Manager) CreateOrResume(ctx context.Context, owner, profile string) (Se
 	now := m.clock.Now()
 	for id, session := range m.sessions {
 		if session.Owner == owner && session.Profile == profile && session.Status == StatusActive {
+			if m.runtime != nil && !m.runtime.Alive(ctx, session.Handle.ID) {
+				// The container died out-of-band; drop the record and start fresh.
+				_ = m.runtime.Stop(ctx, session.Handle.ID)
+				delete(m.sessions, id)
+				continue
+			}
 			session.LastActivity = now
 			session.ExpiresAt = now.Add(m.options.IdleTimeout)
 			m.sessions[id] = session
@@ -123,7 +130,12 @@ func (m *Manager) Delete(ctx context.Context, owner, id string) error {
 	if m.runtime == nil {
 		return errors.New("session runtime is not configured")
 	}
-	if err := m.runtime.Stop(ctx, session.Handle.ID); err != nil {
+	// Detach from the caller's context: browsers fire this delete during page
+	// unload and abort it, which used to kill the container but strand the
+	// session record ("zombie" that resumes into a 502).
+	stopCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 15*time.Second)
+	defer cancel()
+	if err := m.runtime.Stop(stopCtx, session.Handle.ID); err != nil {
 		return err
 	}
 	delete(m.sessions, id)

@@ -35,6 +35,10 @@ type StartRequest struct {
 type Runtime interface {
 	Start(context.Context, StartRequest) (RuntimeHandle, error)
 	Stop(context.Context, string) error
+	// Alive reports whether the container behind a handle is still running.
+	// Containers can vanish out-of-band (docker restart, OOM kill, interrupted
+	// delete) — resuming such a session would 502 forever.
+	Alive(context.Context, string) bool
 }
 
 type Clock interface {

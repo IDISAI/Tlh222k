@@ -23,6 +23,8 @@ func (r testRuntime) Start(context.Context, sessions.StartRequest) (sessions.Run
 
 func (testRuntime) Stop(context.Context, string) error { return nil }
 
+func (testRuntime) Alive(context.Context, string) bool { return true }
+
 func newTestManager(t *testing.T, endpoint string) (*sessions.Manager, sessions.Session) {
 	t.Helper()
 	manager := sessions.NewManager(sessions.Options{

@@ -194,6 +194,11 @@ func waitForJupyter(ctx context.Context, endpoint, token string) error {
 	}
 }
 
+func (r *DockerRuntime) Alive(ctx context.Context, containerID string) bool {
+	output, err := r.runner.Run(ctx, "docker", "inspect", "--format", "{{.State.Running}}", containerID)
+	return err == nil && strings.TrimSpace(string(output)) == "true"
+}
+
 func (r *DockerRuntime) Stop(ctx context.Context, containerID string) error {
 	output, err := r.runner.Run(ctx, "docker", "rm", "--force", containerID)
 	if err != nil {

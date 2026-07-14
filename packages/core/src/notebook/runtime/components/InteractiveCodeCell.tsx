@@ -1,8 +1,6 @@
 "use client"
 
-import { Play } from "lucide-react"
-import { Button } from "@workspace/ui/components/button"
-
+import { CellRunButton } from "../../editor/components/CellRunButton"
 import { CodeCellEditor } from "../../editor/components/CodeCellEditor"
 import { OutputRenderer } from "../../viewer/components/OutputRenderer"
 import type { RuntimeCellState } from "../use-notebook-runtime"
@@ -19,23 +17,27 @@ export function InteractiveCodeCell({
   onRun: () => void
 }) {
   return (
-    <section className="overflow-hidden rounded-lg border bg-background">
-      <div className="flex bg-muted/40">
-        <span className="w-20 shrink-0 pt-3 pr-2 text-right font-mono text-xs text-muted-foreground">
-          In [{cell.running ? "*" : (cell.executionCount ?? " ")}]:
-        </span>
-        <div className="min-w-0 flex-1"><CodeCellEditor source={cell.source} onChange={onChange} /></div>
+    <section className="flex gap-2">
+      <div className="flex w-10 shrink-0 justify-center pt-1.5">
+        <CellRunButton
+          running={cell.running}
+          disabled={disabled}
+          executionCount={cell.executionCount}
+          onRun={onRun}
+        />
       </div>
-      <div className="flex justify-end border-t px-3 py-2">
-        <Button type="button" size="sm" disabled={disabled || cell.running} onClick={onRun}>
-          <Play className="size-3.5" /> {cell.running ? "Running" : "Run cell"}
-        </Button>
-      </div>
-      {cell.outputs.length > 0 && (
-        <div className="space-y-2 border-t p-3">
-          {cell.outputs.map((output, index) => <OutputRenderer key={index} output={output} />)}
+      <div className="min-w-0 flex-1">
+        <div className="rounded-md border bg-muted/40 transition-colors focus-within:border-primary focus-within:ring-1 focus-within:ring-primary/30">
+          <CodeCellEditor source={cell.source} onChange={onChange} />
         </div>
-      )}
+        {cell.outputs.length > 0 && (
+          <div className="space-y-2 px-3 py-2">
+            {cell.outputs.map((output, index) => (
+              <OutputRenderer key={index} output={output} />
+            ))}
+          </div>
+        )}
+      </div>
     </section>
   )
 }

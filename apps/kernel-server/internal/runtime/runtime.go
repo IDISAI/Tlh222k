@@ -10,4 +10,5 @@ import (
 type Runtime interface {
 	Start(ctx context.Context, request sessions.StartRequest) (sessions.RuntimeHandle, error)
 	Stop(ctx context.Context, containerID string) error
+	Alive(ctx context.Context, containerID string) bool
 }

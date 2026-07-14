@@ -20,6 +20,8 @@ func (routeRuntime) Start(context.Context, sessions.StartRequest) (sessions.Runt
 
 func (routeRuntime) Stop(context.Context, string) error { return nil }
 
+func (routeRuntime) Alive(context.Context, string) bool { return true }
+
 func routeManager(t *testing.T, owner string) (*sessions.Manager, sessions.Session) {
 	t.Helper()
 	manager := sessions.NewManager(sessions.Options{MaxSessions: 2, IdleTimeout: 15 * time.Minute}, routeRuntime{}, sessions.SystemClock{})

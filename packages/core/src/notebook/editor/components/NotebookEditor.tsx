@@ -133,6 +133,7 @@ export function NotebookEditor({
             cell={cell}
             selected={editor.selectedId === cell.id}
             onSelect={() => editor.select(cell.id)}
+            onDeselect={() => editor.select(null)}
             onChange={(source) => editor.edit(cell.id, source)}
             onToggleType={(type) => editor.setType(cell.id, type)}
             onMove={(direction) => editor.move(cell.id, direction)}

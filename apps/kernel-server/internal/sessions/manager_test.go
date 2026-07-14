@@ -20,6 +20,7 @@ type fakeRuntime struct {
 	stops    int
 	stopped  []string
 	startErr error
+	dead     bool
 }
 
 func (f *fakeRuntime) Start(context.Context, sessions.StartRequest) (sessions.RuntimeHandle, error) {
@@ -35,6 +36,8 @@ func (f *fakeRuntime) Stop(_ context.Context, containerID string) error {
 	f.stopped = append(f.stopped, containerID)
 	return nil
 }
+
+func (f *fakeRuntime) Alive(context.Context, string) bool { return !f.dead }
 
 type fakeClock struct{ now time.Time }
 
@@ -84,6 +87,28 @@ func TestCreateResumesSameOwnerAndProfile(t *testing.T) {
 	}
 	if resumed.ID != first.ID || runtime.starts != 1 {
 		t.Fatalf("resumed ID/starts = %q/%d, want %q/1", resumed.ID, runtime.starts, first.ID)
+	}
+}
+
+func TestResumeReplacesDeadRuntime(t *testing.T) {
+	runtime := &fakeRuntime{}
+	clock := &fakeClock{now: time.Unix(100, 0)}
+	manager := sessions.NewManager(managerOptions(), runtime, clock)
+
+	first, err := manager.CreateOrResume(context.Background(), "user-1", "data-science")
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	runtime.dead = true // container vanished out-of-band
+	replacement, err := manager.CreateOrResume(context.Background(), "user-1", "data-science")
+	if err != nil {
+		t.Fatalf("recreate session: %v", err)
+	}
+	if replacement.ID == first.ID {
+		t.Fatalf("resumed dead session %q, want a fresh one", first.ID)
+	}
+	if runtime.starts != 2 || !slices.Contains(runtime.stopped, first.Handle.ID) {
+		t.Fatalf("starts = %d, stopped = %v; want 2 starts and %q stopped", runtime.starts, runtime.stopped, first.Handle.ID)
 	}
 }
 
