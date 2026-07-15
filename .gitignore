@@ -50,6 +50,7 @@ next-env.d.ts
 # CocoIndex Code (ccc)
 /.cocoindex_code/
 .gstack/
+.tmp/
 
 # Playwright notion QA (local only)
 tools/pw-notion/profile/

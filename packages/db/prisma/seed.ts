@@ -84,6 +84,8 @@ const nodes: SeedNode[] = [
   { id: "fe-ar-var", roadmapId: "rm-frontend", parentId: "fe-ch-jsbasic", nodeType: "article", title: "Biến & kiểu dữ liệu", slug: "bien-kieu-du-lieu", x: 600, y: 480, order: 11, articleType: "notion", notionPageId: "notion-javascript" },
   { id: "fe-ar-hook", roadmapId: "rm-frontend", parentId: "fe-ch-react", nodeType: "article", title: "useEffect Deep Dive", slug: "useeffect-deep-dive", x: 880, y: 480, order: 12, articleType: "jupyter", jupyterUrl: "https://colab.research.google.com/drive/useeffect-deep-dive", description: "Tìm hiểu sâu về useEffect hook, cleanup function và dependency array." },
   { id: "fe-ar-query", roadmapId: "rm-frontend", parentId: "fe-ch-react", nodeType: "article", title: "React Query Guide", slug: "react-query-guide", x: 880, y: 620, order: 13, articleType: "notion" },
+  // jupyter with NO url → opens the INTERNAL notebook viewer at /learn/[slug].
+  { id: "fe-ar-arith", roadmapId: "rm-frontend", parentId: "fe-ch-jsbasic", nodeType: "article", title: "Arithmetic and Variables", slug: "arithmetic-and-variables", x: 600, y: 620, order: 14, articleType: "jupyter", description: "Notebook nội bộ: số học, biến và debugging cơ bản với Python." },
 
   // ── backend ──
   { id: "be-role", roadmapId: "rm-backend", parentId: null, nodeType: "role", title: "Backend Developer", slug: "backend-developer", x: 320, y: 0, order: 0, description: "Lộ trình backend: Node.js, cơ sở dữ liệu, API và xác thực." },

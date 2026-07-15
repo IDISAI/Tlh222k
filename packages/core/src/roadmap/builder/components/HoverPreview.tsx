@@ -42,8 +42,8 @@ export function HoverPreview({
   const articleLink =
     node.articleType === "notion" && node.notionPageId
       ? `https://notion.so/${node.notionPageId}`
-      : node.articleType === "jupyter" && node.jupyterUrl
-        ? node.jupyterUrl
+      : node.articleType === "jupyter"
+        ? `Internal notebook: /notebooks/${node.slug}`
         : null
 
   return (

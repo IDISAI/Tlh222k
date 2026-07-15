@@ -1,19 +1,19 @@
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server"
 import { NextResponse } from "next/server"
-// Deep import (not the "@workspace/core" barrel): the barrel re-exports roadmap
-// browser components (BroadcastChannel in update-signal.ts) which crash the Edge
-// middleware runtime. dev-auth.ts only pulls pure role/types.
-import { isDevAuthBypass } from "@workspace/core/navigation/dev-auth"
+import { devAuthRole } from "@workspace/core/navigation/role"
 
 // Next.js 16: request-time logic lives in `proxy.ts` (renamed from middleware).
 // This is an *optimistic* gate — protected pages must still verify server-side.
 const isProtected = createRouteMatcher(["/dashboard(.*)"])
 const isAuthPage = createRouteMatcher(["/sign-in(.*)", "/sign-up(.*)"])
+const devRole = devAuthRole(
+  process.env.NODE_ENV,
+  process.env.NEXT_PUBLIC_DEV_AUTH_ROLE
+)
 
-// Dev bypass: skip clerkMiddleware so no request reaches Clerk. Every route is
-// let through; server code resolves the role from NEXT_PUBLIC_DEV_AUTH_ROLE.
-const clerkGate = clerkMiddleware(async (auth, req) => {
-  const { userId } = await auth()
+export default clerkMiddleware(async (auth, req) => {
+  const { userId: clerkUserId } = devRole ? { userId: null } : await auth()
+  const userId = devRole ? "dev-user" : clerkUserId
 
   // Already signed in and visiting the auth pages → /roadmaps (Req 4.6).
   if (userId && isAuthPage(req)) {
@@ -35,8 +35,6 @@ const clerkGate = clerkMiddleware(async (auth, req) => {
     return NextResponse.redirect(url)
   }
 })
-
-export default isDevAuthBypass() ? () => NextResponse.next() : clerkGate
 
 export const config = {
   matcher: [

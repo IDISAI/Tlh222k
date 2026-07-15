@@ -15,6 +15,9 @@ import { joinSource } from "./utils/nbformat"
 /** Markdown ATX headings, used for both TOC and title derivation. */
 const HEADING_PATTERN = /^(#{1,6})\s+(.+?)\s*#*\s*$/gm
 
+/** Cells beyond this are rejected at parse time (regex-freeze protection). */
+const MAX_CELL_SOURCE_CHARS = 3 * 1024 * 1024
+
 export class NotebookService {
   /** Parse raw .ipynb JSON (string or object) into the normalized model. */
   parse(input: string | unknown): Notebook {
@@ -57,7 +60,9 @@ export class NotebookService {
     return {
       nbformat: 4,
       nbformat_minor: 5,
-      metadata: notebook.metadata,
+      // Editor edits notebook.title, not metadata.title — write it back so
+      // the title survives the save/load round trip.
+      metadata: { ...notebook.metadata, title: notebook.title },
       cells: notebook.cells.map((cell) => {
         const raw: RawCell = {
           id: cell.id,
@@ -76,13 +81,20 @@ export class NotebookService {
 
   /** TOC from markdown-cell headings, in document order. */
   extractToc(notebook: Notebook): TocEntry[] {
-    const slug = createSlugger()
     const entries: TocEntry[] = []
     for (const cell of notebook.cells) {
       if (cell.cellType !== "markdown") continue
+      // Per-cell slugger mirrors MarkdownCell's own ID computation so TOC
+      // anchors always match the rendered heading ids.
+      const slug = createSlugger()
       for (const match of cell.source.matchAll(HEADING_PATTERN)) {
         const text = stripInlineMarkdown(match[2]!)
-        entries.push({ level: match[1]!.length, text, slug: slug(text) })
+        entries.push({
+          level: match[1]!.length,
+          text,
+          slug: slug(text),
+          cellId: cell.id,
+        })
       }
     }
     return entries
@@ -102,10 +114,16 @@ export class NotebookService {
         `Cell ${index} has unknown cell_type "${String(cell.cell_type)}"`
       )
     }
+    const source = joinSource(cell.source)
+    if (source.length > MAX_CELL_SOURCE_CHARS) {
+      throw new NotebookParseError(
+        `Cell ${index} exceeds the maximum supported size (${MAX_CELL_SOURCE_CHARS} chars)`
+      )
+    }
     return {
       id: cell.id ?? `cell-${index}`,
       cellType: cell.cell_type,
-      source: joinSource(cell.source),
+      source,
       executionCount:
         typeof cell.execution_count === "number" ? cell.execution_count : null,
       outputs: (cell.outputs ?? []).map(parseOutput),

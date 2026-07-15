@@ -28,6 +28,11 @@ const SUPER_ADMIN_DEST = SUPER_ADMIN_URL
 
 const nextConfig: NextConfig = {
   transpilePackages: ["@workspace/ui", "@workspace/core", "@workspace/db"],
+  // /notebooks reads .ipynb fixtures with fs at request time; without this the
+  // Vercel serverless bundle would omit them (dynamic path = not traced).
+  outputFileTracingIncludes: {
+    "/notebooks/[slug]": ["./content/notebooks/**/*"],
+  },
   webpack(config) {
     config.resolve.alias = {
       ...(config.resolve.alias ?? {}),

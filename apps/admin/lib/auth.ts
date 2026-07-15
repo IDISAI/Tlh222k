@@ -13,7 +13,9 @@ declare global {
 
 /** True when a Clerk session is present. */
 export async function getIsAuthenticated(): Promise<boolean> {
-  if (devAuthRole() !== null) return true
+  if (devAuthRole(process.env.NODE_ENV, process.env.NEXT_PUBLIC_DEV_AUTH_ROLE)) {
+    return true
+  }
   const { userId } = await auth()
   return Boolean(userId)
 }
@@ -23,8 +25,11 @@ export async function getIsAuthenticated(): Promise<boolean> {
  * Absent / unknown metadata → "viewer".
  */
 export async function getRole(): Promise<UserRole> {
-  const dev = devAuthRole()
-  if (dev !== null) return dev
+  const devRole = devAuthRole(
+    process.env.NODE_ENV,
+    process.env.NEXT_PUBLIC_DEV_AUTH_ROLE
+  )
+  if (devRole) return devRole
   const { sessionClaims } = await auth()
   return roleFromClaims(sessionClaims)
 }
@@ -34,7 +39,9 @@ export async function getRole(): Promise<UserRole> {
  * only need an author id should fall back to a placeholder.
  */
 export async function getUserId(): Promise<string | null> {
-  if (devAuthRole() !== null) return null
+  if (devAuthRole(process.env.NODE_ENV, process.env.NEXT_PUBLIC_DEV_AUTH_ROLE)) {
+    return null
+  }
   const { userId } = await auth()
   return userId
 }

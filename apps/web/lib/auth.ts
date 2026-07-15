@@ -13,8 +13,9 @@ declare global {
 
 /** True when a Clerk session is present. */
 export async function getIsAuthenticated(): Promise<boolean> {
-  // Dev bypass: no Clerk, treat the request as signed in.
-  if (devAuthRole() !== null) return true
+  if (devAuthRole(process.env.NODE_ENV, process.env.NEXT_PUBLIC_DEV_AUTH_ROLE)) {
+    return true
+  }
   const { userId } = await auth()
   return Boolean(userId)
 }
@@ -24,10 +25,11 @@ export async function getIsAuthenticated(): Promise<boolean> {
  * Absent / unknown metadata → "viewer".
  */
 export async function getRole(): Promise<UserRole> {
-  // Dev bypass: skip Clerk's auth() (clerkMiddleware isn't running) and use
-  // the role from NEXT_PUBLIC_DEV_AUTH_ROLE.
-  const dev = devAuthRole()
-  if (dev !== null) return dev
+  const devRole = devAuthRole(
+    process.env.NODE_ENV,
+    process.env.NEXT_PUBLIC_DEV_AUTH_ROLE
+  )
+  if (devRole) return devRole
   const { sessionClaims } = await auth()
   return roleFromClaims(sessionClaims)
 }

@@ -95,6 +95,11 @@ const frontend: BaseNode[] = [
   node("fe-ar-query", "rm-frontend", "fe-ch-react", "article", "React Query Guide", "react-query-guide", [880, 620], 13, {
     articleType: "notion",
   }),
+  // jupyter with NO url → opens the INTERNAL notebook viewer at /learn/[slug].
+  node("fe-ar-arith", "rm-frontend", "fe-ch-jsbasic", "article", "Arithmetic and Variables", "arithmetic-and-variables", [600, 620], 14, {
+    articleType: "jupyter",
+    description: "Notebook nội bộ: số học, biến và debugging cơ bản với Python.",
+  }),
 ]
 
 const backend: BaseNode[] = [

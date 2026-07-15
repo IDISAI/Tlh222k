@@ -6,7 +6,10 @@ import { devAuthRole } from "@workspace/core"
 export function AuthHeader() {
   // Dev bypass: no <ClerkProvider>, so Clerk hooks/components would throw.
   // Show the impersonated role instead.
-  const dev = devAuthRole()
+  const dev = devAuthRole(
+    process.env.NODE_ENV,
+    process.env.NEXT_PUBLIC_DEV_AUTH_ROLE
+  )
   if (dev !== null) {
     return (
       <span className="rounded-md border px-3 py-1 text-sm font-medium text-muted-foreground">

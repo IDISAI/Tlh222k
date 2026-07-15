@@ -3,7 +3,7 @@ import { Geist_Mono, Inter } from "next/font/google"
 import { ClerkProvider } from "@clerk/nextjs"
 
 import {
-  isDevAuthBypass,
+  devAuthRole,
   RoadmapApolloProvider,
   ThemeToggle,
 } from "@workspace/core"
@@ -58,5 +58,9 @@ export default function RootLayout({
 
   // Dev bypass: skip <ClerkProvider> so the client never loads Clerk's external
   // hosted JS (blocked by the localhost-only preview / headless QA sandbox).
-  return isDevAuthBypass() ? tree : <ClerkProvider>{tree}</ClerkProvider>
+  const devBypass = devAuthRole(
+    process.env.NODE_ENV,
+    process.env.NEXT_PUBLIC_DEV_AUTH_ROLE
+  )
+  return devBypass ? tree : <ClerkProvider>{tree}</ClerkProvider>
 }
