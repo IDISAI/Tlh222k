@@ -16,34 +16,37 @@ pnpm install
 pnpm -F @workspace/db generate
 pnpm -F @workspace/db db:push
 pnpm -F @workspace/db seed
-pnpm dev
+pnpm dev         # starts all JS apps + Go kernel-server
 ```
 
 Copy env templates before running apps that need real auth/backend data:
 
 ```bash
-cp apps/web/.env.example          apps/web/.env.local
-cp apps/admin/.env.example        apps/admin/.env.local
-cp apps/super-admin/.env.example  apps/super-admin/.env.local
-cp apps/svc-roadmap/.env.example  apps/svc-roadmap/.env
-cp packages/db/.env.example       packages/db/.env
+cp apps/web/.env.example           apps/web/.env.local
+cp apps/admin/.env.example         apps/admin/.env.local
+cp apps/super-admin/.env.example   apps/super-admin/.env.local
+cp apps/svc-roadmap/.env.example   apps/svc-roadmap/.env
+cp apps/kernel-server/.env.example apps/kernel-server/.env
+cp packages/db/.env.example        packages/db/.env
 ```
 
 See [docs/onboarding/env.md](docs/onboarding/env.md) for key-by-key setup.
 
 ## Common Commands
 
-| Command                         | Purpose                             |
-| ------------------------------- | ----------------------------------- |
-| `pnpm dev`                      | Run all dev tasks through Turborepo |
-| `pnpm build`                    | Build the monorepo                  |
-| `pnpm lint`                     | Run ESLint                          |
-| `pnpm typecheck`                | Run `tsc --noEmit`                  |
-| `pnpm format`                   | Run Prettier                        |
-| `pnpm --filter web dev`         | Run only the public web app         |
-| `pnpm --filter admin dev`       | Run only admin on port 3002         |
-| `pnpm --filter super-admin dev` | Run only super-admin on port 3003   |
-| `pnpm --filter svc-roadmap dev` | Run the backend on port 3005        |
+| Command                         | Purpose                                      |
+| ------------------------------- | -------------------------------------------- |
+| `pnpm dev`                      | Turbo JS apps + Go kernel-server             |
+| `pnpm dev:js`                   | Turbo JS apps only (no Go)                   |
+| `pnpm dev:go`                   | Go kernel-server only                        |
+| `pnpm build`                    | Build the monorepo                           |
+| `pnpm lint`                     | Run ESLint                                   |
+| `pnpm typecheck`                | Run `tsc --noEmit`                           |
+| `pnpm format`                   | Run Prettier                                 |
+| `pnpm --filter web dev`         | Public web app only (port 3000)              |
+| `pnpm --filter admin dev`       | Admin app only (port 3002)                   |
+| `pnpm --filter super-admin dev` | Super-admin app only (port 3003)             |
+| `pnpm --filter svc-roadmap dev` | NestJS backend only (port 3005)              |
 
 There is no test runner configured yet. CI is:
 `install --frozen-lockfile -> lint -> typecheck -> build`.
@@ -52,14 +55,18 @@ There is no test runner configured yet. CI is:
 
 ```text
 apps/
-  web/          Next.js public frontend and Multi-Zone host, port 3000
-  admin/        Next.js roadmap builder/admin child zone, port 3002
-  super-admin/  Next.js super-admin child zone, port 3003
-  svc-roadmap/  NestJS GraphQL/REST/SSE roadmap backend, port 3005
+  web/           Next.js public frontend and Multi-Zone host, port 3000
+  admin/         Next.js roadmap builder/admin child zone, port 3002
+  super-admin/   Next.js super-admin child zone, port 3003
+  svc-roadmap/   NestJS GraphQL/REST/SSE roadmap backend, port 3005
+  kernel-server/ Go notebook backend (standalone — not in pnpm workspace), port 3006
 packages/
-  core/         @workspace/core domain logic and feature modules
-  db/           @workspace/db Prisma schema, generated client, seed data
-  ui/           @workspace/ui shadcn/ui + Tailwind v4 components
+  core/          @workspace/core domain logic and feature modules
+                 src/notebook  — NotebookService, viewer, editor, kernel, exercise, runtime
+                 src/roadmap   — roadmap domain logic
+                 src/navigation — navigation helpers
+  db/            @workspace/db Prisma schema, generated client, seed data
+  ui/            @workspace/ui shadcn/ui + Tailwind v4 components
   eslint-config/
   typescript-config/
 ```

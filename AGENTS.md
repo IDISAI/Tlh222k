@@ -49,6 +49,14 @@ Key points:
 - Every committed workspace folder should have a `README.md` for humans and an
   `AGENTS.md` for AI-agent notes. Do not add these files to generated folders
   such as `node_modules`, `.next`, `dist`, `.turbo`, or `.git`.
+- `apps/kernel-server` is a standalone **Go** module (`go.mod`), intentionally
+  OUTSIDE the pnpm/turbo workspace. CI does not cover it. Verify with
+  `go build ./...` and `go vet ./...` from that directory. No third-party Go
+  deps — stdlib only.
+- All nbformat parsing lives in `packages/core/src/notebook` (TypeScript). Do
+  NOT add a Go nbformat parser in kernel-server; the two must never diverge.
+- `NEXT_PUBLIC_KERNEL_SERVER_URL` wires web and admin to the Go backend. Unset
+  → web falls back to committed `.ipynb` fixtures, admin uses localStorage.
 
 Respond terse like smart caveman. All technical substance stay. Only fluff die.
 
