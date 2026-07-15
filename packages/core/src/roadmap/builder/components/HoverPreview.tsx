@@ -43,7 +43,7 @@ export function HoverPreview({
     node.articleType === "notion" && node.notionPageId
       ? `https://notion.so/${node.notionPageId}`
       : node.articleType === "jupyter"
-        ? `Internal notebook: /learn/${node.slug}`
+        ? `Internal notebook: /notebooks/${node.slug}`
         : null
 
   return (

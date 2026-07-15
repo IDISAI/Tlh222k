@@ -49,7 +49,7 @@ interface NodeDetailDialogProps {
  */
 export function nodeNavigationUrl(
   node: RoadmapNode,
-  notebookBasePath = "/learn"
+  notebookBasePath = "/notebooks"
 ): string | null {
   if (node.nodeType === "role" || node.nodeType === "skill") {
     return `/roadmap/${node.slug}`
@@ -99,7 +99,7 @@ export function NodeDetailDialog({
   onEdit,
   onRemoveFromCanvas,
   readOnly = false,
-  notebookBasePath = "/learn",
+  notebookBasePath = "/notebooks",
 }: NodeDetailDialogProps) {
   const [pathname, setPathname] = useState<string | null>(null)
 

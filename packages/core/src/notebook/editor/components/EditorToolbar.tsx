@@ -197,8 +197,8 @@ export function EditorToolbar({
                 variant={published ? "default" : "outline"}
                 title={
                   published
-                    ? "Đang hiển thị trên /learn — bấm để xem tùy chọn"
-                    : "Xuất bản lên /learn"
+                    ? "Đang hiển thị trên /notebooks — bấm để xem tùy chọn"
+                    : "Xuất bản lên /notebooks"
                 }
               >
                 <Globe className="size-4" />{" "}
@@ -252,7 +252,7 @@ export function EditorToolbar({
               <>
                 <p className="text-sm text-muted-foreground">
                   Xuất bản để người dùng xem và chạy notebook trên trang{" "}
-                  <code className="text-xs">/learn</code>.
+                  <code className="text-xs">/notebooks</code>.
                 </p>
                 <Button
                   type="button"

@@ -115,7 +115,7 @@ function ViewerCanvasInner({ nodes, onNodeClick, className }: ViewerCanvasProps)
           nodesDraggable={false}
           nodesConnectable={false}
           elementsSelectable
-          onNodeDoubleClick={(_, rfNode) =>
+          onNodeClick={(_, rfNode) =>
             onNodeClick?.((rfNode.data as { node: RoadmapNode }).node)
           }
         >

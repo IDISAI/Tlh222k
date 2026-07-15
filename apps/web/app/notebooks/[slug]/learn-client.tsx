@@ -6,7 +6,9 @@ import { useAuth, useClerk } from "@clerk/nextjs"
 import {
   InteractiveNotebook,
   JupyterSandboxAdapter,
+  PyodideKernelAdapter,
   SandboxSessionClient,
+  type KernelAdapter,
   type Notebook,
 } from "@workspace/core"
 import { devAuthRole } from "@workspace/core/navigation/role"
@@ -36,25 +38,27 @@ export function LearnClient({ slug, tutorial, exercise }: LearnClientProps) {
     clerkSignedIn ||
     Boolean(devAuthRole(process.env.NODE_ENV, process.env.NEXT_PUBLIC_DEV_AUTH_ROLE))
 
-  const tutorialAdapter = useMemo(
-    () =>
-      isSignedIn && kernelUrl
+  // Kernel selection: kernel-server (dev / self-hosted) wins; otherwise Python
+  // runs fully client-side via Pyodide — no execution backend in production.
+  const makeAdapter = useMemo(
+    () => (): KernelAdapter =>
+      kernelUrl
         ? new JupyterSandboxAdapter(
             new SandboxSessionClient(kernelUrl, getToken),
             "data-science"
           )
-        : null,
-    [getToken, isSignedIn, kernelUrl]
+        : new PyodideKernelAdapter(
+            () => new Worker(new URL("./pyodide.worker.ts", import.meta.url))
+          ),
+    [getToken, kernelUrl]
+  )
+  const tutorialAdapter = useMemo(
+    () => (isSignedIn ? makeAdapter() : null),
+    [isSignedIn, makeAdapter]
   )
   const exerciseAdapter = useMemo(
-    () =>
-      isSignedIn && kernelUrl && exercise
-        ? new JupyterSandboxAdapter(
-            new SandboxSessionClient(kernelUrl, getToken),
-            "data-science"
-          )
-        : null,
-    [exercise, getToken, isSignedIn, kernelUrl]
+    () => (isSignedIn && exercise ? makeAdapter() : null),
+    [exercise, isSignedIn, makeAdapter]
   )
 
   return (
@@ -74,7 +78,7 @@ export function LearnClient({ slug, tutorial, exercise }: LearnClientProps) {
         <InteractiveNotebook
           notebook={tutorial}
           adapter={tutorialAdapter}
-          signedIn={Boolean(isSignedIn && kernelUrl)}
+          signedIn={Boolean(isSignedIn)}
           onSignIn={() => void clerk.openSignIn()}
           exerciseTitle={exercise?.title ?? "Exercise"}
           onStartExercise={() => setTab("exercise")}
@@ -86,7 +90,7 @@ export function LearnClient({ slug, tutorial, exercise }: LearnClientProps) {
           <InteractiveNotebook
             notebook={exercise}
             adapter={exerciseAdapter}
-            signedIn={Boolean(isSignedIn && kernelUrl)}
+            signedIn={Boolean(isSignedIn)}
             onSignIn={() => void clerk.openSignIn()}
           />
         ) : (

@@ -172,7 +172,7 @@ export function NodeEditPanel({ node, onClose, onSave }: NodeEditPanelProps) {
                 <p className="text-xs text-muted-foreground">
                   Notebook nội bộ tại{" "}
                   <code className="rounded bg-muted px-1">
-                    /learn/{node.slug}
+                    /notebooks/{node.slug}
                   </code>
                 </p>
               )}

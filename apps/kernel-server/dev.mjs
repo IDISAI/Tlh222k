@@ -57,30 +57,56 @@ if (process.argv.includes("--check")) {
   process.exit(codes.every((code) => code === 0) ? 0 : 1)
 }
 
-const children = [
-  spawnPnpm(commands[0].args, {
-    cwd: repoRoot,
-    env: { ...process.env, ...commands[0].env },
-    stdio: "inherit",
-  }),
-  spawn("go", commands[1].args, {
-    cwd: kernelDir,
-    env: {
-      ...process.env,
-      ...commands[1].env,
-      DEV_AUTH_ROLE: process.env.DEV_AUTH_ROLE || "super-admin",
-    },
-    stdio: "inherit",
-  }),
-]
+// Run both stacks in one terminal by default, or split them: --js-only runs the
+// turbo dev TUI alone (needs an exclusive TTY, else the Go logs corrupt it),
+// --go-only runs just the kernel-server.
+const goOnly = process.argv.includes("--go-only")
+const jsOnly = process.argv.includes("--js-only")
+
+const children = []
+if (!goOnly) {
+  children.push(
+    spawnPnpm(commands[0].args, {
+      cwd: repoRoot,
+      env: { ...process.env, ...commands[0].env },
+      stdio: "inherit",
+    })
+  )
+}
+if (!jsOnly) {
+  children.push(
+    spawn("go", commands[1].args, {
+      cwd: kernelDir,
+      env: {
+        ...process.env,
+        ...commands[1].env,
+        DEV_AUTH_ROLE: process.env.DEV_AUTH_ROLE || "super-admin",
+      },
+      stdio: "inherit",
+    })
+  )
+}
+
+// child.kill() only signals the direct child (the cmd.exe/pnpm wrapper on
+// Windows); its grandchildren — turbo, the next dev workers, the Go binary —
+// survive and keep the ports bound. Kill the whole process tree so Ctrl+C
+// frees 3000/3002/3003/3005/3006.
+function killTree(child) {
+  if (!child.pid || child.killed) return
+  if (process.platform === "win32") {
+    spawn("taskkill", ["/pid", String(child.pid), "/T", "/F"], {
+      stdio: "ignore",
+    })
+  } else {
+    child.kill("SIGTERM")
+  }
+}
 
 let stopping = false
 function stop(exitCode = 0) {
   if (stopping) return
   stopping = true
-  for (const child of children) {
-    if (!child.killed) child.kill()
-  }
+  for (const child of children) killTree(child)
   process.exitCode = exitCode
 }
 

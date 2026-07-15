@@ -43,7 +43,7 @@ export function RoadmapViewer({
   initialGraph = null,
   backHref,
   readOnlyBadge = false,
-  notebookBasePath = "/learn",
+  notebookBasePath = "/notebooks",
 }: RoadmapViewerProps) {
   const [graph, setGraph] = useState<RoadmapGraph | null>(initialGraph)
   const [loading, setLoading] = useState(initialGraph === null)

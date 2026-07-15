@@ -143,7 +143,7 @@ export function NotebookEditor({
         running={runtime.status === "busy" || runtime.status === "starting"}
         published={editor.meta.published}
         onTogglePublish={() => editor.setPublished(!editor.meta.published)}
-        learnUrl={`${WEB_URL}/learn/${slug}`}
+        learnUrl={`${WEB_URL}/notebooks/${slug}`}
         onUndo={editor.undo}
         onRedo={editor.redo}
         canUndo={editor.canUndo}
