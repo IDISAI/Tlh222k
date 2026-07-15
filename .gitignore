@@ -57,3 +57,4 @@ tools/pw-notion/profile/
 tools/pw-notion/state.json
 tools/pw-notion/shots/
 tools/pw-notion/*.mjs
+.env*
