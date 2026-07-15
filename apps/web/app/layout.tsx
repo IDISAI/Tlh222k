@@ -4,6 +4,7 @@ import { ClerkProvider } from "@clerk/nextjs"
 
 import {
   devAuthRole,
+  ReloadOnBackForward,
   RoadmapApolloProvider,
   ThemeToggle,
 } from "@workspace/core"
@@ -36,7 +37,29 @@ export default function RootLayout({
         inter.variable
       )}
     >
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              (function() {
+                try {
+                  var t = localStorage.getItem('theme');
+                  var s = window.matchMedia('(prefers-color-scheme: dark)').matches;
+                  if (t === 'dark' || (!t && s)) {
+                    document.documentElement.classList.add('dark');
+                    document.documentElement.style.colorScheme = 'dark';
+                  } else {
+                    document.documentElement.classList.remove('dark');
+                    document.documentElement.style.colorScheme = 'light';
+                  }
+                } catch (e) {}
+              })()
+            `,
+          }}
+        />
+      </head>
       <body>
+        <ReloadOnBackForward />
         <ThemeProvider>
           <header className="flex items-center justify-between border-b p-3">
             <Link

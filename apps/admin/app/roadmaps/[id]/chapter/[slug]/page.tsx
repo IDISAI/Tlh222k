@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation"
-import { ChapterDetailPage, ReloadOnBackForward } from "@workspace/core"
+import { ChapterDetailPage } from "@workspace/core"
 
 import { getRole } from "@/lib/auth"
 import { FORBIDDEN_PATH } from "@/lib/paths"
@@ -26,18 +26,14 @@ export default async function ChapterDetailRoute({
   if (role !== "admin" && role !== "super-admin") redirect(FORBIDDEN_PATH)
 
   return (
-    <>
-      {/* Same back_forward staleness guard as the builder page. */}
-      <ReloadOnBackForward />
-      <ChapterDetailPage
-        roadmapId={id}
-        chapterSlug={slug}
-        role={role}
-        builderHref={`/roadmaps/${id}`}
-        onNodeTitleSync={syncTitleBySlug}
-        onCreateNotionDoc={createDocumentForNode}
-        onSyncPublish={syncPublishByNotionPageId}
-      />
-    </>
+    <ChapterDetailPage
+      roadmapId={id}
+      chapterSlug={slug}
+      role={role}
+      builderHref={`/roadmaps/${id}`}
+      onNodeTitleSync={syncTitleBySlug}
+      onCreateNotionDoc={createDocumentForNode}
+      onSyncPublish={syncPublishByNotionPageId}
+    />
   )
 }

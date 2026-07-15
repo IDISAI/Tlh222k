@@ -37,7 +37,7 @@ export function nodeNavigationUrl(
   opts: NodeNavigationOptions = {}
 ): string | null {
   const {
-    notebookBasePath = "/learn",
+    notebookBasePath = "/notebooks",
     notionBasePath = "/notion",
     parentChapterSlug,
     builderBasePath,

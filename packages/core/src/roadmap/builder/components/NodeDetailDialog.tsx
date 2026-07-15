@@ -65,7 +65,7 @@ export function NodeDetailDialog({
   onEdit,
   onRemoveFromCanvas,
   readOnly = false,
-  notebookBasePath = "/learn",
+  notebookBasePath = "/notebooks",
   notionBasePath = "/notion",
   builderBasePath,
 }: NodeDetailDialogProps) {

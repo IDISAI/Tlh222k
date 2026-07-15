@@ -15,13 +15,20 @@
  */
 const SNIPPET = `(function () {
   try {
-    var nav = performance.getEntriesByType("navigation")[0];
-    if (nav && nav.type === "back_forward") { location.reload(); return; }
-    // bfcache restore (scripts not re-run, but pageshow fires with persisted).
+    // Reload ONLY if a chunk load error is detected (dev-server rebuild recovery)
+    window.addEventListener("error", function (e) {
+      var msg = e.message || "";
+      if (msg.indexOf("chunk") > -1 || msg.indexOf("Loading CSS") > -1 || msg.indexOf("Loading chunk") > -1) {
+        location.reload();
+      }
+    }, true);
+    // bfcache restore: dispatch event so React components can refetch silently without full reload
     window.addEventListener("pageshow", function (e) {
-      if (e.persisted) location.reload();
+      if (e.persisted) {
+        window.dispatchEvent(new CustomEvent("bfcache-restore"));
+      }
     });
-  } catch (e) { /* never break the page over a reload heuristic */ }
+  } catch (e) { /* never break the page */ }
 })();`
 
 export function ReloadOnBackForward() {

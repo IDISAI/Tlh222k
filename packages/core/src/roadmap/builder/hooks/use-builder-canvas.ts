@@ -115,6 +115,14 @@ export function useBuilderCanvas(
   useEffect(() => {
     console.log("[builder-diag] mount effect fired")
     void load()
+
+    const handleRestore = () => {
+      void load()
+    }
+    window.addEventListener("bfcache-restore", handleRestore)
+    return () => {
+      window.removeEventListener("bfcache-restore", handleRestore)
+    }
   }, [load])
 
   const refreshAllNodes = useCallback(async () => {

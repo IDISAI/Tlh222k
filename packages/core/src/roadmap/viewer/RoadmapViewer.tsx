@@ -48,7 +48,7 @@ export function RoadmapViewer({
   initialGraph = null,
   backHref,
   readOnlyBadge = false,
-  notebookBasePath = "/learn",
+  notebookBasePath = "/notebooks",
   notionBasePath = "/notion",
 }: RoadmapViewerProps) {
   const [graph, setGraph] = useState<RoadmapGraph | null>(initialGraph)
@@ -60,17 +60,25 @@ export function RoadmapViewer({
     [slug]
   )
 
-  // Pull the freshest graph on mount (overlays any SSR snapshot / does the
-  // initial client load for admin).
+  // Pull the freshest graph on mount and on bfcache-restore.
   useEffect(() => {
     let cancelled = false
-    void refetch().then((fresh) => {
-      if (cancelled) return
-      setGraph(fresh)
-      setLoading(false)
-    })
+    const load = () => {
+      refetch().then((fresh) => {
+        if (cancelled) return
+        setGraph(fresh)
+        setLoading(false)
+      })
+    }
+    load()
+
+    const handleRestore = () => {
+      load()
+    }
+    window.addEventListener("bfcache-restore", handleRestore)
     return () => {
       cancelled = true
+      window.removeEventListener("bfcache-restore", handleRestore)
     }
   }, [refetch])
 
