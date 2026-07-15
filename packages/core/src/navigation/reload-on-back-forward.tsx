@@ -1,36 +1,48 @@
+"use client"
+
+import { useEffect } from "react"
+
 /**
  * Force a fresh load when the browser lands on this page via Back/Forward.
  *
  * The roadmap builder navigates with full page loads (`window.location.assign`
  * — cross-zone-safe by design). Browser Back then restores the document from
  * the HTTP cache; in dev the cached HTML can reference stale hashed chunks, so
- * React never hydrates and client-fetched pages freeze on their skeleton. Even
- * when hydration works, the restored canvas would be stale against the latest
- * edits. Reloading on `back_forward` fixes both: after the reload the
- * navigation type is "reload", so this never loops.
+ * React never hydrates and client-fetched pages freeze on their skeleton.
+ * Reloading on chunk-load errors / dispatching on bfcache restore fixes both.
  *
- * Rendered as an inline <script> from a SERVER component so it runs during
- * HTML parse — before (and independent of) hydration. Client-side SPA
- * navigations never re-run it.
+ * Attaches its listeners from a `useEffect` (returns null, renders nothing).
+ * The old version rendered an inline `<script>` so it ran pre-hydration, but
+ * React 19 warns on ANY `<script>` a component renders ("Encountered a script
+ * tag while rendering React component"). ponytail: post-hydration attachment
+ * loses pre-hydration chunk-error recovery (dev-only edge case); acceptable to
+ * kill the warning. bfcache `pageshow` still works — the listener is mounted
+ * before any back/forward navigation fires it.
  */
-const SNIPPET = `(function () {
-  try {
-    // Reload ONLY if a chunk load error is detected (dev-server rebuild recovery)
-    window.addEventListener("error", function (e) {
-      var msg = e.message || "";
-      if (msg.indexOf("chunk") > -1 || msg.indexOf("Loading CSS") > -1 || msg.indexOf("Loading chunk") > -1) {
-        location.reload();
-      }
-    }, true);
-    // bfcache restore: dispatch event so React components can refetch silently without full reload
-    window.addEventListener("pageshow", function (e) {
-      if (e.persisted) {
-        window.dispatchEvent(new CustomEvent("bfcache-restore"));
-      }
-    });
-  } catch (e) { /* never break the page */ }
-})();`
-
 export function ReloadOnBackForward() {
-  return <script dangerouslySetInnerHTML={{ __html: SNIPPET }} />
+  useEffect(() => {
+    const onError = (e: ErrorEvent) => {
+      const msg = e.message || ""
+      if (
+        msg.indexOf("chunk") > -1 ||
+        msg.indexOf("Loading CSS") > -1 ||
+        msg.indexOf("Loading chunk") > -1
+      ) {
+        location.reload()
+      }
+    }
+    const onPageShow = (e: PageTransitionEvent) => {
+      if (e.persisted) {
+        window.dispatchEvent(new CustomEvent("bfcache-restore"))
+      }
+    }
+    window.addEventListener("error", onError, true)
+    window.addEventListener("pageshow", onPageShow)
+    return () => {
+      window.removeEventListener("error", onError, true)
+      window.removeEventListener("pageshow", onPageShow)
+    }
+  }, [])
+
+  return null
 }
