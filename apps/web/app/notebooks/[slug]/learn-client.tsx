@@ -40,6 +40,11 @@ export function LearnClient({ slug, tutorial, exercise }: LearnClientProps) {
 
   // Kernel selection: kernel-server (dev / self-hosted) wins; otherwise Python
   // runs fully client-side via Pyodide — no execution backend in production.
+  // Pyodide runs on the visitor's own CPU (no server cost, no abuse vector), so
+  // it needs no sign-in; only the shared kernel-server path is gated on auth.
+  const usePyodide = !kernelUrl
+  const canRun = usePyodide || isSignedIn
+
   const makeAdapter = useMemo(
     () => (): KernelAdapter =>
       kernelUrl
@@ -53,12 +58,12 @@ export function LearnClient({ slug, tutorial, exercise }: LearnClientProps) {
     [getToken, kernelUrl]
   )
   const tutorialAdapter = useMemo(
-    () => (isSignedIn ? makeAdapter() : null),
-    [isSignedIn, makeAdapter]
+    () => (canRun ? makeAdapter() : null),
+    [canRun, makeAdapter]
   )
   const exerciseAdapter = useMemo(
-    () => (isSignedIn && exercise ? makeAdapter() : null),
-    [exercise, isSignedIn, makeAdapter]
+    () => (canRun && exercise ? makeAdapter() : null),
+    [canRun, exercise, makeAdapter]
   )
 
   return (
@@ -78,7 +83,7 @@ export function LearnClient({ slug, tutorial, exercise }: LearnClientProps) {
         <InteractiveNotebook
           notebook={tutorial}
           adapter={tutorialAdapter}
-          signedIn={Boolean(isSignedIn)}
+          signedIn={canRun}
           onSignIn={() => void clerk.openSignIn()}
           exerciseTitle={exercise?.title ?? "Exercise"}
           onStartExercise={() => setTab("exercise")}
@@ -90,7 +95,7 @@ export function LearnClient({ slug, tutorial, exercise }: LearnClientProps) {
           <InteractiveNotebook
             notebook={exercise}
             adapter={exerciseAdapter}
-            signedIn={Boolean(isSignedIn)}
+            signedIn={canRun}
             onSignIn={() => void clerk.openSignIn()}
           />
         ) : (
