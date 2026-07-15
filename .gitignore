@@ -50,3 +50,4 @@ next-env.d.ts
 # CocoIndex Code (ccc)
 /.cocoindex_code/
 .gstack/
+.tmp/

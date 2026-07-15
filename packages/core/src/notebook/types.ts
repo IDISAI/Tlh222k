@@ -109,6 +109,8 @@ export interface TocEntry {
   text: string
   /** Anchor id, unique within the notebook. */
   slug: string
+  /** Id of the markdown cell the heading lives in (anchor assignment). */
+  cellId: string
 }
 
 // ── Parse failure ────────────────────────────────────────────────────────────

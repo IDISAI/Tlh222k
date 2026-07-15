@@ -1,0 +1,9 @@
+jupyter-server==2.16.0
+jupyter-client==8.6.3
+jupyter-core==5.8.1
+ipykernel==6.29.5
+traitlets==5.14.3
+tornado==6.5.2
+pyzmq==26.4.0
+python-dateutil==2.9.0.post0
+six==1.17.0

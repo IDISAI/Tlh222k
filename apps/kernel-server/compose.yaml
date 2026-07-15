@@ -1,0 +1,57 @@
+name: roadmap-jupyter
+
+services:
+  runtime-data-science:
+    build:
+      context: .
+      dockerfile: runtime/Dockerfile
+      args: { PROFILE: data-science }
+    image: local/notebook-data-science:dev
+    entrypoint: ["true"]
+
+  runtime-ml-cpu:
+    build:
+      context: .
+      dockerfile: runtime/Dockerfile
+      args: { PROFILE: ml-cpu }
+    image: local/notebook-ml-cpu:dev
+    entrypoint: ["true"]
+
+  kernel-server:
+    build: .
+    depends_on:
+      runtime-data-science: { condition: service_completed_successfully }
+      runtime-ml-cpu: { condition: service_completed_successfully }
+    environment:
+      PORT: "3006"
+      STORAGE_DIR: /app/storage/notebooks
+      DEV_AUTH_ROLE: ${DEV_AUTH_ROLE:-super-admin}
+      CLERK_JWKS_URL: ${CLERK_JWKS_URL:-}
+      SESSION_TICKET_SECRET: ${SESSION_TICKET_SECRET:-local-development-change-me}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000,http://localhost:3002,http://localhost:3003}
+      JUPYTER_MAX_SESSIONS: ${JUPYTER_MAX_SESSIONS:-2}
+      JUPYTER_SESSION_IDLE_SECONDS: ${JUPYTER_SESSION_IDLE_SECONDS:-900}
+      JUPYTER_SESSION_CPU: ${JUPYTER_SESSION_CPU:-1}
+      JUPYTER_SESSION_MEMORY: ${JUPYTER_SESSION_MEMORY:-2g}
+      JUPYTER_SESSION_PIDS: ${JUPYTER_SESSION_PIDS:-128}
+      JUPYTER_DOCKER_NETWORK: notebook-internal
+    ports: ["3006:3006"]
+    volumes:
+      - notebook-metadata:/app/storage/notebooks
+      - /var/run/docker.sock:/var/run/docker.sock
+    # default (non-internal) carries the published :3006; runtime containers
+    # join only notebook-internal and stay offline.
+    networks: [notebook-internal, default]
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3006/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+networks:
+  notebook-internal:
+    name: notebook-internal
+    internal: true
+
+volumes:
+  notebook-metadata:

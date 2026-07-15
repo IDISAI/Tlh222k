@@ -4,7 +4,9 @@
   "private": true,
   "scripts": {
     "build": "turbo build",
-    "dev": "turbo dev",
+    "dev": "node apps/kernel-server/dev.mjs",
+    "dev:js": "node apps/kernel-server/dev.mjs --js-only",
+    "dev:go": "node apps/kernel-server/dev.mjs --go-only",
     "lint": "turbo lint",
     "format": "turbo format",
     "typecheck": "turbo typecheck"

@@ -22,7 +22,6 @@ import {
   type RoadmapNode,
   type UpdateNodeInput,
 } from "../../types"
-import { isValidUrl } from "../../utils/is-valid-url"
 
 interface NodeEditPanelProps {
   node: RoadmapNode
@@ -33,7 +32,8 @@ interface NodeEditPanelProps {
 
 /**
  * Edit panel (Req 9): title (required, ≤150), description (≤500), read-only
- * NodeType badge, and — for articles — articleType with its required link.
+ * NodeType badge, and — for articles — articleType with its required Notion
+ * link. Jupyter articles always use the internal notebook route.
  */
 export function NodeEditPanel({ node, onClose, onSave }: NodeEditPanelProps) {
   const [title, setTitle] = useState(node.title)
@@ -42,7 +42,6 @@ export function NodeEditPanel({ node, onClose, onSave }: NodeEditPanelProps) {
     node.articleType
   )
   const [notionPageId, setNotionPageId] = useState(node.notionPageId ?? "")
-  const [jupyterUrl, setJupyterUrl] = useState(node.jupyterUrl ?? "")
   const [titleError, setTitleError] = useState("")
   const [saving, setSaving] = useState(false)
 
@@ -65,16 +64,6 @@ export function NodeEditPanel({ node, onClose, onSave }: NodeEditPanelProps) {
         toast.error("Notion Page ID là bắt buộc khi chọn loại Notion")
         return
       }
-      if (articleType === "jupyter") {
-        if (!jupyterUrl.trim()) {
-          toast.error("Jupyter URL là bắt buộc khi chọn loại Jupyter")
-          return
-        }
-        if (!isValidUrl(jupyterUrl.trim())) {
-          toast.error("Jupyter URL không hợp lệ")
-          return
-        }
-      }
     }
 
     const input: UpdateNodeInput = {
@@ -84,7 +73,9 @@ export function NodeEditPanel({ node, onClose, onSave }: NodeEditPanelProps) {
     if (isArticle && articleType) {
       input.articleType = articleType
       input.notionPageId = articleType === "notion" ? notionPageId.trim() : ""
-      input.jupyterUrl = articleType === "jupyter" ? jupyterUrl.trim() : ""
+      // Keep the legacy database field, but never persist an external Jupyter
+      // destination: Jupyter articles always route to the internal notebook.
+      input.jupyterUrl = ""
     }
 
     setSaving(true)
@@ -178,16 +169,12 @@ export function NodeEditPanel({ node, onClose, onSave }: NodeEditPanelProps) {
               )}
 
               {articleType === "jupyter" && (
-                <div className="space-y-1.5">
-                  <Label htmlFor="edit-jupyter">Jupyter URL *</Label>
-                  <Input
-                    id="edit-jupyter"
-                    type="url"
-                    value={jupyterUrl}
-                    placeholder="https://..."
-                    onChange={(e) => setJupyterUrl(e.target.value)}
-                  />
-                </div>
+                <p className="text-xs text-muted-foreground">
+                  Notebook nội bộ tại{" "}
+                  <code className="rounded bg-muted px-1">
+                    /notebooks/{node.slug}
+                  </code>
+                </p>
               )}
             </div>
           )}

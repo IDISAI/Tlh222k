@@ -25,8 +25,8 @@ export const RoadmapNodeComponent = memo(function RoadmapNodeComponent({
   // documents show a warning instead and never navigate.
   const isArticle = node.nodeType === "article"
   const articleLinked =
-    (node.articleType === "notion" && node.notionPageId) ||
-    (node.articleType === "jupyter" && node.jupyterUrl)
+    node.articleType === "jupyter" ||
+    (node.articleType === "notion" && node.notionPageId)
 
   return (
     <div

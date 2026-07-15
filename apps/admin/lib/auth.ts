@@ -1,5 +1,5 @@
 import { auth } from "@clerk/nextjs/server"
-import { roleFromClaims, type UserRole } from "@workspace/core"
+import { devAuthRole, roleFromClaims, type UserRole } from "@workspace/core"
 
 declare global {
   // The Clerk session token exposes public metadata as `metadata` (documented)
@@ -13,6 +13,9 @@ declare global {
 
 /** True when a Clerk session is present. */
 export async function getIsAuthenticated(): Promise<boolean> {
+  if (devAuthRole(process.env.NODE_ENV, process.env.NEXT_PUBLIC_DEV_AUTH_ROLE)) {
+    return true
+  }
   const { userId } = await auth()
   return Boolean(userId)
 }
@@ -22,6 +25,11 @@ export async function getIsAuthenticated(): Promise<boolean> {
  * Absent / unknown metadata → "viewer".
  */
 export async function getRole(): Promise<UserRole> {
+  const devRole = devAuthRole(
+    process.env.NODE_ENV,
+    process.env.NEXT_PUBLIC_DEV_AUTH_ROLE
+  )
+  if (devRole) return devRole
   const { sessionClaims } = await auth()
   return roleFromClaims(sessionClaims)
 }

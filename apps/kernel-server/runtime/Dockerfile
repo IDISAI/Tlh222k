@@ -1,0 +1,29 @@
+FROM quay.io/jupyter/minimal-notebook:python-3.12
+
+ARG PROFILE=data-science
+
+USER root
+COPY runtime/requirements-jupyter-runtime.txt runtime/requirements-data-science.txt runtime/requirements-ml-cpu.txt /tmp/notebook-requirements/
+RUN python -m venv /opt/notebook-env \
+    && /opt/notebook-env/bin/python -m pip install --no-cache-dir --upgrade pip \
+    && /opt/notebook-env/bin/python -m pip install --no-cache-dir -r /tmp/notebook-requirements/requirements-jupyter-runtime.txt \
+    && case "$PROFILE" in \
+      data-science) /opt/notebook-env/bin/python -m pip install --no-cache-dir -r /tmp/notebook-requirements/requirements-data-science.txt ;; \
+      ml-cpu) /opt/notebook-env/bin/python -m pip install --no-cache-dir -r /tmp/notebook-requirements/requirements-data-science.txt \
+        && /opt/notebook-env/bin/python -m pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu torch==2.7.0+cpu ;; \
+      *) echo "unsupported PROFILE: $PROFILE" >&2; exit 1 ;; \
+    esac \
+    && rm -rf /tmp/notebook-requirements
+
+COPY runtime/course_grading.py /opt/course/course_grading.py
+RUN chmod 0444 /opt/course/course_grading.py \
+    && mkdir -p /home/jovyan/.cache /home/jovyan/.config /home/jovyan/.ipython /home/jovyan/.jupyter /home/jovyan/.local /home/jovyan/work \
+    && chown -R 1000:100 /home/jovyan
+
+ENV PATH=/opt/notebook-env/bin:$PATH
+ENV PYTHONPATH=/opt/course
+USER 1000:100
+WORKDIR /home/jovyan
+
+EXPOSE 8888
+CMD ["sh", "-c", "mkdir -p /home/jovyan/work && exec /opt/notebook-env/bin/jupyter server --ServerApp.ip=0.0.0.0 --ServerApp.port=8888 --ServerApp.open_browser=False --ServerApp.allow_root=False --ServerApp.token=${JUPYTER_TOKEN:?JUPYTER_TOKEN required} --ServerApp.password='' --ServerApp.root_dir=/home/jovyan/work"]

@@ -1,40 +1,59 @@
 "use client"
 
+import type { ReactNode } from "react"
 import Markdown, { type Components } from "react-markdown"
 
-import type { TocEntry } from "../../types"
+import { slugify } from "../../utils/slugify"
 
 interface MarkdownCellProps {
   source: string
-  /** TOC entries for this cell's headings, in source order (anchor ids). */
-  headings?: TocEntry[]
 }
 
-/** Kaggle-Learn-style markdown rendering for tutorial prose. */
-export function MarkdownCell({ source, headings = [] }: MarkdownCellProps) {
-  // Headings render in source order, so a simple queue assigns each rendered
-  // heading the slug the service computed for it (keeps TOC anchors in sync).
-  let headingIndex = 0
-  const nextSlug = () => headings[headingIndex++]?.slug
+// Collect visible text from react-markdown children (strings, arrays, and
+// element children like inline <code>) so the anchor id derives purely from
+// the heading itself — no cross-heading counter that could drift between the
+// server and StrictMode's double-invoked client render.
+// ponytail: no duplicate-suffix dedup here; matches extractToc for the common
+// one-heading-per-cell layout. Add a per-cell slugger if a cell ever ships two
+// headings with identical text.
+function childText(children: ReactNode): string {
+  if (typeof children === "string" || typeof children === "number") {
+    return String(children)
+  }
+  if (Array.isArray(children)) return children.map(childText).join("")
+  if (children && typeof children === "object" && "props" in children) {
+    return childText(
+      (children as { props: { children?: ReactNode } }).props.children
+    )
+  }
+  return ""
+}
 
+const headingId = (children: ReactNode) => slugify(childText(children))
+
+/** Kaggle-Learn-style markdown rendering for tutorial prose. */
+export function MarkdownCell({ source }: MarkdownCellProps) {
   const components: Components = {
     h1: ({ children }) => (
-      <h1 id={nextSlug()} className="scroll-mt-20 text-3xl font-bold">
+      <h1 id={headingId(children)} className="scroll-mt-20 text-3xl font-bold">
         {children}
       </h1>
     ),
     h2: ({ children }) => (
-      <h2 id={nextSlug()} className="scroll-mt-20 text-2xl font-semibold">
+      <h2
+        id={headingId(children)}
+        className="scroll-mt-20 text-2xl font-semibold"
+      >
         {children}
       </h2>
     ),
     h3: ({ children }) => (
-      <h3 id={nextSlug()} className="scroll-mt-20 text-xl font-semibold">
+      <h3 id={headingId(children)} className="scroll-mt-20 text-xl font-semibold">
         {children}
       </h3>
     ),
     h4: ({ children }) => (
-      <h4 id={nextSlug()} className="scroll-mt-20 text-lg font-semibold">
+      <h4 id={headingId(children)} className="scroll-mt-20 text-lg font-semibold">
         {children}
       </h4>
     ),

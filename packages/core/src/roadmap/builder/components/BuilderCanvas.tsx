@@ -405,6 +405,7 @@ function BuilderCanvasInner({ canvas, className }: BuilderCanvasProps) {
         onClose={() => setDetailNode(null)}
         onEdit={setEditNode}
         onRemoveFromCanvas={(node) => canvas.removeFromCanvas([node.id])}
+        notebookBasePath="/notebooks"
       />
 
       {editNode && (
