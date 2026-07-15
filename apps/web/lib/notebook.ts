@@ -5,28 +5,24 @@ import path from "node:path"
 
 import { NotebookService, type Notebook } from "@workspace/core"
 
+import { loadPublishedFromBlob } from "./notebook-blob"
+
 const service = new NotebookService()
 const CONTENT_DIR = path.join(process.cwd(), "content", "notebooks")
 
 // Slugs come from the URL — never let them traverse out of CONTENT_DIR.
 const SLUG_PATTERN = /^[a-z0-9][a-z0-9-]*$/
 
-// kernel-server holds notebooks authored in the admin editor. Web reads the
-// PUBLIC published endpoint (server-to-server, no token). Committed fixtures
-// remain the fallback for the seeded roadmap notebooks.
-const KERNEL_SERVER_URL = process.env.NEXT_PUBLIC_KERNEL_SERVER_URL
-
+// Admin-authored notebooks live in Vercel Blob (`notebooks/<slug>.json`). Web
+// reads the PUBLISHED ones directly server-side; committed fixtures remain the
+// fallback for the seeded roadmap notebooks.
 async function fetchPublished(slug: string): Promise<Notebook | null> {
-  if (!KERNEL_SERVER_URL) return null
+  const notebook = await loadPublishedFromBlob(slug)
+  if (notebook === null) return null
   try {
-    const res = await fetch(`${KERNEL_SERVER_URL}/api/published/${slug}`, {
-      cache: "no-store",
-    })
-    if (!res.ok) return null
-    const { notebook } = (await res.json()) as { notebook: unknown }
     return service.parse(notebook)
   } catch {
-    return null // kernel-server down → fall back to fixtures
+    return null
   }
 }
 

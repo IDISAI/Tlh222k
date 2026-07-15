@@ -13,15 +13,23 @@ import { Input } from "@workspace/ui/components/input"
 
 const KERNEL_SERVER_URL = process.env.NEXT_PUBLIC_KERNEL_SERVER_URL
 
-/** List/create/delete notebooks stored on kernel-server. */
+/**
+ * List/create/delete notebooks. Uses kernel-server when configured (dev), else
+ * the same-origin Blob-backed CRUD API (free Vercel path). The /admin prefix is
+ * resolved at runtime for the web-host multi-zone case.
+ */
 export function NotebooksIndexClient() {
   const { getToken } = useAuth()
   const router = useRouter()
-  const store = useMemo(
-    () =>
-      KERNEL_SERVER_URL ? new HttpNotebookStore(KERNEL_SERVER_URL, getToken) : null,
-    [getToken]
-  )
+  const store = useMemo(() => {
+    if (KERNEL_SERVER_URL) return new HttpNotebookStore(KERNEL_SERVER_URL, getToken)
+    const apiBase =
+      typeof window !== "undefined" &&
+      window.location.pathname.startsWith("/admin")
+        ? "/admin"
+        : ""
+    return new HttpNotebookStore(apiBase, getToken)
+  }, [getToken])
   const [notebooks, setNotebooks] = useState<NotebookSummary[] | null>(null)
   const [title, setTitle] = useState("")
   const [error, setError] = useState<string | null>(null)
@@ -37,15 +45,6 @@ export function NotebooksIndexClient() {
   }, [store])
 
   useEffect(refresh, [refresh])
-
-  if (!KERNEL_SERVER_URL) {
-    return (
-      <p className="p-6 text-sm text-muted-foreground">
-        Chưa cấu hình NEXT_PUBLIC_KERNEL_SERVER_URL — danh sách notebook cần
-        kernel-server.
-      </p>
-    )
-  }
 
   const slug = slugify(title)
 

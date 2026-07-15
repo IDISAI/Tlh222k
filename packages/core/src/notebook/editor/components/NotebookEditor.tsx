@@ -7,7 +7,11 @@ import { Skeleton } from "@workspace/ui/components/skeleton"
 
 import { NotebookService } from "../../notebook.service"
 import type { NotebookRecord } from "../../kernel/types"
-import { JupyterSandboxAdapter, SandboxSessionClient } from "../../kernel"
+import {
+  JupyterSandboxAdapter,
+  PyodideKernelAdapter,
+  SandboxSessionClient,
+} from "../../kernel"
 import { useNotebookRuntime } from "../../runtime/use-notebook-runtime"
 import {
   HttpNotebookStore,
@@ -28,6 +32,18 @@ interface NotebookEditorProps {
   getToken?: () => Promise<string | null>
   /** Title for a brand-new slug (from the index create form). */
   defaultTitle?: string
+  /**
+   * Base URL for the Blob-backed CRUD API (`${base}/api/notebooks`). Used when
+   * no kernel-server is configured (free Vercel path). "" = same origin;
+   * "/admin" when the admin app is served under the web host's /admin prefix.
+   */
+  apiBaseUrl?: string
+  /**
+   * Factory for the Pyodide execution worker (owned by the consuming app so its
+   * bundler builds the worker). When provided and no kernel-server is set, cells
+   * run client-side via Pyodide — no execution backend needed.
+   */
+  createKernelWorker?: () => Worker
 }
 
 const service = new NotebookService()
@@ -49,25 +65,32 @@ export function NotebookEditor({
   initial,
   getToken,
   defaultTitle,
+  apiBaseUrl,
+  createKernelWorker,
 }: NotebookEditorProps) {
   const notebookStore = useMemo<NotebookStore>(
     () =>
       store ??
       (KERNEL_SERVER_URL
         ? new HttpNotebookStore(KERNEL_SERVER_URL, getToken)
-        : new LocalNotebookStore()),
-    [store, getToken]
+        : apiBaseUrl !== undefined
+          ? new HttpNotebookStore(apiBaseUrl, getToken)
+          : new LocalNotebookStore()),
+    [store, getToken, apiBaseUrl]
   )
   const editor = useNotebookEditor(slug, notebookStore, initial, defaultTitle)
   const snapshot = useMemo(() => editor.snapshot(), [editor.cells, editor.title])
   const adapter = useMemo(
-    () => KERNEL_SERVER_URL && getToken
-      ? new JupyterSandboxAdapter(
-          new SandboxSessionClient(KERNEL_SERVER_URL, getToken),
-          "data-science"
-        )
-      : null,
-    [getToken]
+    () =>
+      KERNEL_SERVER_URL && getToken
+        ? new JupyterSandboxAdapter(
+            new SandboxSessionClient(KERNEL_SERVER_URL, getToken),
+            "data-science"
+          )
+        : createKernelWorker
+          ? new PyodideKernelAdapter(createKernelWorker)
+          : null,
+    [getToken, createKernelWorker]
   )
   const runtime = useNotebookRuntime(snapshot, adapter)
 
