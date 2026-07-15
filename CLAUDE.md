@@ -4,11 +4,14 @@ This file is the canonical guide for AI agents working in this repository.
 
 ## Commands
 
-Turborepo + pnpm workspace. Node >= 20, pnpm 10.33.4.
+Turborepo + pnpm workspace. Node >= 20, pnpm 10.33.4. `apps/kernel-server` is a
+standalone Go module — it is NOT part of the pnpm/turbo workspace.
 
 ```bash
 pnpm install
-pnpm dev
+pnpm dev          # turbo apps + kernel-server Go binary (via apps/kernel-server/dev.mjs)
+pnpm dev:js       # turbo JS apps only (no Go)
+pnpm dev:go       # kernel-server Go binary only
 pnpm build
 pnpm lint
 pnpm typecheck
@@ -21,11 +24,16 @@ pnpm --filter svc-roadmap dev
 pnpm -F @workspace/db generate
 pnpm -F @workspace/db db:push
 pnpm -F @workspace/db seed
+
+# kernel-server (Go, from apps/kernel-server/)
+go build ./...
+go vet ./...
+DEV_AUTH_ROLE=super-admin go run ./cmd/server   # listens on :3006
 ```
 
 There is no test runner configured yet. CI is
 `install --frozen-lockfile -> lint -> typecheck -> build`. `lint` is ESLint;
-`typecheck` is `tsc --noEmit`.
+`typecheck` is `tsc --noEmit`. CI does NOT cover the Go kernel-server.
 
 ## Architecture
 
@@ -36,7 +44,15 @@ Current committed system:
 - `apps/super-admin`: super-admin/user-management child zone, port 3003.
 - `apps/svc-roadmap`: NestJS backend exposing GraphQL, REST, Swagger, and SSE,
   default port 3005.
-- `packages/core`: shared domain logic, feature-first.
+- `apps/kernel-server`: **Go** backend for the notebook feature. Standalone Go
+  module (not in the pnpm/turbo workspace). Port 3006. Notebook CRUD (filesystem
+  store), Clerk-gated auth, CORS, sandbox session tickets. Phase 3: Jupyter
+  WebSocket proxy for live kernel execution.
+- `packages/core`: shared domain logic, feature-first. Key modules:
+  - `src/notebook`: `NotebookService`, viewer, editor, kernel client, exercise,
+    runtime, utils. All nbformat parsing lives here — not in Go.
+  - `src/roadmap`: roadmap domain logic.
+  - `src/navigation`: navigation helpers (incl. `no-script-next-themes`).
 - `packages/db`: Prisma schema/client and seed data.
 - `packages/ui`: shared shadcn/ui + Tailwind v4 components.
 - `packages/eslint-config` and `packages/typescript-config`: shared tooling.
@@ -83,6 +99,7 @@ cp apps/web/.env.example          apps/web/.env.local
 cp apps/admin/.env.example        apps/admin/.env.local
 cp apps/super-admin/.env.example  apps/super-admin/.env.local
 cp apps/svc-roadmap/.env.example  apps/svc-roadmap/.env
+cp apps/kernel-server/.env.example apps/kernel-server/.env
 cp packages/db/.env.example       packages/db/.env
 ```
 
@@ -90,10 +107,13 @@ Rules:
 
 - Commit only `.env.example`; never commit real `.env` or `.env.local`.
 - `NEXT_PUBLIC_*` is browser-visible.
-- `NEXT_PUBLIC_SVC_ROADMAP_URL` selects the real backend. If it is empty,
+- `NEXT_PUBLIC_SVC_ROADMAP_URL` selects the real backend. If empty,
   `@workspace/core` uses the mock/localStorage roadmap service.
+- `NEXT_PUBLIC_KERNEL_SERVER_URL` points web and admin at the Go kernel-server
+  (`http://localhost:3006` in dev). If empty, web falls back to committed
+  `.ipynb` fixtures and the admin editor uses per-browser localStorage.
 - `NEXT_PUBLIC_DEV_AUTH_ROLE` is a dev-only Clerk bypass and is ignored in
-  production.
+  production. The Go kernel-server has a matching `DEV_AUTH_ROLE` env var.
 
 Full guide: [docs/onboarding/env.md](docs/onboarding/env.md).
 
