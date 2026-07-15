@@ -25,6 +25,13 @@ export async function resolveUser(
   const token = authorization?.replace(/^Bearer\s+/i, "").trim()
   if (!token) return null
 
+  // Local development devAuthRole bypass
+  if (process.env.NODE_ENV !== "production" && token.startsWith("dev:")) {
+    const rawRole = token.substring(4)
+    const role = normalizeRole(rawRole)
+    return { userId: `dev-user-${role}`, role }
+  }
+
   const secretKey = process.env.CLERK_SECRET_KEY
   if (!secretKey) return null
 

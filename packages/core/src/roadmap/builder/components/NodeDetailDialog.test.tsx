@@ -24,20 +24,24 @@ function jupyterArticle(): RoadmapNode {
 }
 
 describe("NodeDetailDialog", () => {
-  it("keeps the notebook document link inside the admin zone", () => {
-    window.history.pushState({}, "", "/admin/roadmap/frontend")
+  it("routes an internal jupyter article through the given notebook base path", () => {
+    // The admin zone passes its own (prod-prefixed) base path; the component
+    // uses it verbatim, so the notebook link stays inside the admin zone.
     const node = jupyterArticle()
 
     render(
       <NodeDetailDialog
         node={node}
         nodes={[node]}
-        notebookBasePath="/notebooks"
+        notebookBasePath="/admin/notebooks"
         onClose={() => undefined}
       />
     )
 
-    expect(screen.getByRole("link", { name: "/admin/notebooks/css-grid-lab" }).getAttribute("href"))
-      .toBe("/admin/notebooks/css-grid-lab")
+    expect(
+      screen
+        .getByRole("link", { name: "/admin/notebooks/css-grid-lab" })
+        .getAttribute("href")
+    ).toBe("/admin/notebooks/css-grid-lab")
   })
 })

@@ -4,3 +4,5 @@ export const BASE_PATH = process.env.NODE_ENV === "production" ? "/admin" : ""
 
 export const ROADMAPS_PATH = `${BASE_PATH}/roadmaps`
 export const FORBIDDEN_PATH = `${BASE_PATH}/403`
+export const NOTION_BASE_PATH = `${BASE_PATH}/notion`
+export const NOTEBOOK_BASE_PATH = `${BASE_PATH}/notebooks`

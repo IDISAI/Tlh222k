@@ -13,20 +13,28 @@ export function useRoadmap() {
   const [error, setError] = useState<Error | null>(null)
   const [loading, setLoading] = useState(true)
 
-  const load = useCallback(async () => {
-    setLoading(true)
+  const load = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true)
     setError(null)
     try {
       setData(await service.list())
     } catch (err) {
-      setError(err instanceof Error ? err : new Error("Unknown error"))
+      if (!silent) setError(err instanceof Error ? err : new Error("Unknown error"))
     } finally {
-      setLoading(false)
+      if (!silent) setLoading(false)
     }
   }, [])
 
   useEffect(() => {
     void load()
+
+    const handleRestore = () => {
+      void load(true)
+    }
+    window.addEventListener("bfcache-restore", handleRestore)
+    return () => {
+      window.removeEventListener("bfcache-restore", handleRestore)
+    }
   }, [load])
 
   return { data, loading, error, retry: load }

@@ -44,7 +44,7 @@ export const BuilderNodeComponent = memo(function BuilderNodeComponent({
   data,
   selected,
 }: NodeProps<BuilderFlowNode>) {
-  const { node } = data
+  const { node, viewerMode } = data
   const { nodes, isDragging } = useBuilderCanvasContext()
 
   const cardRef = useRef<HTMLDivElement | null>(null)
@@ -109,8 +109,17 @@ export const BuilderNodeComponent = memo(function BuilderNodeComponent({
   const Icon = NODE_TYPE_ICONS[node.nodeType]
   const articleUnlinked =
     node.nodeType === "article" &&
-    !(node.articleType === "jupyter" ||
-      (node.articleType === "notion" && node.notionPageId))
+    !(
+      (node.articleType === "notion" && node.notionPageId) ||
+      (node.articleType === "jupyter" && node.jupyterUrl)
+    )
+  // notion-article-node Req 6.2: in the viewer an UNLINKED notion article is
+  // visually disabled and inert (its click handler also bails).
+  const viewerDisabled =
+    viewerMode === true &&
+    node.nodeType === "article" &&
+    node.articleType === "notion" &&
+    !node.notionPageId
 
   return (
     <>
@@ -120,11 +129,18 @@ export const BuilderNodeComponent = memo(function BuilderNodeComponent({
           "flex min-w-[168px] items-center gap-2 rounded-xl border-2 px-4 py-2 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all dark:shadow-[2px_2px_0px_0px_rgba(255,255,255,0.15)]",
           NODE_TYPE_COLORS[node.nodeType],
           selected && "ring-2 ring-ring ring-offset-2",
-          node.isDeleted && "cursor-not-allowed opacity-50 grayscale"
+          node.isDeleted && "cursor-not-allowed opacity-50 grayscale",
+          viewerDisabled && "pointer-events-none cursor-not-allowed opacity-50"
         )}
         onMouseEnter={handleEnter}
         onMouseLeave={handleLeave}
-        title={node.isDeleted ? "Node đã bị xóa khỏi hệ thống" : undefined}
+        title={
+          node.isDeleted
+            ? "Node đã bị xóa khỏi hệ thống"
+            : viewerDisabled
+              ? "Trang Notion chưa được tạo cho node này"
+              : undefined
+        }
       >
         <Handle
           type="target"

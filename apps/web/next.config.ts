@@ -14,10 +14,10 @@ const noScriptNextThemes = fileURLToPath(
 // domains. Override with ADMIN_URL / SUPER_ADMIN_URL if the domains change.
 const isProd = process.env.NODE_ENV === "production"
 const ADMIN_URL =
-  process.env.ADMIN_URL ??
+  process.env.ADMIN_URL ||
   (isProd ? "https://tlh222k-admin.vercel.app" : "http://localhost:3002")
 const SUPER_ADMIN_URL =
-  process.env.SUPER_ADMIN_URL ??
+  process.env.SUPER_ADMIN_URL ||
   (isProd ? "https://tlh222k-super-admin.vercel.app" : "http://localhost:3003")
 
 // Child zones build as root apps so their proxy.ts runs before Clerk auth().
@@ -27,7 +27,7 @@ const ADMIN_DEST = ADMIN_URL
 const SUPER_ADMIN_DEST = SUPER_ADMIN_URL
 
 const nextConfig: NextConfig = {
-  transpilePackages: ["@workspace/ui", "@workspace/core"],
+  transpilePackages: ["@workspace/ui", "@workspace/core", "@workspace/db"],
   // /notebooks reads .ipynb fixtures with fs at request time; without this the
   // Vercel serverless bundle would omit them (dynamic path = not traced).
   outputFileTracingIncludes: {

@@ -62,6 +62,14 @@ export function RoadmapListAdmin({
 
   useEffect(() => {
     void load()
+
+    const handleRestore = () => {
+      void load()
+    }
+    window.addEventListener("bfcache-restore", handleRestore)
+    return () => {
+      window.removeEventListener("bfcache-restore", handleRestore)
+    }
   }, [load])
 
   return (

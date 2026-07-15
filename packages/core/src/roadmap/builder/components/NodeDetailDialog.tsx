@@ -1,6 +1,5 @@
 "use client"
 
-import { useEffect, useState } from "react"
 import { AlertTriangle, Eraser, ExternalLink, PencilLine } from "lucide-react"
 import { Badge } from "@workspace/ui/components/badge"
 import { Button } from "@workspace/ui/components/button"
@@ -16,9 +15,11 @@ import { toast } from "@workspace/ui/components/sonner"
 import { cn } from "@workspace/ui/lib/utils"
 
 import type { RoadmapNode } from "../../types"
-import { resolveArticleTarget } from "../../utils/resolve-article-target"
+import {
+  navigationBlockedMessage,
+  nodeNavigationUrl,
+} from "../../utils/node-navigation"
 import { NODE_TYPE_ACCENT, NODE_TYPE_ICONS } from "../utils/node-type-styles"
-import { TOAST_MESSAGES } from "../utils/toast-messages"
 import { childrenOf } from "./builder-context"
 
 interface NodeDetailDialogProps {
@@ -36,54 +37,19 @@ interface NodeDetailDialogProps {
    * (read-only viewer); admin/super-admin (creators) → "/notebooks" (editor).
    */
   notebookBasePath?: string
-}
-
-/**
- * Resolve the destination the "Điều hướng" action opens (Req 7.4/7.5).
- * role/skill → a same-origin `/roadmap/[slug]` viewer, so admin stays on :3002
- * and web stays on :3000 (each zone owns its own viewer route).
- *
- * `notebookBasePath` decides where an INTERNAL Jupyter article goes and differs
- * by zone: web (viewers) → `/learn` (read-only viewer); admin/super-admin
- * (creators) → `/notebooks` (the editor, to create/update that notebook).
- */
-export function nodeNavigationUrl(
-  node: RoadmapNode,
-  notebookBasePath = "/notebooks"
-): string | null {
-  if (node.nodeType === "role" || node.nodeType === "skill") {
-    return `/roadmap/${node.slug}`
-  }
-  if (node.nodeType === "article") {
-    const target = resolveArticleTarget(node)
-    if (target) {
-      return target.kind === "external"
-        ? target.url
-        : `${notebookBasePath}/${target.slug}`
-    }
-  }
-  return null
-}
-
-/** Host rewrites remove zone prefixes before child Next apps render. */
-export function zoneAwareNodeNavigationUrl(
-  node: RoadmapNode,
-  notebookBasePath: string,
-  pathname: string
-): string | null {
-  const zone = pathname === "/admin" || pathname.startsWith("/admin/")
-    ? "/admin"
-    : pathname === "/super-admin" || pathname.startsWith("/super-admin/")
-      ? "/super-admin"
-      : ""
-  const base = zone && !notebookBasePath.startsWith(`${zone}/`)
-    ? `${zone}${notebookBasePath}`
-    : notebookBasePath
-  const target = nodeNavigationUrl(node, base)
-  if (!zone || !target?.startsWith("/") || target.startsWith(`${zone}/`)) {
-    return target
-  }
-  return `${zone}${target}`
+  /**
+   * Base path for INTERNAL Notion articles. Both zones route to "/notion" —
+   * web renders the read-only workspace, admin the editor (admin may pass a
+   * zone-prefixed path in production).
+   */
+  notionBasePath?: string
+  /**
+   * Admin-builder base ("/roadmaps"). When set, chapter navigates to its
+   * Roadmap_Detail_Page (`{base}/{roadmapId}/chapter/{slug}`, Req 10.1) and
+   * role/skill navigates to its LINKED roadmap's builder (`{base}/{id}`,
+   * Req 11.5). Omitted in viewer zones → `/roadmap/{slug}` as before.
+   */
+  builderBasePath?: string
 }
 
 /**
@@ -100,13 +66,9 @@ export function NodeDetailDialog({
   onRemoveFromCanvas,
   readOnly = false,
   notebookBasePath = "/notebooks",
+  notionBasePath = "/notion",
+  builderBasePath,
 }: NodeDetailDialogProps) {
-  const [pathname, setPathname] = useState<string | null>(null)
-
-  useEffect(() => {
-    setPathname(window.location.pathname)
-  }, [])
-
   if (!node) return null
 
   const Icon = NODE_TYPE_ICONS[node.nodeType]
@@ -114,29 +76,28 @@ export function NodeDetailDialog({
     ? (nodes.find((n) => n.id === node.parentId) ?? null)
     : null
   const childCount = childrenOf(nodes, node.id).length
-  const navUrl = nodeNavigationUrl(node, notebookBasePath)
-  const resolvedNavUrl = pathname
-    ? (zoneAwareNodeNavigationUrl(node, notebookBasePath, pathname) ?? navUrl)
-    : navUrl
+  const navUrl = nodeNavigationUrl(node, {
+    notebookBasePath,
+    notionBasePath,
+    parentChapterSlug: parent?.nodeType === "chapter" ? parent.slug : undefined,
+    builderBasePath,
+  })
   const isArticle = node.nodeType === "article"
-  const canNavigate = navUrl !== null && node.nodeType !== "chapter"
-  // Same-origin routes (role/skill, internal notebook) stay in this zone;
-  // only Notion targets open as external links in a new tab.
-  const isExternal =
-    isArticle && node.articleType === "notion" && navUrl !== null
+  const canNavigate = navUrl !== null
+  // Same-origin routes (role/skill, internal notebook/notion) stay in this
+  // zone; only absolute URLs (legacy external docs) open in a new tab.
+  const isExternal = navUrl !== null && /^https?:\/\//.test(navUrl)
 
   const handleNavigate = () => {
-    // Req 7.6: unlinked article documents warn instead of navigating.
+    // Unlinked nodes warn instead of navigating (Req 1.3 / 10.6 / 11.6).
     if (!navUrl) {
-      toast.warning(TOAST_MESSAGES.ARTICLE_NO_LINK)
+      toast.warning(navigationBlockedMessage(node))
       return
     }
     if (isExternal) {
       window.open(navUrl, "_blank", "noopener,noreferrer")
     } else {
-      window.location.assign(
-        zoneAwareNodeNavigationUrl(node, notebookBasePath, window.location.pathname) ?? navUrl
-      )
+      window.location.assign(navUrl)
     }
   }
 
@@ -174,15 +135,15 @@ export function NodeDetailDialog({
           {isArticle && (
             <div className="space-y-1">
               <Label>Tài liệu</Label>
-              {resolvedNavUrl ? (
+              {navUrl ? (
                 <a
-                  href={resolvedNavUrl}
+                  href={navUrl}
                   {...(isExternal
                     ? { target: "_blank", rel: "noopener noreferrer" }
                     : {})}
                   className="block truncate text-xs text-primary underline underline-offset-2"
                 >
-                  {resolvedNavUrl}
+                  {navUrl}
                 </a>
               ) : (
                 <p className="flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-400">
@@ -209,10 +170,11 @@ export function NodeDetailDialog({
         <SheetFooter className="border-t dark:border-zinc-800">
           <Button
             type="button"
-            disabled={isArticle ? false : !canNavigate}
-            title={
-              !navUrl && isArticle ? "Tài liệu chưa được liên kết" : undefined
-            }
+            // Req 1.3/10.6/11.6: stays clickable so the toast can explain WHY
+            // navigation is blocked; the muted style signals "disabled".
+            className={cn(!canNavigate && "opacity-50")}
+            aria-disabled={!canNavigate}
+            title={!navUrl ? navigationBlockedMessage(node) : undefined}
             onClick={handleNavigate}
           >
             <ExternalLink className="size-4" /> Điều hướng

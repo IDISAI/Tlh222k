@@ -1,19 +1,45 @@
 import { spawn } from "node:child_process"
+import { readFileSync } from "node:fs"
 import { dirname, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 
 const kernelDir = dirname(fileURLToPath(import.meta.url))
 const repoRoot = resolve(kernelDir, "../..")
+
+// Load root .env file manually
+try {
+  const envContent = readFileSync(resolve(repoRoot, ".env"), "utf8")
+  for (const line of envContent.split(/\r?\n/)) {
+    const trimmed = line.trim()
+    if (!trimmed || trimmed.startsWith("#")) continue
+    const idx = trimmed.indexOf("=")
+    if (idx > -1) {
+      const key = trimmed.slice(0, idx).trim()
+      const value = trimmed.slice(idx + 1).trim()
+      if (process.env[key] === undefined) {
+        process.env[key] = value
+      }
+    }
+  }
+} catch (e) {
+  // Ignore if file doesn't exist
+}
+
 const kernelServerUrl =
   process.env.NEXT_PUBLIC_KERNEL_SERVER_URL || "http://localhost:3006"
+
+const enableBypass = process.env.ENABLE_DEV_AUTH_BYPASS === "true"
+const devAuthRoleVal = enableBypass
+  ? (process.env.NEXT_PUBLIC_DEV_AUTH_ROLE || process.env.DEV_AUTH_ROLE || "super-admin")
+  : ""
+
 const commands = [
   {
     command: "pnpm",
     args: ["turbo", "dev"],
     env: {
       NEXT_PUBLIC_KERNEL_SERVER_URL: kernelServerUrl,
-      NEXT_PUBLIC_DEV_AUTH_ROLE:
-        process.env.NEXT_PUBLIC_DEV_AUTH_ROLE || "super-admin",
+      NEXT_PUBLIC_DEV_AUTH_ROLE: devAuthRoleVal,
     },
   },
   {
@@ -80,7 +106,7 @@ if (!jsOnly) {
       env: {
         ...process.env,
         ...commands[1].env,
-        DEV_AUTH_ROLE: process.env.DEV_AUTH_ROLE || "super-admin",
+        DEV_AUTH_ROLE: devAuthRoleVal,
       },
       stdio: "inherit",
     })

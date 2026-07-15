@@ -2,7 +2,12 @@ import { redirect } from "next/navigation"
 import { RoadmapViewer } from "@workspace/core"
 
 import { getRole } from "@/lib/auth"
-import { FORBIDDEN_PATH, ROADMAPS_PATH } from "@/lib/paths"
+import {
+  FORBIDDEN_PATH,
+  NOTEBOOK_BASE_PATH,
+  NOTION_BASE_PATH,
+  ROADMAPS_PATH,
+} from "@/lib/paths"
 
 export const metadata = { title: "Xem roadmap" }
 
@@ -30,9 +35,11 @@ export default async function AdminRoadmapViewPage({
       isAuthenticated
       backHref={ROADMAPS_PATH}
       readOnlyBadge
-      // Admins create/update notebooks: jupyter articles open the editor,
-      // not the web read-only viewer.
-      notebookBasePath="/notebooks"
+      // Admins author content: internal articles open the EDITORS here
+      // (jupyter → /notebooks, notion → the admin /notion zone), not the web
+      // read-only surfaces.
+      notebookBasePath={NOTEBOOK_BASE_PATH}
+      notionBasePath={NOTION_BASE_PATH}
     />
   )
 }

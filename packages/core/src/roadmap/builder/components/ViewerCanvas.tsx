@@ -88,7 +88,7 @@ function ViewerCanvasInner({ nodes, onNodeClick, className }: ViewerCanvasProps)
           id: n.id,
           type: "builderNode" as const,
           position: { x: n.positionX, y: n.positionY },
-          data: { node: n },
+          data: { node: n, viewerMode: true },
           draggable: false,
           connectable: false,
         })),

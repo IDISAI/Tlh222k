@@ -27,6 +27,11 @@ export interface RoadmapViewerProps {
    * (default, read-only viewer); admin/super-admin → "/notebooks" (editor).
    */
   notebookBasePath?: string
+  /**
+   * Where an internal notion article opens. Web (viewers) → "/notion"
+   * (default, read-only workspace); admin → its own "/notion" editor zone.
+   */
+  notionBasePath?: string
 }
 
 /**
@@ -44,6 +49,7 @@ export function RoadmapViewer({
   backHref,
   readOnlyBadge = false,
   notebookBasePath = "/notebooks",
+  notionBasePath = "/notion",
 }: RoadmapViewerProps) {
   const [graph, setGraph] = useState<RoadmapGraph | null>(initialGraph)
   const [loading, setLoading] = useState(initialGraph === null)
@@ -54,17 +60,25 @@ export function RoadmapViewer({
     [slug]
   )
 
-  // Pull the freshest graph on mount (overlays any SSR snapshot / does the
-  // initial client load for admin).
+  // Pull the freshest graph on mount and on bfcache-restore.
   useEffect(() => {
     let cancelled = false
-    void refetch().then((fresh) => {
-      if (cancelled) return
-      setGraph(fresh)
-      setLoading(false)
-    })
+    const load = () => {
+      refetch().then((fresh) => {
+        if (cancelled) return
+        setGraph(fresh)
+        setLoading(false)
+      })
+    }
+    load()
+
+    const handleRestore = () => {
+      load()
+    }
+    window.addEventListener("bfcache-restore", handleRestore)
     return () => {
       cancelled = true
+      window.removeEventListener("bfcache-restore", handleRestore)
     }
   }, [refetch])
 
@@ -81,9 +95,26 @@ export function RoadmapViewer({
   const nodes = useMemo<RoadmapNode[]>(() => graph?.nodes ?? [], [graph])
   const selectedNode = nodes.find((n) => n.id === selectedId) ?? null
 
-  const handleNodeClick = useCallback((node: RoadmapNode) => {
-    setSelectedId(node.id)
-  }, [])
+  const handleNodeClick = useCallback(
+    (node: RoadmapNode) => {
+      // notion-article-node Req 6.1/6.2: a LINKED notion article navigates
+      // straight into the read-only workspace; an unlinked one is inert.
+      if (node.nodeType === "article" && node.articleType === "notion") {
+        if (!node.notionPageId) return
+        const parent = nodes.find((n) => n.id === node.parentId)
+        const chapterSlug =
+          parent?.nodeType === "chapter" ? parent.slug : undefined
+        if (chapterSlug) {
+          window.location.assign(
+            `${notionBasePath}/${chapterSlug}?page=${encodeURIComponent(node.slug)}`
+          )
+          return
+        }
+      }
+      setSelectedId(node.id)
+    },
+    [nodes, notionBasePath]
+  )
 
   return (
     <div className="flex h-[calc(100svh-57px)] flex-col">
@@ -134,6 +165,7 @@ export function RoadmapViewer({
         onClose={() => setSelectedId(null)}
         readOnly
         notebookBasePath={notebookBasePath}
+        notionBasePath={notionBasePath}
       />
     </div>
   )

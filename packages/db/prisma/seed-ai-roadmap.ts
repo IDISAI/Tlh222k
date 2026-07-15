@@ -62,6 +62,12 @@ async function main() {
     create: roadmap,
     update: roadmap,
   })
+  await prisma.node.deleteMany({
+    where: {
+      slug: { in: nodes.map((n) => n.slug) },
+      id: { notIn: nodes.map((n) => n.id) },
+    },
+  })
   for (const n of nodes) {
     const data = {
       roadmapId: roadmap.id,

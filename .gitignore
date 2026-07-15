@@ -51,3 +51,10 @@ next-env.d.ts
 /.cocoindex_code/
 .gstack/
 .tmp/
+
+# Playwright notion QA (local only)
+tools/pw-notion/profile/
+tools/pw-notion/state.json
+tools/pw-notion/shots/
+tools/pw-notion/*.mjs
+.env*

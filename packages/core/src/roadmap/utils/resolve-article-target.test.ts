@@ -35,11 +35,25 @@ describe("resolveArticleTarget", () => {
     ).toEqual({ kind: "internal", slug: "numpy-basics" })
   })
 
-  it("keeps Notion links external", () => {
+  it("routes a Notion article to the INTERNAL workspace even when a legacy notionPageId exists", () => {
     expect(
       resolveArticleTarget(
         node({ articleType: "notion", notionPageId: "page-id" })
       )
-    ).toEqual({ kind: "external", url: "https://notion.so/page-id" })
+    ).toEqual({ kind: "internal", slug: "numpy-basics" })
+  })
+
+  it("routes a Notion article without legacy metadata internally too", () => {
+    expect(
+      resolveArticleTarget(node({ articleType: "notion", notionPageId: null }))
+    ).toEqual({ kind: "internal", slug: "numpy-basics" })
+  })
+
+  it("returns null for unlinked articles", () => {
+    expect(resolveArticleTarget(node({ articleType: null }))).toBeNull()
+  })
+
+  it("returns null for non-article nodes", () => {
+    expect(resolveArticleTarget(node({ nodeType: "chapter" }))).toBeNull()
   })
 })

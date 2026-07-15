@@ -6,19 +6,19 @@ export type ArticleTarget =
   | { kind: "internal"; slug: string }
 
 /**
- * Routing rule for article nodes (internal Jupyter notebooks supersede legacy
- * external URL metadata):
- * - notion + linked page        → external Notion URL
- * - jupyter (any legacy URL)    → INTERNAL notebook viewer at /learn/[slug]
- * - anything else (unlinked)    → null (caller shows the "not linked" warning)
+ * Routing rule for article nodes — both document kinds are INTERNAL features
+ * now (legacy external URL metadata is superseded):
+ * - jupyter (any legacy jupyterUrl)  → notebook viewer/editor at
+ *   `<notebookBasePath>/[slug]`
+ * - notion (any legacy notionPageId) → notion workspace at
+ *   `<notionBasePath>/[slug]`
+ * - anything else (unlinked)         → null (caller shows the "not linked"
+ *   warning)
  */
 export function resolveArticleTarget(node: RoadmapNode): ArticleTarget | null {
   if (node.nodeType !== "article") return null
-  if (node.articleType === "jupyter") {
+  if (node.articleType === "jupyter" || node.articleType === "notion") {
     return { kind: "internal", slug: node.slug }
-  }
-  if (node.articleType === "notion" && node.notionPageId) {
-    return { kind: "external", url: `https://notion.so/${node.notionPageId}` }
   }
   return null
 }

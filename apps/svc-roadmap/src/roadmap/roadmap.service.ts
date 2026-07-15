@@ -46,6 +46,8 @@ export interface NodeDto {
   status: NodeStatus
   isDeleted: boolean
   childrenCount: number
+  linkedRoadmapId: string | null
+  isPublished: boolean
 }
 
 export interface GraphDto {
@@ -92,6 +94,8 @@ export interface UpdateNodeInput {
   positionY?: number | null
   order?: number | null
   parentId?: string | null
+  linkedRoadmapId?: string | null
+  isPublished?: boolean | null
 }
 
 export interface SaveNodeInput {
@@ -155,12 +159,13 @@ export class RoadmapService {
       )
     }
 
-    // Node-slug navigation: role/skill slug → that node + its subtree.
+    // Node-slug navigation: role/skill/chapter slug → node + its subtree
+    // (chapter → its article children).
     const node = await this.prisma.node.findFirst({
       where: {
         slug,
         isDeleted: false,
-        nodeType: { in: ["role", "skill"] },
+        nodeType: { in: ["role", "skill", "chapter"] },
       },
     })
     if (!node) return null
@@ -397,6 +402,14 @@ export class RoadmapService {
         positionX: input.positionX ?? undefined,
         positionY: input.positionY ?? undefined,
         order: input.order ?? undefined,
+        linkedRoadmapId:
+          input.linkedRoadmapId !== undefined
+            ? (input.linkedRoadmapId ?? null)
+            : undefined,
+        isPublished:
+          input.isPublished !== undefined && input.isPublished !== null
+            ? input.isPublished
+            : undefined,
       },
     })
     this.events.emit(updated.roadmapId)
@@ -516,6 +529,8 @@ export class RoadmapService {
       status,
       isDeleted: n.isDeleted,
       childrenCount,
+      linkedRoadmapId: n.linkedRoadmapId,
+      isPublished: n.isPublished,
     }
   }
 
@@ -628,14 +643,33 @@ export class RoadmapService {
     if (!parent) throw new RoadmapError("NOT_FOUND")
   }
 
+  // Deterministic `-{n}` suffix (n = 2..999) per notion-article-node Req 9.2.
   private async uniqueRoadmapSlug(base: string): Promise<string> {
-    const existing = await this.prisma.roadmap.findUnique({ where: { slug: base } })
-    return existing ? slugify(base, { unique: true }) : base
+    if (!(await this.prisma.roadmap.findUnique({ where: { slug: base } }))) {
+      return base
+    }
+    for (let n = 2; n <= 999; n++) {
+      const candidate = `${base}-${n}`
+      if (
+        !(await this.prisma.roadmap.findUnique({ where: { slug: candidate } }))
+      ) {
+        return candidate
+      }
+    }
+    throw new RoadmapError("TIMEOUT", "slug exhausted")
   }
 
   private async uniqueNodeSlug(base: string): Promise<string> {
-    const existing = await this.prisma.node.findUnique({ where: { slug: base } })
-    return existing ? slugify(base, { unique: true }) : base
+    if (!(await this.prisma.node.findUnique({ where: { slug: base } }))) {
+      return base
+    }
+    for (let n = 2; n <= 999; n++) {
+      const candidate = `${base}-${n}`
+      if (!(await this.prisma.node.findUnique({ where: { slug: candidate } }))) {
+        return candidate
+      }
+    }
+    throw new RoadmapError("TIMEOUT", "slug exhausted")
   }
 
   /** Exposed for a NodeType allow-list sanity check if ever needed. */

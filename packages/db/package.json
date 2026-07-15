@@ -17,6 +17,7 @@
     "seed": "tsx prisma/seed.ts",
     "seed:ai": "tsx prisma/seed-ai-roadmap.ts",
     "seed:jupyter": "tsx prisma/seed-jupyter-platform.ts",
+    "seed:full": "tsx prisma/seed-full-flow.ts",
     "build": "prisma generate --schema prisma/schema.prisma",
     "lint": "eslint",
     "typecheck": "tsc --noEmit"

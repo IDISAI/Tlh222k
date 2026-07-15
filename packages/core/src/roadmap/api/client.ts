@@ -8,6 +8,7 @@ import {
 } from "@apollo/client"
 import { setContext } from "@apollo/client/link/context"
 
+import { devAuthRole } from "../../navigation"
 import { RoadmapServiceError, type RoadmapErrorCode } from "../types"
 
 /** True when the frontend should talk to svc-roadmap instead of the mock. */
@@ -87,7 +88,11 @@ function makeClient(): ApolloClient<NormalizedCacheObject> {
 
   const authLink = setContext(async (_operation, prevContext) => {
     const headers = (prevContext.headers ?? {}) as Record<string, string>
-    const token = await getClerkToken()
+    const devRole = devAuthRole(
+      process.env.NODE_ENV,
+      process.env.NEXT_PUBLIC_DEV_AUTH_ROLE
+    )
+    const token = devRole ? `dev:${devRole}` : await getClerkToken()
     return {
       headers: token ? { ...headers, authorization: `Bearer ${token}` } : headers,
     }

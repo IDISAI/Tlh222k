@@ -33,3 +33,15 @@ export async function getRole(): Promise<UserRole> {
   const { sessionClaims } = await auth()
   return roleFromClaims(sessionClaims)
 }
+
+/**
+ * Clerk userId, or null under the dev bypass (no Clerk session). Callers that
+ * only need an author id should fall back to a placeholder.
+ */
+export async function getUserId(): Promise<string | null> {
+  if (devAuthRole(process.env.NODE_ENV, process.env.NEXT_PUBLIC_DEV_AUTH_ROLE)) {
+    return null
+  }
+  const { userId } = await auth()
+  return userId
+}
