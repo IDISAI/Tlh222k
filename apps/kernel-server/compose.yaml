@@ -23,10 +23,13 @@ services:
       runtime-data-science: { condition: service_completed_successfully }
       runtime-ml-cpu: { condition: service_completed_successfully }
     environment:
+      APP_ENV: development
       PORT: "3006"
       STORAGE_DIR: /app/storage/notebooks
       DEV_AUTH_ROLE: ${DEV_AUTH_ROLE:-super-admin}
       CLERK_JWKS_URL: ${CLERK_JWKS_URL:-}
+      CLERK_ISSUER: ${CLERK_ISSUER:-}
+      CLERK_AUDIENCE: ${CLERK_AUDIENCE:-}
       SESSION_TICKET_SECRET: ${SESSION_TICKET_SECRET:-local-development-change-me}
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000,http://localhost:3002,http://localhost:3003}
       JUPYTER_MAX_SESSIONS: ${JUPYTER_MAX_SESSIONS:-2}

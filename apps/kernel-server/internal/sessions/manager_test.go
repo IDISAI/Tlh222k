@@ -179,7 +179,7 @@ func TestStopAllStopsEveryActiveRuntime(t *testing.T) {
 }
 
 func TestDevAuthenticatorSetsAuthenticatedPrincipal(t *testing.T) {
-	authenticator := auth.New("admin", "")
+	authenticator := auth.New(auth.Options{DevRole: "admin"})
 	var got auth.Principal
 	handler := authenticator.Middleware(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
 		got = auth.PrincipalFrom(r)

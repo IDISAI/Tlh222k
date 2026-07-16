@@ -48,7 +48,7 @@ func TestSessionRouteReturns403ForDifferentOwner(t *testing.T) {
 	manager, session := routeManager(t, "different-owner")
 	mux := http.NewServeMux()
 	NewWithSessions(nil, manager, proxy.NewTickets([]byte("secret"), time.Now), nil).Register(mux)
-	handler := auth.New("admin", "").Middleware(mux)
+	handler := auth.New(auth.Options{DevRole: "admin"}).Middleware(mux)
 	recorder := httptest.NewRecorder()
 	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/sessions/"+session.ID, nil))
 

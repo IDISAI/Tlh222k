@@ -25,6 +25,9 @@ import (
 
 func main() {
 	cfg := config.Load()
+	if err := cfg.Validate(); err != nil {
+		log.Fatalf("config: %v", err)
+	}
 	processCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
@@ -54,15 +57,16 @@ func main() {
 		Pids:        cfg.JupyterSessionPIDs,
 		Network:     cfg.JupyterDockerNetwork,
 	}, containerRuntime, sessions.SystemClock{})
-	ticketSecret := os.Getenv("SESSION_TICKET_SECRET")
-	if ticketSecret == "" {
-		log.Fatal("SESSION_TICKET_SECRET is required")
-	}
-	tickets := proxy.NewTickets([]byte(ticketSecret), time.Now)
+	tickets := proxy.NewTickets([]byte(cfg.SessionTicketSecret), time.Now)
 	mux := http.NewServeMux()
 	api.NewWithSessions(fsStore, sessionManager, tickets, cfg.AllowedOrigins).Register(mux)
 
-	authn := auth.New(cfg.DevAuthRole, cfg.ClerkJWKSURL)
+	authn := auth.New(auth.Options{
+		DevRole:  cfg.DevAuthRole,
+		JWKSURL:  cfg.ClerkJWKSURL,
+		Issuer:   cfg.ClerkIssuer,
+		Audience: cfg.ClerkAudience,
+	})
 	handler := httpx.CORS(cfg.AllowedOrigins, authn.Middleware(mux))
 	go reapSessions(processCtx, sessionManager)
 

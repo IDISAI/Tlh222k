@@ -15,6 +15,8 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
 	"math/big"
 	"net/http"
 	"strings"
@@ -42,19 +44,52 @@ type ctxKey struct{}
 
 // Authenticator resolves roles; safe for concurrent use.
 type Authenticator struct {
-	devRole Role
-	jwksURL string
+	devRole    Role
+	jwksURL    string
+	issuer     string
+	audience   string
+	httpClient *http.Client
+	now        func() time.Time
 
-	mu      sync.RWMutex
-	keys    map[string]*rsa.PublicKey
-	fetched time.Time
+	mu                 sync.RWMutex
+	keys               map[string]*rsa.PublicKey
+	fetched            time.Time
+	lastRefreshAttempt time.Time
+	refreshMu          sync.Mutex
 }
 
-func New(devAuthRole, jwksURL string) *Authenticator {
+const (
+	jwksCacheTTL        = time.Hour
+	jwksRefreshThrottle = 30 * time.Second
+	maxJWKSBodyBytes    = 1 << 20
+)
+
+type Options struct {
+	DevRole    string
+	JWKSURL    string
+	Issuer     string
+	Audience   string
+	HTTPClient *http.Client
+	Now        func() time.Time
+}
+
+func New(options Options) *Authenticator {
+	httpClient := options.HTTPClient
+	if httpClient == nil {
+		httpClient = &http.Client{Timeout: 5 * time.Second}
+	}
+	now := options.Now
+	if now == nil {
+		now = time.Now
+	}
 	return &Authenticator{
-		devRole: normalizeRole(devAuthRole),
-		jwksURL: jwksURL,
-		keys:    map[string]*rsa.PublicKey{},
+		devRole:    normalizeRole(options.DevRole),
+		jwksURL:    options.JWKSURL,
+		issuer:     options.Issuer,
+		audience:   options.Audience,
+		httpClient: httpClient,
+		now:        now,
+		keys:       map[string]*rsa.PublicKey{},
 	}
 }
 
@@ -143,6 +178,9 @@ func (a *Authenticator) verify(token string) (map[string]any, error) {
 	if header.Alg != "RS256" {
 		return nil, errors.New("unexpected alg")
 	}
+	if strings.TrimSpace(header.Kid) == "" {
+		return nil, errors.New("missing signing key id")
+	}
 	key, err := a.key(header.Kid)
 	if err != nil {
 		return nil, err
@@ -163,17 +201,61 @@ func (a *Authenticator) verify(token string) (map[string]any, error) {
 	if err := json.Unmarshal(payload, &claims); err != nil {
 		return nil, err
 	}
-	// Reject expired tokens.
-	if exp, ok := claims["exp"].(float64); ok && time.Now().Unix() > int64(exp) {
-		return nil, errors.New("token expired")
+	now := a.now().Unix()
+	exp, ok := numericDate(claims["exp"])
+	if !ok || now >= exp {
+		return nil, errors.New("token expired or missing exp")
+	}
+	if rawNBF, exists := claims["nbf"]; exists {
+		nbf, ok := numericDate(rawNBF)
+		if !ok || now < nbf {
+			return nil, errors.New("token not active")
+		}
+	}
+	if a.issuer != "" {
+		issuer, ok := claims["iss"].(string)
+		if !ok || issuer != a.issuer {
+			return nil, errors.New("unexpected issuer")
+		}
+	}
+	if a.audience != "" && !claimAudienceContains(claims["aud"], a.audience) {
+		return nil, errors.New("unexpected audience")
 	}
 	return claims, nil
+}
+
+func numericDate(value any) (int64, bool) {
+	number, ok := value.(float64)
+	if !ok || number <= 0 {
+		return 0, false
+	}
+	return int64(number), true
+}
+
+func claimAudienceContains(value any, expected string) bool {
+	switch audience := value.(type) {
+	case string:
+		return audience == expected
+	case []any:
+		for _, item := range audience {
+			if value, ok := item.(string); ok && value == expected {
+				return true
+			}
+		}
+	case []string:
+		for _, value := range audience {
+			if value == expected {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func (a *Authenticator) key(kid string) (*rsa.PublicKey, error) {
 	a.mu.RLock()
 	key, ok := a.keys[kid]
-	fresh := time.Since(a.fetched) < time.Hour
+	fresh := a.now().Sub(a.fetched) < jwksCacheTTL
 	a.mu.RUnlock()
 	if ok && fresh {
 		return key, nil
@@ -190,39 +272,87 @@ func (a *Authenticator) key(kid string) (*rsa.PublicKey, error) {
 }
 
 func (a *Authenticator) refreshKeys() error {
-	resp, err := http.Get(a.jwksURL)
+	a.refreshMu.Lock()
+	defer a.refreshMu.Unlock()
+
+	now := a.now()
+	a.mu.RLock()
+	lastAttempt := a.lastRefreshAttempt
+	a.mu.RUnlock()
+	if !lastAttempt.IsZero() && now.Sub(lastAttempt) < jwksRefreshThrottle {
+		return nil
+	}
+	a.mu.Lock()
+	a.lastRefreshAttempt = now
+	a.mu.Unlock()
+
+	if strings.TrimSpace(a.jwksURL) == "" {
+		return errors.New("JWKS URL is required")
+	}
+	request, err := http.NewRequest(http.MethodGet, a.jwksURL, nil)
+	if err != nil {
+		return err
+	}
+	request.Header.Set("Accept", "application/json")
+	resp, err := a.httpClient.Do(request)
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return fmt.Errorf("JWKS endpoint returned status %d", resp.StatusCode)
+	}
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxJWKSBodyBytes+1))
+	if err != nil {
+		return err
+	}
+	if len(body) > maxJWKSBodyBytes {
+		return errors.New("JWKS response too large")
+	}
 	var jwks struct {
 		Keys []struct {
+			Kty string `json:"kty"`
+			Alg string `json:"alg"`
 			Kid string `json:"kid"`
 			N   string `json:"n"`
 			E   string `json:"e"`
 		} `json:"keys"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&jwks); err != nil {
+	if err := json.Unmarshal(body, &jwks); err != nil {
 		return err
 	}
 	keys := map[string]*rsa.PublicKey{}
 	for _, k := range jwks.Keys {
+		if strings.TrimSpace(k.Kid) == "" || (k.Kty != "" && k.Kty != "RSA") || (k.Alg != "" && k.Alg != "RS256") {
+			continue
+		}
 		nBytes, err := base64.RawURLEncoding.DecodeString(k.N)
-		if err != nil {
+		if err != nil || len(nBytes) == 0 {
 			continue
 		}
 		eBytes, err := base64.RawURLEncoding.DecodeString(k.E)
-		if err != nil {
+		if err != nil || len(eBytes) == 0 {
+			continue
+		}
+		exponent := new(big.Int).SetBytes(eBytes)
+		if !exponent.IsInt64() {
+			continue
+		}
+		e := int(exponent.Int64())
+		if e < 3 || e%2 == 0 {
 			continue
 		}
 		keys[k.Kid] = &rsa.PublicKey{
 			N: new(big.Int).SetBytes(nBytes),
-			E: int(new(big.Int).SetBytes(eBytes).Int64()),
+			E: e,
 		}
+	}
+	if len(keys) == 0 {
+		return errors.New("JWKS contains no valid RSA signing keys")
 	}
 	a.mu.Lock()
 	a.keys = keys
-	a.fetched = time.Now()
+	a.fetched = now
 	a.mu.Unlock()
 	return nil
 }

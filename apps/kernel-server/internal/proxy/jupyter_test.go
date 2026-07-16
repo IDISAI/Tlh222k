@@ -43,7 +43,7 @@ func proxyServer(t *testing.T, manager *sessions.Manager, tickets *Tickets) *htt
 	t.Helper()
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/sessions/{id}/jupyter/{path...}", auth.RequireAuthenticated(NewJupyter(manager, tickets, nil).ServeHTTP))
-	return httptest.NewServer(auth.New("admin", "").Middleware(mux))
+	return httptest.NewServer(auth.New(auth.Options{DevRole: "admin"}).Middleware(mux))
 }
 
 func TestProxyStripsClientTicketAndInjectsJupyterToken(t *testing.T) {

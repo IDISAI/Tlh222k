@@ -19,12 +19,17 @@ launcher defaults `DEV_AUTH_ROLE` to `super-admin`; set it explicitly to use a
 different local role. To run only this service:
 
 ```bash
-DEV_AUTH_ROLE=super-admin go run ./cmd/server   # listens on :3006
+APP_ENV=development \
+DEV_AUTH_ROLE=super-admin \
+SESSION_TICKET_SECRET=development-only-ticket-secret \
+go run ./cmd/server   # listens on :3006
 ```
 
-`DEV_AUTH_ROLE` bypasses JWT verification for local dev (mirrors the web apps'
-`NEXT_PUBLIC_DEV_AUTH_ROLE`). Leave it empty in production and set
-`CLERK_JWKS_URL` so session JWTs are verified against Clerk.
+`DEV_AUTH_ROLE` bypasses JWT verification only when `APP_ENV=development` or
+`test` (mirrors the web apps' `NEXT_PUBLIC_DEV_AUTH_ROLE`). Production defaults
+fail closed: set `APP_ENV=production`, leave `DEV_AUTH_ROLE` empty, configure
+`CLERK_JWKS_URL`, `CLERK_ISSUER`, `CLERK_AUDIENCE`, and use a random
+`SESSION_TICKET_SECRET` of at least 32 bytes.
 
 Point the Next apps at it with `NEXT_PUBLIC_KERNEL_SERVER_URL=http://localhost:3006`
 (web + admin `.env.local`). If unset, web falls back to committed `.ipynb`
