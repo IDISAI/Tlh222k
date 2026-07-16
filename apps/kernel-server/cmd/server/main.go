@@ -36,11 +36,19 @@ func main() {
 		log.Fatalf("store: %v", err)
 	}
 
-	runtimeOptions := []runtime.DockerRuntimeOption{}
-	if cfg.JupyterHostProxy {
-		runtimeOptions = append(runtimeOptions, runtime.WithHostProxy())
+	var containerRuntime managedRuntime
+	if cfg.JupyterBrokerURL != "" {
+		containerRuntime, err = runtime.NewBrokerRuntime(cfg.JupyterBrokerURL, cfg.JupyterBrokerToken, nil)
+		if err != nil {
+			log.Fatalf("broker runtime: %v", err)
+		}
+	} else {
+		runtimeOptions := []runtime.DockerRuntimeOption{}
+		if cfg.JupyterHostProxy {
+			runtimeOptions = append(runtimeOptions, runtime.WithHostProxy())
+		}
+		containerRuntime = runtime.NewDockerRuntime(nil, runtime.DefaultImages(), runtimeOptions...)
 	}
-	containerRuntime := runtime.NewDockerRuntime(nil, runtime.DefaultImages(), runtimeOptions...)
 	if err := containerRuntime.RemoveStaleContainers(processCtx); err != nil {
 		// Keep local notebook editing available when Docker Desktop is stopped.
 		// Production has no dev auth bypass, so a missing sandbox runtime remains fatal.
@@ -104,6 +112,11 @@ type shutdownServer interface {
 
 type sessionStopper interface {
 	StopAll(context.Context) error
+}
+
+type managedRuntime interface {
+	sessions.Runtime
+	RemoveStaleContainers(context.Context) error
 }
 
 func shutdownServices(server shutdownServer, sessions sessionStopper, timeout time.Duration) error {

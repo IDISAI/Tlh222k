@@ -53,6 +53,8 @@ cp packages/db/.env.example       packages/db/.env
 | `CLERK_ISSUER`                                      | kernel-server                        | Exact expected Clerk JWT `iss` claim                            |
 | `CLERK_AUDIENCE`                                    | kernel-server                        | Exact required Clerk JWT `aud` value                            |
 | `SESSION_TICKET_SECRET`                             | kernel-server                        | Random 32+ byte server-only secret                              |
+| `JUPYTER_BROKER_URL`                                | kernel-server                        | Internal Docker broker base URL                                 |
+| `JUPYTER_BROKER_TOKEN`                              | kernel-server, docker-broker         | Random 32+ byte internal bearer secret                          |
 | `JUPYTER_MAX_SESSIONS_PER_OWNER`                    | kernel-server                        | Per-user concurrent runtime cap; defaults to `1`                |
 | `NEXT_PUBLIC_SENTRY_DSN`                            | web, admin, super-admin              | Sentry project -> Settings -> Client Keys (DSN)                 |
 | `SENTRY_DSN`                                        | all server runtimes                  | Same Sentry DSN, or blank to disable                            |

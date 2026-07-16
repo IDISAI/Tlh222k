@@ -38,6 +38,8 @@ func TestValidateRequiresProductionJWTConfiguration(t *testing.T) {
 		{name: "issuer", mutate: func(c *Config) { c.ClerkIssuer = "" }, field: "CLERK_ISSUER"},
 		{name: "audience", mutate: func(c *Config) { c.ClerkAudience = "" }, field: "CLERK_AUDIENCE"},
 		{name: "ticket secret", mutate: func(c *Config) { c.SessionTicketSecret = "short" }, field: "SESSION_TICKET_SECRET"},
+		{name: "broker URL", mutate: func(c *Config) { c.JupyterBrokerURL = "" }, field: "JUPYTER_BROKER_URL"},
+		{name: "broker token", mutate: func(c *Config) { c.JupyterBrokerToken = "short" }, field: "JUPYTER_BROKER_TOKEN"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -83,5 +85,7 @@ func validProductionConfig() Config {
 		ClerkIssuer:         "https://clerk.example",
 		ClerkAudience:       "kernel-server",
 		SessionTicketSecret: "0123456789abcdef0123456789abcdef",
+		JupyterBrokerURL:    "http://docker-broker:3007",
+		JupyterBrokerToken:  "abcdef0123456789abcdef0123456789",
 	}
 }

@@ -6,14 +6,15 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"net/http"
+	"net/url"
 	"time"
 )
 
-// Tickets are only honored while their session still exists and belongs to the
-// same subject (checked per request), and idle sessions are reaped in minutes —
-// so a long nominal lifetime does not widen the replay window. 5 minutes broke
-// long-lived pages: @jupyterlab/services keeps polling with its start ticket.
-const ticketLifetime = 12 * time.Hour
+const (
+	ticketLifetime   = 5 * time.Minute
+	ticketCookieName = "__Secure-kernel-ticket"
+)
 
 var ErrInvalidTicket = errors.New("invalid connection ticket")
 
@@ -43,6 +44,20 @@ func (t *Tickets) Issue(sessionID, subject string) (string, time.Time, error) {
 	}
 	encodedPayload := base64.RawURLEncoding.EncodeToString(payload)
 	return encodedPayload + "." + base64.RawURLEncoding.EncodeToString(t.sign(encodedPayload)), expiresAt, nil
+}
+
+func (t *Tickets) IssueCookie(sessionID, subject string) (*http.Cookie, time.Time, error) {
+	value, expiresAt, err := t.Issue(sessionID, subject)
+	if err != nil {
+		return nil, time.Time{}, err
+	}
+	return ticketCookie(sessionID, value, expiresAt), expiresAt, nil
+}
+
+func ExpireTicketCookie(sessionID string) *http.Cookie {
+	cookie := ticketCookie(sessionID, "", time.Unix(1, 0))
+	cookie.MaxAge = -1
+	return cookie
 }
 
 func (t *Tickets) Validate(ticket, sessionID, subject string) error {
@@ -83,6 +98,19 @@ func (t *Tickets) sign(payload string) []byte {
 	mac := hmac.New(sha256.New, t.secret)
 	_, _ = mac.Write([]byte(payload))
 	return mac.Sum(nil)
+}
+
+func ticketCookie(sessionID, value string, expires time.Time) *http.Cookie {
+	return &http.Cookie{
+		Name:     ticketCookieName,
+		Value:    value,
+		Path:     "/api/sessions/" + url.PathEscape(sessionID) + "/jupyter/",
+		Expires:  expires,
+		MaxAge:   int(ticketLifetime / time.Second),
+		HttpOnly: true,
+		Secure:   true,
+		SameSite: http.SameSiteLaxMode,
+	}
 }
 
 func splitTicket(ticket string) (string, string, bool) {

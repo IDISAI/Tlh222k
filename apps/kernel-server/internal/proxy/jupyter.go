@@ -74,6 +74,10 @@ func (p *Jupyter) Control(ctx context.Context, session sessions.Session, action 
 
 func (p *Jupyter) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	sessionID := r.PathValue("id")
+	if queryContainsSecret(r) {
+		http.Error(w, `{"error":"query credentials are forbidden"}`, http.StatusBadRequest)
+		return
+	}
 	ticket := clientTicket(r)
 	subject, err := p.tickets.Verify(ticket, sessionID)
 	if ticket == "" || err != nil {
@@ -125,6 +129,12 @@ func (p *Jupyter) serveHTTP(w http.ResponseWriter, r *http.Request, session sess
 				response.Header.Del(header)
 			}
 		}
+		cookie, _, err := p.tickets.IssueCookie(session.ID, session.Owner)
+		if err != nil {
+			return fmt.Errorf("rotate connection ticket: %w", err)
+		}
+		response.Header.Add("Set-Cookie", cookie.String())
+		setProxySecurityHeaders(response.Header)
 		return nil
 	}
 	proxy.ServeHTTP(w, r)
@@ -163,6 +173,13 @@ func (p *Jupyter) serveWebSocket(w http.ResponseWriter, r *http.Request, session
 		return
 	}
 	defer upstream.CloseNow()
+	cookie, _, err := p.tickets.IssueCookie(session.ID, session.Owner)
+	if err != nil {
+		http.Error(w, `{"error":"connection ticket unavailable"}`, http.StatusInternalServerError)
+		return
+	}
+	http.SetCookie(w, cookie)
+	setProxySecurityHeaders(w.Header())
 
 	acceptOptions := &websocket.AcceptOptions{OriginPatterns: p.originPatterns}
 	if selected := upstream.Subprotocol(); selected != "" {
@@ -219,18 +236,21 @@ func originPatterns(origins []string) []string {
 }
 
 func clientTicket(r *http.Request) string {
-	if ticket := r.URL.Query().Get("ticket"); ticket != "" {
-		return ticket
+	cookie, err := r.Cookie(ticketCookieName)
+	if err != nil {
+		return ""
 	}
-	if ticket := r.URL.Query().Get("token"); ticket != "" {
-		return ticket
-	}
-	for _, prefix := range []string{"token ", "Bearer "} {
-		if ticket, ok := strings.CutPrefix(r.Header.Get("Authorization"), prefix); ok {
-			return strings.TrimSpace(ticket)
-		}
-	}
-	return ""
+	return cookie.Value
+}
+
+func queryContainsSecret(r *http.Request) bool {
+	query := r.URL.Query()
+	return query.Has("ticket") || query.Has("token")
+}
+
+func setProxySecurityHeaders(header http.Header) {
+	header.Set("Cache-Control", "no-store")
+	header.Set("Referrer-Policy", "no-referrer")
 }
 
 func websocketUpgrade(r *http.Request) bool {

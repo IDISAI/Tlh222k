@@ -7,7 +7,6 @@ export interface SandboxSession {
   profile: RuntimeProfile
   status: KernelStatus
   proxyBaseUrl: string
-  connectionTicket: string
   expiresAt: string
 }
 

@@ -6,7 +6,6 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -63,12 +62,12 @@ func TestProxyStripsClientTicketAndInjectsJupyterToken(t *testing.T) {
 	server := proxyServer(t, manager, tickets)
 	defer server.Close()
 
-	requestURL := fmt.Sprintf("%s/api/sessions/%s/jupyter/api/kernels?ticket=%s&existing=1", server.URL, session.ID, url.QueryEscape(ticket))
+	requestURL := fmt.Sprintf("%s/api/sessions/%s/jupyter/api/kernels?existing=1", server.URL, session.ID)
 	request, err := http.NewRequest(http.MethodGet, requestURL, nil)
 	if err != nil {
 		t.Fatalf("new request: %v", err)
 	}
-	request.Header.Set("Authorization", "token "+ticket)
+	request.AddCookie(&http.Cookie{Name: ticketCookieName, Value: ticket})
 	response, err := http.DefaultClient.Do(request)
 	if err != nil {
 		t.Fatalf("proxy request: %v", err)
@@ -91,6 +90,79 @@ func TestProxyStripsClientTicketAndInjectsJupyterToken(t *testing.T) {
 	}
 }
 
+func TestProxyRejectsQueryTicketEvenWithValidCookie(t *testing.T) {
+	upstreamCalled := false
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		upstreamCalled = true
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer upstream.Close()
+	manager, session := newTestManager(t, upstream.URL)
+	tickets := NewTickets([]byte("test-secret"), time.Now)
+	ticket, _, err := tickets.Issue(session.ID, session.Owner)
+	if err != nil {
+		t.Fatalf("issue ticket: %v", err)
+	}
+	server := proxyServer(t, manager, tickets)
+	defer server.Close()
+
+	request, err := http.NewRequest(http.MethodGet, fmt.Sprintf("%s/api/sessions/%s/jupyter/api/status?ticket=leaked", server.URL, session.ID), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.AddCookie(&http.Cookie{Name: ticketCookieName, Value: ticket})
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusBadRequest || upstreamCalled {
+		t.Fatalf("status/upstream = %d/%v, want 400/false", response.StatusCode, upstreamCalled)
+	}
+}
+
+func TestSuccessfulProxyResponseRotatesFiveMinuteTicketCookie(t *testing.T) {
+	now := time.Unix(10_000, 0)
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer upstream.Close()
+	manager, session := newTestManager(t, upstream.URL)
+	tickets := NewTickets([]byte("test-secret"), func() time.Time { return now })
+	initial, _, err := tickets.Issue(session.ID, session.Owner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now = now.Add(time.Minute)
+	server := proxyServer(t, manager, tickets)
+	defer server.Close()
+	request, err := http.NewRequest(http.MethodGet, fmt.Sprintf("%s/api/sessions/%s/jupyter/api/status", server.URL, session.ID), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.AddCookie(&http.Cookie{Name: ticketCookieName, Value: initial})
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	var rotated *http.Cookie
+	for _, cookie := range response.Cookies() {
+		if cookie.Name == ticketCookieName {
+			rotated = cookie
+		}
+	}
+	if rotated == nil || rotated.Value == initial {
+		t.Fatalf("rotated cookie = %#v, want fresh ticket", rotated)
+	}
+	if !rotated.Expires.Equal(now.Add(5*time.Minute)) || rotated.MaxAge != 300 {
+		t.Fatalf("rotated expiry/max-age = %v/%d", rotated.Expires, rotated.MaxAge)
+	}
+	if response.Header.Get("Cache-Control") != "no-store" || response.Header.Get("Referrer-Policy") != "no-referrer" {
+		t.Fatalf("security headers = Cache-Control:%q Referrer-Policy:%q", response.Header.Get("Cache-Control"), response.Header.Get("Referrer-Policy"))
+	}
+}
+
 func TestProxyStripsUpstreamCORSHeaders(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Tornado reflects the request Origin; the middleware already sets CORS.
@@ -109,8 +181,13 @@ func TestProxyStripsUpstreamCORSHeaders(t *testing.T) {
 	server := proxyServer(t, manager, tickets)
 	defer server.Close()
 
-	requestURL := fmt.Sprintf("%s/api/sessions/%s/jupyter/api/status?ticket=%s", server.URL, session.ID, url.QueryEscape(ticket))
-	response, err := http.Get(requestURL)
+	requestURL := fmt.Sprintf("%s/api/sessions/%s/jupyter/api/status", server.URL, session.ID)
+	request, err := http.NewRequest(http.MethodGet, requestURL, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.AddCookie(&http.Cookie{Name: ticketCookieName, Value: ticket})
+	response, err := http.DefaultClient.Do(request)
 	if err != nil {
 		t.Fatalf("proxy request: %v", err)
 	}
@@ -151,8 +228,8 @@ func TestWebSocketRelayPreservesBinaryMessage(t *testing.T) {
 	server := proxyServer(t, manager, tickets)
 	defer server.Close()
 
-	wsURL := "ws" + server.URL[len("http"):] + fmt.Sprintf("/api/sessions/%s/jupyter/api/kernels/kernel-1/channels?ticket=%s", session.ID, url.QueryEscape(ticket))
-	connection, response, err := websocket.Dial(context.Background(), wsURL, nil)
+	wsURL := "ws" + server.URL[len("http"):] + fmt.Sprintf("/api/sessions/%s/jupyter/api/kernels/kernel-1/channels", session.ID)
+	connection, response, err := websocket.Dial(context.Background(), wsURL, &websocket.DialOptions{HTTPHeader: ticketRequestHeader(ticket)})
 	if err != nil {
 		if response != nil {
 			t.Fatalf("dial proxy websocket: %v (status %d)", err, response.StatusCode)
@@ -204,8 +281,8 @@ func TestWebSocketRelayPreservesLargeMessage(t *testing.T) {
 	server := proxyServer(t, manager, tickets)
 	defer server.Close()
 
-	wsURL := "ws" + server.URL[len("http"):] + fmt.Sprintf("/api/sessions/%s/jupyter/api/kernels/kernel-1/channels?ticket=%s", session.ID, url.QueryEscape(ticket))
-	connection, _, err := websocket.Dial(context.Background(), wsURL, nil)
+	wsURL := "ws" + server.URL[len("http"):] + fmt.Sprintf("/api/sessions/%s/jupyter/api/kernels/kernel-1/channels", session.ID)
+	connection, _, err := websocket.Dial(context.Background(), wsURL, &websocket.DialOptions{HTTPHeader: ticketRequestHeader(ticket)})
 	if err != nil {
 		t.Fatalf("dial proxy websocket: %v", err)
 	}
@@ -223,4 +300,10 @@ func TestWebSocketRelayPreservesLargeMessage(t *testing.T) {
 	if len(got) != len(want) {
 		t.Fatalf("payload length = %d, want %d", len(got), len(want))
 	}
+}
+
+func ticketRequestHeader(ticket string) http.Header {
+	header := make(http.Header)
+	header.Set("Cookie", (&http.Cookie{Name: ticketCookieName, Value: ticket}).String())
+	return header
 }

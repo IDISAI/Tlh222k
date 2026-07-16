@@ -25,6 +25,8 @@ type Config struct {
 	ClerkIssuer         string
 	ClerkAudience       string
 	SessionTicketSecret string
+	JupyterBrokerURL    string
+	JupyterBrokerToken  string
 	// Browser origins allowed to call this server (CORS).
 	AllowedOrigins []string
 
@@ -73,6 +75,8 @@ func Load() Config {
 		ClerkIssuer:                os.Getenv("CLERK_ISSUER"),
 		ClerkAudience:              os.Getenv("CLERK_AUDIENCE"),
 		SessionTicketSecret:        os.Getenv("SESSION_TICKET_SECRET"),
+		JupyterBrokerURL:           os.Getenv("JUPYTER_BROKER_URL"),
+		JupyterBrokerToken:         os.Getenv("JUPYTER_BROKER_TOKEN"),
 		AllowedOrigins:             origins,
 		JupyterMaxSessions:         getenvPositiveInt("JUPYTER_MAX_SESSIONS", 2),
 		JupyterMaxSessionsPerOwner: getenvPositiveInt("JUPYTER_MAX_SESSIONS_PER_OWNER", 1),
@@ -100,6 +104,20 @@ func (c Config) Validate() error {
 	if strings.TrimSpace(c.SessionTicketSecret) == "" {
 		return errors.New("SESSION_TICKET_SECRET is required")
 	}
+	brokerURLValue := strings.TrimSpace(c.JupyterBrokerURL)
+	brokerTokenValue := strings.TrimSpace(c.JupyterBrokerToken)
+	if (brokerURLValue == "") != (brokerTokenValue == "") {
+		return errors.New("JUPYTER_BROKER_URL and JUPYTER_BROKER_TOKEN must be configured together")
+	}
+	if brokerURLValue != "" {
+		if len(c.JupyterBrokerToken) < 32 {
+			return errors.New("JUPYTER_BROKER_TOKEN must be at least 32 bytes")
+		}
+		brokerURL, err := url.Parse(c.JupyterBrokerURL)
+		if err != nil || (brokerURL.Scheme != "http" && brokerURL.Scheme != "https") || brokerURL.Host == "" || brokerURL.User != nil || brokerURL.RawQuery != "" || brokerURL.Fragment != "" {
+			return errors.New("JUPYTER_BROKER_URL must be an absolute HTTP(S) URL without credentials, query, or fragment")
+		}
+	}
 	if c.Environment != "production" {
 		return nil
 	}
@@ -107,9 +125,10 @@ func (c Config) Validate() error {
 		return errors.New("DEV_AUTH_ROLE is forbidden in production")
 	}
 	for key, value := range map[string]string{
-		"CLERK_JWKS_URL": c.ClerkJWKSURL,
-		"CLERK_ISSUER":   c.ClerkIssuer,
-		"CLERK_AUDIENCE": c.ClerkAudience,
+		"CLERK_JWKS_URL":     c.ClerkJWKSURL,
+		"CLERK_ISSUER":       c.ClerkIssuer,
+		"CLERK_AUDIENCE":     c.ClerkAudience,
+		"JUPYTER_BROKER_URL": c.JupyterBrokerURL,
 	} {
 		if strings.TrimSpace(value) == "" {
 			return fmt.Errorf("%s is required in production", key)

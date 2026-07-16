@@ -1,9 +1,8 @@
 # kernel-server
 
-Go backend for the notebook feature. **Phase 2:** notebook CRUD (filesystem
-store) + Clerk-gated auth + CORS, so the admin editor and the web `/learn`
-viewer read/write the **same** notebooks. **Phase 3 (planned):** a Jupyter
-WebSocket proxy for live code execution.
+Go backend for notebook CRUD and live Jupyter execution: Clerk-gated API,
+filesystem store, HTTP/WebSocket proxy, short-lived HttpOnly session cookies,
+and fixed-policy Docker broker.
 
 It is a standalone Go module (not part of the pnpm/turbo workspace), so it does
 not affect the JS `lint → typecheck → build` CI.
@@ -34,6 +33,10 @@ fail closed: set `APP_ENV=production`, leave `DEV_AUTH_ROLE` empty, configure
 Runtime capacity counts launches still in progress. `JUPYTER_MAX_SESSIONS`
 limits the server globally; `JUPYTER_MAX_SESSIONS_PER_OWNER` defaults to `1`
 to prevent one identity from exhausting all kernel slots.
+
+Container deployments must configure `JUPYTER_BROKER_URL` and a random 32+
+byte `JUPYTER_BROKER_TOKEN`. Kernel-server image has no Docker CLI/socket; only
+non-root broker sidecar mounts socket and it accepts fixed session/profile input.
 
 Point the Next apps at it with `NEXT_PUBLIC_KERNEL_SERVER_URL=http://localhost:3006`
 (web + admin `.env.local`). If unset, web falls back to committed `.ipynb`

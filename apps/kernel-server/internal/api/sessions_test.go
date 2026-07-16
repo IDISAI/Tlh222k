@@ -71,3 +71,27 @@ func TestCreateSessionReturns429WhenOwnerQuotaIsFull(t *testing.T) {
 		t.Fatalf("status = %d, want 429", recorder.Code)
 	}
 }
+
+func TestCreateSessionSetsHttpOnlyTicketCookieWithoutReturningSecret(t *testing.T) {
+	manager, _ := routeManager(t, "dev:admin")
+	mux := http.NewServeMux()
+	NewWithSessions(nil, manager, proxy.NewTickets([]byte("secret"), time.Now), nil).Register(mux)
+	handler := auth.New(auth.Options{DevRole: "admin"}).Middleware(mux)
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/api/sessions", strings.NewReader(`{"profile":"data-science"}`))
+	handler.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", recorder.Code)
+	}
+	if strings.Contains(recorder.Body.String(), "connectionTicket") || strings.Contains(recorder.Body.String(), "ticket") {
+		t.Fatalf("response leaked ticket: %s", recorder.Body.String())
+	}
+	cookies := recorder.Result().Cookies()
+	if len(cookies) != 1 || cookies[0].Name != "__Secure-kernel-ticket" || !cookies[0].HttpOnly || !cookies[0].Secure {
+		t.Fatalf("session cookie = %#v", cookies)
+	}
+	if recorder.Header().Get("Cache-Control") != "no-store" || recorder.Header().Get("Referrer-Policy") != "no-referrer" {
+		t.Fatalf("missing no-store/no-referrer headers")
+	}
+}

@@ -63,12 +63,11 @@ type createSessionRequest struct {
 }
 
 type sessionResponse struct {
-	ID               string          `json:"id"`
-	Profile          string          `json:"profile"`
-	Status           sessions.Status `json:"status"`
-	ProxyBaseURL     string          `json:"proxyBaseUrl"`
-	ConnectionTicket string          `json:"connectionTicket"`
-	ExpiresAt        time.Time       `json:"expiresAt"`
+	ID           string          `json:"id"`
+	Profile      string          `json:"profile"`
+	Status       sessions.Status `json:"status"`
+	ProxyBaseURL string          `json:"proxyBaseUrl"`
+	ExpiresAt    time.Time       `json:"expiresAt"`
 }
 
 func (h *Handler) createSession(w http.ResponseWriter, r *http.Request) {
@@ -129,6 +128,8 @@ func (h *Handler) deleteSession(w http.ResponseWriter, r *http.Request) {
 		writeOwnedSessionError(w, err)
 		return
 	}
+	http.SetCookie(w, proxy.ExpireTicketCookie(r.PathValue("id")))
+	setSecretResponseHeaders(w.Header())
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -143,19 +144,25 @@ func (h *Handler) ownedSession(w http.ResponseWriter, r *http.Request) (sessions
 }
 
 func (h *Handler) writeSession(w http.ResponseWriter, session sessions.Session) {
-	ticket, expiresAt, err := h.tickets.Issue(session.ID, session.Owner)
+	cookie, expiresAt, err := h.tickets.IssueCookie(session.ID, session.Owner)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, errors.New("ticket unavailable"))
 		return
 	}
+	http.SetCookie(w, cookie)
+	setSecretResponseHeaders(w.Header())
 	writeJSON(w, http.StatusOK, sessionResponse{
-		ID:               session.ID,
-		Profile:          session.Profile,
-		Status:           session.Status,
-		ProxyBaseURL:     fmt.Sprintf("/api/sessions/%s/jupyter/", session.ID),
-		ConnectionTicket: ticket,
-		ExpiresAt:        expiresAt,
+		ID:           session.ID,
+		Profile:      session.Profile,
+		Status:       session.Status,
+		ProxyBaseURL: fmt.Sprintf("/api/sessions/%s/jupyter/", session.ID),
+		ExpiresAt:    expiresAt,
 	})
+}
+
+func setSecretResponseHeaders(header http.Header) {
+	header.Set("Cache-Control", "no-store")
+	header.Set("Referrer-Policy", "no-referrer")
 }
 
 func writeOwnedSessionError(w http.ResponseWriter, err error) {
