@@ -306,7 +306,7 @@ export class RoadmapService {
         isPublished: false,
       },
     })
-    this.events.emit(created.id)
+    await this.events.emit(created.id)
     return this.toRoadmapDto(created, 0)
   }
 
@@ -342,7 +342,7 @@ export class RoadmapService {
         _count: { select: { nodes: { where: { isDeleted: false } } } },
       },
     })
-    this.events.emit(id)
+    await this.events.emit(id)
     return this.toRoadmapDto(updated, updated._count.nodes)
   }
 
@@ -351,7 +351,7 @@ export class RoadmapService {
     const existing = await this.prisma.roadmap.findUnique({ where: { id } })
     if (!existing) throw new RoadmapError("NOT_FOUND")
     await this.prisma.roadmap.delete({ where: { id } }) // cascade deletes nodes
-    this.events.emit(id)
+    await this.events.emit(id)
     return true
   }
 
@@ -389,7 +389,7 @@ export class RoadmapService {
         },
       })
     }, TREE_TRANSACTION_OPTIONS)
-    this.events.emit(input.roadmapId)
+    await this.events.emit(input.roadmapId)
     return this.toNodeDto(created, "locked", 0)
   }
 
@@ -472,7 +472,7 @@ export class RoadmapService {
       }
       return u
     }, TREE_TRANSACTION_OPTIONS)
-    this.events.emit(updated.roadmapId)
+    await this.events.emit(updated.roadmapId)
     const childrenCount = await this.childrenCount(id)
     return this.toNodeDto(updated, "locked", childrenCount)
   }
@@ -507,7 +507,7 @@ export class RoadmapService {
         })
       }
     })
-    this.events.emit(node.roadmapId)
+    await this.events.emit(node.roadmapId)
     return true
   }
 
@@ -562,7 +562,7 @@ export class RoadmapService {
       if (hasPrismaCode(error, "P2028")) throw new RoadmapError("TIMEOUT")
       throw error
     }
-    this.events.emit(roadmapId) // ≤500ms after the write (Req 8.3)
+    await this.events.emit(roadmapId) // ≤500ms after the write (Req 8.3)
     return true
   }
 

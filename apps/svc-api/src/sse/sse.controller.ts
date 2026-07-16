@@ -1,5 +1,5 @@
 import { Controller, Query, Sse, MessageEvent } from "@nestjs/common"
-import { filter, map, Observable } from "rxjs"
+import { map, Observable } from "rxjs"
 import { RoadmapEventsService } from "./roadmap-events.service"
 
 /**
@@ -13,9 +13,10 @@ export class SseController {
 
   @Sse()
   stream(@Query("id") id?: string): Observable<MessageEvent> {
-    return this.events.stream().pipe(
-      filter((signal) => !id || signal.roadmapId === id),
-      map((signal): MessageEvent => ({ data: "updated", id: String(signal.at) }))
-    )
+    return this.events
+      .stream(id)
+      .pipe(
+        map((signal): MessageEvent => ({ data: "updated", id: signal.eventId }))
+      )
   }
 }

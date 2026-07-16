@@ -1,4 +1,33 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger"
+import { Transform, Type } from "class-transformer"
+import {
+  ArrayMaxSize,
+  ArrayUnique,
+  IsArray,
+  IsBoolean,
+  IsEnum,
+  IsInt,
+  IsNotEmpty,
+  IsNumber,
+  IsOptional,
+  IsString,
+  IsUrl,
+  Matches,
+  Max,
+  MaxLength,
+  Min,
+  ValidateNested,
+} from "class-validator"
+
+const MAX_ID_LENGTH = 200
+const MAX_SLUG_LENGTH = 200
+const MAX_TITLE_LENGTH = 200
+const MAX_DESCRIPTION_LENGTH = 5_000
+const MAX_SAVE_NODES = 500
+const HTTP_URL_OPTIONS = {
+  protocols: ["http", "https"],
+  require_protocol: true,
+}
 
 // ── Enums ──────────────────────────────────────────────────────────────────────
 
@@ -83,65 +112,215 @@ export class RoadmapProgressResponseDto {
 
 export class CreateRoadmapDto {
   @ApiProperty({ example: "frontend" })
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(MAX_SLUG_LENGTH)
+  @Matches(/^[a-z0-9]+(?:-[a-z0-9]+)*$/)
   slug!: string
 
   @ApiProperty({ example: "Frontend Developer" })
+  @Transform(({ value }) => (typeof value === "string" ? value.trim() : value))
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(MAX_TITLE_LENGTH)
   title!: string
 
   @ApiPropertyOptional({ example: "Learn frontend development" })
+  @IsOptional()
+  @IsString()
+  @MaxLength(MAX_DESCRIPTION_LENGTH)
   description?: string
 
   @ApiPropertyOptional()
+  @IsOptional()
+  @IsUrl(HTTP_URL_OPTIONS)
   thumbnailUrl?: string
 }
 
 export class UpdateRoadmapDto {
-  @ApiPropertyOptional({ example: "test title" }) title?: string
-  @ApiPropertyOptional({ example: "test description" }) description?: string
-  @ApiPropertyOptional({ example: "test thumbnailUrl" }) thumbnailUrl?: string
-  @ApiPropertyOptional({ example: true }) isPublished?: boolean
+  @ApiPropertyOptional({ example: "test title" })
+  @IsOptional()
+  @Transform(({ value }) => (typeof value === "string" ? value.trim() : value))
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(MAX_TITLE_LENGTH)
+  title?: string
+
+  @ApiPropertyOptional({ example: "test description" })
+  @IsOptional()
+  @IsString()
+  @MaxLength(MAX_DESCRIPTION_LENGTH)
+  description?: string
+
+  @ApiPropertyOptional({ example: "https://example.com/thumbnail.png" })
+  @IsOptional()
+  @IsUrl(HTTP_URL_OPTIONS)
+  thumbnailUrl?: string
+
+  @ApiPropertyOptional({ example: true })
+  @IsOptional()
+  @IsBoolean()
+  isPublished?: boolean
 }
 
 export class CreateNodeDto {
-  @ApiProperty() roadmapId!: string
-  @ApiPropertyOptional() parentId?: string
-  @ApiProperty() title!: string
-  @ApiProperty({ enum: NodeTypeEnum }) nodeType!: string
-  @ApiPropertyOptional() slug?: string
-  @ApiPropertyOptional() description?: string
-  @ApiPropertyOptional() notionPageId?: string
-  @ApiPropertyOptional({ enum: ArticleTypeEnum }) articleType?: string
-  @ApiPropertyOptional() jupyterUrl?: string
-  @ApiProperty() positionX!: number
-  @ApiProperty() positionY!: number
-  @ApiPropertyOptional() order?: number
+  @ApiProperty()
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(MAX_ID_LENGTH)
+  roadmapId!: string
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(MAX_ID_LENGTH)
+  parentId?: string | null
+
+  @ApiProperty()
+  @Transform(({ value }) => (typeof value === "string" ? value.trim() : value))
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(MAX_TITLE_LENGTH)
+  title!: string
+
+  @ApiProperty({ enum: NodeTypeEnum })
+  @IsEnum(NodeTypeEnum)
+  nodeType!: string
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(MAX_SLUG_LENGTH)
+  @Matches(/^[a-z0-9]+(?:-[a-z0-9]+)*$/)
+  slug?: string
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(MAX_DESCRIPTION_LENGTH)
+  description?: string
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(MAX_ID_LENGTH)
+  notionPageId?: string
+
+  @ApiPropertyOptional({ enum: ArticleTypeEnum })
+  @IsOptional()
+  @IsEnum(ArticleTypeEnum)
+  articleType?: string
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsUrl(HTTP_URL_OPTIONS)
+  jupyterUrl?: string
+
+  @ApiProperty()
+  @IsNumber({ allowNaN: false, allowInfinity: false })
+  positionX!: number
+
+  @ApiProperty()
+  @IsNumber({ allowNaN: false, allowInfinity: false })
+  positionY!: number
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(1_000_000)
+  order?: number
 }
 
 export class UpdateNodeDto {
-  @ApiPropertyOptional() title?: string
-  @ApiPropertyOptional() description?: string
-  @ApiPropertyOptional({ enum: ArticleTypeEnum }) articleType?: string
-  @ApiPropertyOptional() notionPageId?: string
-  @ApiPropertyOptional() jupyterUrl?: string
-  @ApiPropertyOptional() positionX?: number
-  @ApiPropertyOptional() positionY?: number
-  @ApiPropertyOptional() order?: number
-  @ApiPropertyOptional() parentId?: string
+  @ApiPropertyOptional()
+  @IsOptional()
+  @Transform(({ value }) => (typeof value === "string" ? value.trim() : value))
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(MAX_TITLE_LENGTH)
+  title?: string
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(MAX_DESCRIPTION_LENGTH)
+  description?: string
+
+  @ApiPropertyOptional({ enum: ArticleTypeEnum })
+  @IsOptional()
+  @IsEnum(ArticleTypeEnum)
+  articleType?: string | null
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(MAX_ID_LENGTH)
+  notionPageId?: string | null
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsUrl(HTTP_URL_OPTIONS)
+  jupyterUrl?: string | null
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsNumber({ allowNaN: false, allowInfinity: false })
+  positionX?: number
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsNumber({ allowNaN: false, allowInfinity: false })
+  positionY?: number
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(1_000_000)
+  order?: number
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(MAX_ID_LENGTH)
+  parentId?: string | null
 }
 
 export class SaveNodeDto {
-  @ApiProperty() id!: string
-  @ApiPropertyOptional() parentId?: string
-  @ApiProperty() positionX!: number
-  @ApiProperty() positionY!: number
+  @ApiProperty()
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(MAX_ID_LENGTH)
+  id!: string
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(MAX_ID_LENGTH)
+  parentId?: string | null
+
+  @ApiProperty()
+  @IsNumber({ allowNaN: false, allowInfinity: false })
+  positionX!: number
+
+  @ApiProperty()
+  @IsNumber({ allowNaN: false, allowInfinity: false })
+  positionY!: number
 }
 
 export class SaveRoadmapDto {
   @ApiProperty({ type: [SaveNodeDto] })
+  @IsArray()
+  @ArrayMaxSize(MAX_SAVE_NODES)
+  @ArrayUnique((node: SaveNodeDto) => node.id)
+  @ValidateNested({ each: true })
+  @Type(() => SaveNodeDto)
   nodes!: SaveNodeDto[]
 }
 
 export class SetNodeStatusDto {
   @ApiProperty({ enum: NodeStatusEnum })
+  @IsEnum(NodeStatusEnum)
   status!: string
 }
