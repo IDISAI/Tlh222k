@@ -1,5 +1,5 @@
 import { Injectable } from "@nestjs/common"
-import type { Document } from "@prisma/client"
+import type { Document, Prisma } from "@prisma/client"
 
 import { PrismaService } from "../prisma/prisma.service"
 import { RoadmapError } from "../common/roadmap-error"
@@ -39,6 +39,12 @@ export interface UpdateDocumentInput {
 // Defensive cap so an ever-growing corpus can't return an unbounded payload.
 // The sidebar/cmdk never needs more; real cursor pagination lands with the UI.
 const LIST_LIMIT = 500
+const TREE_TRANSACTION_OPTIONS = {
+  timeout: 10_000,
+  isolationLevel: "Serializable" as const,
+}
+
+type NotionQueryClient = Pick<Prisma.TransactionClient, "$queryRaw">
 
 const toDoc = (d: Document): NotionDoc => ({
   id: d.id,
@@ -66,7 +72,10 @@ export class NotionService {
   constructor(private readonly prisma: PrismaService) {}
 
   /** Root doc for a roadmap article slug. Viewers: published only. */
-  async getBySlug(user: CurrentUser | null, slug: string): Promise<NotionDoc | null> {
+  async getBySlug(
+    user: CurrentUser | null,
+    slug: string
+  ): Promise<NotionDoc | null> {
     const doc = await this.prisma.document.findUnique({ where: { slug } })
     if (!doc || doc.isArchived) return null
     if (!isAdmin(user) && !doc.isPublished) return null
@@ -74,7 +83,10 @@ export class NotionService {
   }
 
   /** Published-or-admin gate. */
-  async getById(user: CurrentUser | null, id: string): Promise<NotionDoc | null> {
+  async getById(
+    user: CurrentUser | null,
+    id: string
+  ): Promise<NotionDoc | null> {
     const doc = await this.prisma.document.findUnique({ where: { id } })
     if (!doc) return null
     if (!isAdmin(user) && !(doc.isPublished && !doc.isArchived)) return null
@@ -103,7 +115,9 @@ export class NotionService {
   ): Promise<NotionDoc> {
     assertCanWrite(user)
     const parentDocumentId = input.parentDocumentId ?? null
-    const position = await this.prisma.document.count({ where: { parentDocumentId } })
+    const position = await this.prisma.document.count({
+      where: { parentDocumentId },
+    })
     const doc = await this.prisma.document.create({
       data: {
         title: input.title?.trim() || "Untitled",
@@ -129,8 +143,12 @@ export class NotionService {
           ...(fields.title != null ? { title: fields.title } : {}),
           ...(fields.content !== undefined ? { content: fields.content } : {}),
           ...(fields.icon !== undefined ? { icon: fields.icon } : {}),
-          ...(fields.coverImage !== undefined ? { coverImage: fields.coverImage } : {}),
-          ...(fields.isPublished != null ? { isPublished: fields.isPublished } : {}),
+          ...(fields.coverImage !== undefined
+            ? { coverImage: fields.coverImage }
+            : {}),
+          ...(fields.isPublished != null
+            ? { isPublished: fields.isPublished }
+            : {}),
         },
       })
       return toDoc(doc)
@@ -141,11 +159,17 @@ export class NotionService {
 
   async removeIcon(user: CurrentUser | null, id: string): Promise<NotionDoc> {
     assertCanWrite(user)
-    const doc = await this.prisma.document.update({ where: { id }, data: { icon: null } })
+    const doc = await this.prisma.document.update({
+      where: { id },
+      data: { icon: null },
+    })
     return toDoc(doc)
   }
 
-  async removeCoverImage(user: CurrentUser | null, id: string): Promise<NotionDoc> {
+  async removeCoverImage(
+    user: CurrentUser | null,
+    id: string
+  ): Promise<NotionDoc> {
     assertCanWrite(user)
     const doc = await this.prisma.document.update({
       where: { id },
@@ -165,23 +189,31 @@ export class NotionService {
   ): Promise<NotionDoc> {
     assertCanWrite(user)
     if (id === newParentId) throw new RoadmapError("NOT_FOUND")
-    const doc = await this.prisma.document.findUnique({ where: { id } })
-    if (!doc) throw new RoadmapError("NOT_FOUND")
+    const moved = await this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`
+        SELECT pg_advisory_xact_lock(hashtext('notion-document-tree'))
+      `
 
-    if (newParentId) {
-      const subtree = new Set(await this.subtreeIds(id))
-      if (subtree.has(newParentId)) throw new RoadmapError("NOT_FOUND")
-      const parent = await this.prisma.document.findUnique({ where: { id: newParentId } })
-      if (!parent) throw new RoadmapError("NOT_FOUND")
-    }
+      const doc = await tx.document.findUnique({ where: { id } })
+      if (!doc) throw new RoadmapError("NOT_FOUND")
 
-    const position = await this.prisma.document.count({
-      where: { parentDocumentId: newParentId },
-    })
-    const moved = await this.prisma.document.update({
-      where: { id },
-      data: { parentDocumentId: newParentId, position },
-    })
+      if (newParentId) {
+        const subtree = new Set(await this.subtreeIds(id, tx))
+        if (subtree.has(newParentId)) throw new RoadmapError("NOT_FOUND")
+        const parent = await tx.document.findUnique({
+          where: { id: newParentId },
+        })
+        if (!parent || parent.isArchived) throw new RoadmapError("NOT_FOUND")
+      }
+
+      const position = await tx.document.count({
+        where: { parentDocumentId: newParentId },
+      })
+      return tx.document.update({
+        where: { id },
+        data: { parentDocumentId: newParentId, position },
+      })
+    }, TREE_TRANSACTION_OPTIONS)
     return toDoc(moved)
   }
 
@@ -268,11 +300,14 @@ export class NotionService {
 
   // Single recursive CTE walks the whole subtree in one round-trip (Postgres),
   // replacing the old one-query-per-depth BFS.
-  private async subtreeIds(rootId: string): Promise<string[]> {
-    const rows = await this.prisma.$queryRaw<{ id: string }[]>`
+  private async subtreeIds(
+    rootId: string,
+    client: NotionQueryClient = this.prisma
+  ): Promise<string[]> {
+    const rows = await client.$queryRaw<{ id: string }[]>`
       WITH RECURSIVE sub AS (
         SELECT id FROM "Document" WHERE id = ${rootId}
-        UNION ALL
+        UNION
         SELECT d.id FROM "Document" d JOIN sub ON d."parentDocumentId" = sub.id
       )
       SELECT id FROM sub
