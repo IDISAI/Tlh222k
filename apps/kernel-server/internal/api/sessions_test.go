@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -54,5 +55,19 @@ func TestSessionRouteReturns403ForDifferentOwner(t *testing.T) {
 
 	if recorder.Code != http.StatusForbidden {
 		t.Fatalf("status = %d, want 403", recorder.Code)
+	}
+}
+
+func TestCreateSessionReturns429WhenOwnerQuotaIsFull(t *testing.T) {
+	manager, _ := routeManager(t, "dev:admin")
+	mux := http.NewServeMux()
+	NewWithSessions(nil, manager, proxy.NewTickets([]byte("secret"), time.Now), nil).Register(mux)
+	handler := auth.New(auth.Options{DevRole: "admin"}).Middleware(mux)
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/api/sessions", strings.NewReader(`{"profile":"ml-cpu"}`))
+	handler.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusTooManyRequests {
+		t.Fatalf("status = %d, want 429", recorder.Code)
 	}
 }

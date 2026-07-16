@@ -50,12 +50,13 @@ func main() {
 		log.Printf("sandbox runtime unavailable; notebook execution disabled: %v", err)
 	}
 	sessionManager := sessions.NewManager(sessions.Options{
-		MaxSessions: cfg.JupyterMaxSessions,
-		IdleTimeout: cfg.JupyterSessionIdle,
-		CPU:         cfg.JupyterSessionCPU,
-		Memory:      cfg.JupyterSessionMemory,
-		Pids:        cfg.JupyterSessionPIDs,
-		Network:     cfg.JupyterDockerNetwork,
+		MaxSessions:         cfg.JupyterMaxSessions,
+		MaxSessionsPerOwner: cfg.JupyterMaxSessionsPerOwner,
+		IdleTimeout:         cfg.JupyterSessionIdle,
+		CPU:                 cfg.JupyterSessionCPU,
+		Memory:              cfg.JupyterSessionMemory,
+		Pids:                cfg.JupyterSessionPIDs,
+		Network:             cfg.JupyterDockerNetwork,
 	}, containerRuntime, sessions.SystemClock{})
 	tickets := proxy.NewTickets([]byte(cfg.SessionTicketSecret), time.Now)
 	mux := http.NewServeMux()

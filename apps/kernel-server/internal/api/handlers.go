@@ -84,7 +84,7 @@ func (h *Handler) createSession(w http.ResponseWriter, r *http.Request) {
 	principal := auth.PrincipalFrom(r)
 	session, err := h.sessions.CreateOrResume(r.Context(), principal.Subject, body.Profile)
 	if err != nil {
-		if errors.Is(err, sessions.ErrCapacity) {
+		if errors.Is(err, sessions.ErrCapacity) || errors.Is(err, sessions.ErrOwnerCapacity) {
 			writeErr(w, http.StatusTooManyRequests, err)
 			return
 		}

@@ -31,6 +31,10 @@ fail closed: set `APP_ENV=production`, leave `DEV_AUTH_ROLE` empty, configure
 `CLERK_JWKS_URL`, `CLERK_ISSUER`, `CLERK_AUDIENCE`, and use a random
 `SESSION_TICKET_SECRET` of at least 32 bytes.
 
+Runtime capacity counts launches still in progress. `JUPYTER_MAX_SESSIONS`
+limits the server globally; `JUPYTER_MAX_SESSIONS_PER_OWNER` defaults to `1`
+to prevent one identity from exhausting all kernel slots.
+
 Point the Next apps at it with `NEXT_PUBLIC_KERNEL_SERVER_URL=http://localhost:3006`
 (web + admin `.env.local`). If unset, web falls back to committed `.ipynb`
 fixtures and the admin editor uses per-browser localStorage.
