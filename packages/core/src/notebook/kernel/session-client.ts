@@ -25,7 +25,9 @@ export class SandboxSessionClient {
   }
 
   get(id: string): Promise<SandboxSession> {
-    return this.request<SandboxSession>(`/api/sessions/${encodeURIComponent(id)}`)
+    return this.request<SandboxSession>(
+      `/api/sessions/${encodeURIComponent(id)}`
+    )
   }
 
   interrupt(id: string): Promise<SandboxSession> {
@@ -48,12 +50,11 @@ export class SandboxSessionClient {
     })
   }
 
-  private async request<T>(
-    path: string,
-    init: RequestInit = {}
-  ): Promise<T> {
+  private async request<T>(path: string, init: RequestInit = {}): Promise<T> {
     const token = await this.getToken()
-    const headers: Record<string, string> = { "Content-Type": "application/json" }
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    }
     if (init.headers instanceof Headers) {
       init.headers.forEach((value, key) => {
         headers[key] = value
@@ -65,6 +66,7 @@ export class SandboxSessionClient {
 
     const response = await fetch(`${this.baseUrl}${path}`, {
       ...init,
+      credentials: "include",
       headers,
     })
     if (!response.ok) {

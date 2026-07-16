@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
 	"testing"
 	"time"
 
@@ -35,8 +34,13 @@ func TestTicketAuthenticatesProxyWithoutClerkHeader(t *testing.T) {
 	server := httptest.NewServer(mux)
 	defer server.Close()
 
-	requestURL := fmt.Sprintf("%s/api/sessions/%s/jupyter/api/status?ticket=%s", server.URL, session.ID, url.QueryEscape(ticket))
-	response, err := http.Get(requestURL)
+	requestURL := fmt.Sprintf("%s/api/sessions/%s/jupyter/api/status", server.URL, session.ID)
+	request, err := http.NewRequest(http.MethodGet, requestURL, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.AddCookie(&http.Cookie{Name: ticketCookieName, Value: ticket})
+	response, err := http.DefaultClient.Do(request)
 	if err != nil {
 		t.Fatalf("proxy request: %v", err)
 	}
@@ -78,9 +82,11 @@ func TestWebSocketAllowsConfiguredBrowserOriginAndTouchesActivity(t *testing.T) 
 	defer server.Close()
 
 	clock.now = clock.now.Add(2 * time.Minute)
-	wsURL := "ws" + server.URL[len("http"):] + fmt.Sprintf("/api/sessions/%s/jupyter/api/kernels/kernel-1/channels?ticket=%s", session.ID, url.QueryEscape(ticket))
+	wsURL := "ws" + server.URL[len("http"):] + fmt.Sprintf("/api/sessions/%s/jupyter/api/kernels/kernel-1/channels", session.ID)
+	headers := ticketRequestHeader(ticket)
+	headers.Set("Origin", "http://localhost:3000")
 	connection, response, err := websocket.Dial(context.Background(), wsURL, &websocket.DialOptions{
-		HTTPHeader: http.Header{"Origin": []string{"http://localhost:3000"}},
+		HTTPHeader: headers,
 	})
 	if err != nil {
 		if response != nil {
@@ -89,6 +95,18 @@ func TestWebSocketAllowsConfiguredBrowserOriginAndTouchesActivity(t *testing.T) 
 		t.Fatalf("dial proxy websocket: %v", err)
 	}
 	defer connection.CloseNow()
+	if response == nil {
+		t.Fatal("websocket handshake response missing")
+	}
+	foundRotatedCookie := false
+	for _, cookie := range response.Cookies() {
+		if cookie.Name == ticketCookieName && cookie.Value != ticket && cookie.MaxAge == 300 {
+			foundRotatedCookie = true
+		}
+	}
+	if !foundRotatedCookie || response.Header.Get("Cache-Control") != "no-store" || response.Header.Get("Referrer-Policy") != "no-referrer" {
+		t.Fatalf("websocket handshake did not rotate protected ticket cookie")
+	}
 
 	if err := connection.Write(context.Background(), websocket.MessageText, []byte("ping")); err != nil {
 		t.Fatalf("write message: %v", err)

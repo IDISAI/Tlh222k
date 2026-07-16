@@ -8,14 +8,19 @@ import (
 )
 
 var (
-	ErrCapacity  = errors.New("session capacity reached")
-	ErrForbidden = errors.New("session belongs to another owner")
-	ErrNotFound  = errors.New("session not found")
+	ErrCapacity      = errors.New("session capacity reached")
+	ErrOwnerCapacity = errors.New("owner session capacity reached")
+	ErrForbidden     = errors.New("session belongs to another owner")
+	ErrNotFound      = errors.New("session not found")
+	ErrShuttingDown  = errors.New("session manager is shutting down")
 )
 
 type Status string
 
-const StatusActive Status = "active"
+const (
+	StatusActive   Status = "active"
+	StatusStopping Status = "stopping"
+)
 
 type RuntimeHandle struct {
 	ID       string
@@ -50,12 +55,13 @@ type SystemClock struct{}
 func (SystemClock) Now() time.Time { return time.Now() }
 
 type Options struct {
-	MaxSessions int
-	IdleTimeout time.Duration
-	CPU         string
-	Memory      string
-	Pids        int
-	Network     string
+	MaxSessions         int
+	MaxSessionsPerOwner int
+	IdleTimeout         time.Duration
+	CPU                 string
+	Memory              string
+	Pids                int
+	Network             string
 }
 
 type Session struct {

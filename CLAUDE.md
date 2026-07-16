@@ -28,7 +28,7 @@ pnpm -F @workspace/db seed
 # kernel-server (Go, from apps/kernel-server/)
 go build ./...
 go vet ./...
-DEV_AUTH_ROLE=super-admin go run ./cmd/server   # listens on :3006
+APP_ENV=development DEV_AUTH_ROLE=super-admin SESSION_TICKET_SECRET=development-only-ticket-secret go run ./cmd/server   # listens on :3006
 ```
 
 There is no test runner configured yet. CI is

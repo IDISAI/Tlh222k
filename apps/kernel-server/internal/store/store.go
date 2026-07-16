@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"sync"
 	"time"
 )
 
@@ -46,6 +47,7 @@ type Store interface {
 
 type FSStore struct {
 	dir string
+	mu  sync.RWMutex
 }
 
 func NewFSStore(dir string) (*FSStore, error) {
@@ -171,6 +173,9 @@ func installPair(
 }
 
 func (s *FSStore) Save(slug string, notebook []byte, title string, published bool, runtimeProfile string) (Meta, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	if runtimeProfile == "" {
 		runtimeProfile = DefaultRuntimeProfile
 	}
@@ -204,6 +209,12 @@ func (s *FSStore) Save(slug string, notebook []byte, title string, published boo
 }
 
 func (s *FSStore) Load(slug string) ([]byte, Meta, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.loadUnlocked(slug)
+}
+
+func (s *FSStore) loadUnlocked(slug string) ([]byte, Meta, error) {
 	notebook, err := os.ReadFile(s.notebookPath(slug))
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, Meta{}, ErrNotFound
@@ -232,6 +243,9 @@ func (s *FSStore) Load(slug string) ([]byte, Meta, error) {
 }
 
 func (s *FSStore) List() ([]Meta, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
 	entries, err := os.ReadDir(s.dir)
 	if err != nil {
 		return nil, err
@@ -243,7 +257,7 @@ func (s *FSStore) List() ([]Meta, error) {
 			continue
 		}
 		slug := name[:len(name)-len(".ipynb")]
-		if _, meta, err := s.Load(slug); err != nil {
+		if _, meta, err := s.loadUnlocked(slug); err != nil {
 			return nil, err
 		} else {
 			out = append(out, meta)
@@ -256,6 +270,9 @@ func (s *FSStore) List() ([]Meta, error) {
 }
 
 func (s *FSStore) Delete(slug string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	if err := os.Remove(s.notebookPath(slug)); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}

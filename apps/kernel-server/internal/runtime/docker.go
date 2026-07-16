@@ -42,6 +42,12 @@ type ReadyCheck func(context.Context, string, string) error
 
 const jupyterReadyTimeout = 2 * time.Minute
 
+const (
+	dockerManagedLabel  = "notebook.managed-by"
+	dockerManagedValue  = "kernel-broker"
+	dockerInspectFormat = `{{.State.Running}} {{index .Config.Labels "notebook.managed-by"}}`
+)
+
 type DockerRuntimeOption func(*DockerRuntime)
 
 func WithReadyCheck(readyCheck ReadyCheck) DockerRuntimeOption {
@@ -106,6 +112,7 @@ func (r *DockerRuntime) Start(ctx context.Context, request sessions.StartRequest
 		"--memory", request.Memory,
 		"--user", "1000:100",
 		"--label", "notebook.session="+request.SessionID,
+		"--label", dockerManagedLabel+"="+dockerManagedValue,
 		"--name", request.SessionID,
 		"--env", "JUPYTER_TOKEN="+token,
 	)
@@ -195,11 +202,18 @@ func waitForJupyter(ctx context.Context, endpoint, token string) error {
 }
 
 func (r *DockerRuntime) Alive(ctx context.Context, containerID string) bool {
-	output, err := r.runner.Run(ctx, "docker", "inspect", "--format", "{{.State.Running}}", containerID)
-	return err == nil && strings.TrimSpace(string(output)) == "true"
+	running, managed, err := r.managedState(ctx, containerID)
+	return err == nil && managed && running
 }
 
 func (r *DockerRuntime) Stop(ctx context.Context, containerID string) error {
+	_, managed, err := r.managedState(ctx, containerID)
+	if err != nil {
+		return fmt.Errorf("inspect container before removal: %w", err)
+	}
+	if !managed {
+		return fmt.Errorf("container %q is not managed by %s", containerID, dockerManagedValue)
+	}
 	output, err := r.runner.Run(ctx, "docker", "rm", "--force", containerID)
 	if err != nil {
 		return fmt.Errorf("docker rm: %w: %s", err, strings.TrimSpace(string(output)))
@@ -207,8 +221,20 @@ func (r *DockerRuntime) Stop(ctx context.Context, containerID string) error {
 	return nil
 }
 
+func (r *DockerRuntime) managedState(ctx context.Context, containerID string) (bool, bool, error) {
+	output, err := r.runner.Run(ctx, "docker", "inspect", "--format", dockerInspectFormat, containerID)
+	if err != nil {
+		return false, false, fmt.Errorf("docker inspect: %w: %s", err, strings.TrimSpace(string(output)))
+	}
+	fields := strings.Fields(string(output))
+	if len(fields) < 2 {
+		return false, false, fmt.Errorf("docker inspect returned incomplete managed state")
+	}
+	return fields[0] == "true", fields[1] == dockerManagedValue, nil
+}
+
 func (r *DockerRuntime) RemoveStaleContainers(ctx context.Context) error {
-	output, err := r.runner.Run(ctx, "docker", "ps", "--all", "--quiet", "--filter", "label=notebook.session")
+	output, err := r.runner.Run(ctx, "docker", "ps", "--all", "--quiet", "--filter", "label="+dockerManagedLabel+"="+dockerManagedValue)
 	if err != nil {
 		return fmt.Errorf("list stale notebook containers: %w: %s", err, strings.TrimSpace(string(output)))
 	}

@@ -1,5 +1,5 @@
 import { Injectable } from "@nestjs/common"
-import type { Node as DbNode } from "@prisma/client"
+import type { Node as DbNode, Prisma } from "@prisma/client"
 
 import { PrismaService } from "../prisma/prisma.service"
 import { RoadmapEventsService } from "../sse/roadmap-events.service"
@@ -15,8 +15,24 @@ import {
   type NodeStatus,
   type NodeType,
 } from "./hierarchy"
+import { assertAcyclicTree } from "./tree-invariants"
 
 const SAVE_TIMEOUT_MS = 10_000
+const TREE_TRANSACTION_OPTIONS = {
+  timeout: SAVE_TIMEOUT_MS,
+  isolationLevel: "Serializable" as const,
+}
+
+type TreeClient = Pick<Prisma.TransactionClient, "node">
+
+function hasPrismaCode(error: unknown, code: string): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    error.code === code
+  )
+}
 
 export interface RoadmapDto {
   id: string
@@ -154,8 +170,7 @@ export class RoadmapService {
 
     if (roadmap) {
       // Non-admin users (viewers/guests) must not see unpublished roadmaps.
-      const isAdmin =
-        user?.role === "admin" || user?.role === "super-admin"
+      const isAdmin = user?.role === "admin" || user?.role === "super-admin"
       if (!roadmap.isPublished && !isAdmin) return null
 
       const nodes = await this.activeNodesOf(roadmap.id)
@@ -178,8 +193,7 @@ export class RoadmapService {
     if (!node) return null
 
     // The parent roadmap must be published for non-admin viewers.
-    const isAdmin =
-      user?.role === "admin" || user?.role === "super-admin"
+    const isAdmin = user?.role === "admin" || user?.role === "super-admin"
     if (!isAdmin) {
       const parentRoadmap = await this.prisma.roadmap.findUnique({
         where: { id: node.roadmapId },
@@ -237,7 +251,12 @@ export class RoadmapService {
   }
 
   async myProgress(user: CurrentUser | null): Promise<
-    { roadmapId: string; roadmapTitle: string; doneCount: number; totalCount: number }[]
+    {
+      roadmapId: string
+      roadmapTitle: string
+      doneCount: number
+      totalCount: number
+    }[]
   > {
     if (!user) return []
     const progress = await this.prisma.userProgress.findMany({
@@ -344,30 +363,32 @@ export class RoadmapService {
     if (!isNodeType(input.nodeType)) {
       throw new RoadmapError("INVALID_NODE_TYPE")
     }
-    await this.validateParent(input.parentId ?? null, input.nodeType)
 
     const title = input.title.trim().slice(0, MAX_TITLE_LENGTH)
     const slug = await this.uniqueNodeSlug(input.slug?.trim() || slugify(title))
-    const order =
-      input.order ??
-      (await this.prisma.node.count({ where: { roadmapId: input.roadmapId } }))
+    const created = await this.prisma.$transaction(async (tx) => {
+      await this.validateParent(tx, input.parentId ?? null, input.roadmapId)
+      const order =
+        input.order ??
+        (await tx.node.count({ where: { roadmapId: input.roadmapId } }))
 
-    const created = await this.prisma.node.create({
-      data: {
-        roadmapId: input.roadmapId,
-        parentId: input.parentId ?? null,
-        title,
-        slug,
-        nodeType: input.nodeType,
-        description: input.description?.trim() || null,
-        notionPageId: input.notionPageId ?? null,
-        articleType: input.articleType ?? null,
-        jupyterUrl: normalizeHttpUrl(input.jupyterUrl),
-        positionX: input.positionX,
-        positionY: input.positionY,
-        order,
-      },
-    })
+      return tx.node.create({
+        data: {
+          roadmapId: input.roadmapId,
+          parentId: input.parentId ?? null,
+          title,
+          slug,
+          nodeType: input.nodeType,
+          description: input.description?.trim() || null,
+          notionPageId: input.notionPageId ?? null,
+          articleType: input.articleType ?? null,
+          jupyterUrl: normalizeHttpUrl(input.jupyterUrl),
+          positionX: input.positionX,
+          positionY: input.positionY,
+          order,
+        },
+      })
+    }, TREE_TRANSACTION_OPTIONS)
     this.events.emit(input.roadmapId)
     return this.toNodeDto(created, "locked", 0)
   }
@@ -378,14 +399,24 @@ export class RoadmapService {
     user: CurrentUser | null
   ): Promise<NodeDto> {
     assertCanWrite(user)
-    const node = await this.prisma.node.findUnique({ where: { id } })
-    if (!node || node.isDeleted) throw new RoadmapError("NOT_FOUND")
-
-    if (input.parentId !== undefined && input.parentId !== node.parentId) {
-      await this.validateParent(input.parentId ?? null, node.nodeType as NodeType, id)
-    }
-
     const updated = await this.prisma.$transaction(async (tx) => {
+      const node = await tx.node.findUnique({ where: { id } })
+      if (!node || node.isDeleted) throw new RoadmapError("NOT_FOUND")
+
+      if (input.parentId !== undefined && input.parentId !== node.parentId) {
+        const parentId = input.parentId ?? null
+        await this.validateParent(tx, parentId, node.roadmapId, id)
+        const forest = await tx.node.findMany({
+          where: { roadmapId: node.roadmapId, isDeleted: false },
+          select: { id: true, parentId: true },
+        })
+        assertAcyclicTree(
+          forest.map((candidate) =>
+            candidate.id === id ? { ...candidate, parentId } : candidate
+          )
+        )
+      }
+
       const u = await tx.node.update({
         where: { id },
         data: {
@@ -400,7 +431,9 @@ export class RoadmapService {
               ? input.description?.trim() || null
               : undefined,
           articleType:
-            input.articleType !== undefined ? (input.articleType ?? null) : undefined,
+            input.articleType !== undefined
+              ? (input.articleType ?? null)
+              : undefined,
           notionPageId:
             input.notionPageId !== undefined
               ? input.notionPageId?.trim() || null
@@ -438,7 +471,7 @@ export class RoadmapService {
         }
       }
       return u
-    })
+    }, TREE_TRANSACTION_OPTIONS)
     this.events.emit(updated.roadmapId)
     const childrenCount = await this.childrenCount(id)
     return this.toNodeDto(updated, "locked", childrenCount)
@@ -485,29 +518,50 @@ export class RoadmapService {
     user: CurrentUser | null
   ): Promise<boolean> {
     assertCanWrite(user)
-
-    const work = this.prisma.$transaction(async (tx) => {
-      const roadmap = await tx.roadmap.findUnique({ where: { id: roadmapId } })
-      if (!roadmap) throw new RoadmapError("NOT_FOUND")
-      for (const n of nodes) {
-        await tx.node.update({
-          where: { id: n.id },
-          data: {
-            parentId: n.parentId ?? null,
-            positionX: n.positionX,
-            positionY: n.positionY,
-            isDeleted: false,
-          },
+    try {
+      await this.prisma.$transaction(async (tx) => {
+        const roadmap = await tx.roadmap.findUnique({
+          where: { id: roadmapId },
         })
-      }
-      return true
-    })
+        if (!roadmap) throw new RoadmapError("NOT_FOUND")
 
-    const timeout = new Promise<never>((_, reject) => {
-      setTimeout(() => reject(new RoadmapError("TIMEOUT")), SAVE_TIMEOUT_MS)
-    })
+        const existing = await tx.node.findMany({
+          where: { roadmapId },
+          select: { id: true, parentId: true, isDeleted: true },
+        })
+        const byId = new Map(existing.map((node) => [node.id, node]))
+        const proposed = new Map<string, string | null>()
+        for (const node of nodes) {
+          if (!byId.has(node.id) || proposed.has(node.id)) {
+            throw new RoadmapError("INVALID_HIERARCHY", "INVALID_TREE")
+          }
+          proposed.set(node.id, node.parentId ?? null)
+        }
 
-    await Promise.race([work, timeout])
+        const finalForest = existing
+          .filter((node) => !node.isDeleted || proposed.has(node.id))
+          .map((node) => ({
+            id: node.id,
+            parentId: proposed.get(node.id) ?? node.parentId,
+          }))
+        assertAcyclicTree(finalForest)
+
+        for (const node of nodes) {
+          await tx.node.update({
+            where: { id: node.id },
+            data: {
+              parentId: node.parentId ?? null,
+              positionX: node.positionX,
+              positionY: node.positionY,
+              isDeleted: false,
+            },
+          })
+        }
+      }, TREE_TRANSACTION_OPTIONS)
+    } catch (error) {
+      if (hasPrismaCode(error, "P2028")) throw new RoadmapError("TIMEOUT")
+      throw error
+    }
     this.events.emit(roadmapId) // ≤500ms after the write (Req 8.3)
     return true
   }
@@ -625,9 +679,12 @@ export class RoadmapService {
     }
     const result: DbNode[] = [root]
     const queue = [root.id]
+    const visited = new Set<string>(queue)
     while (queue.length) {
       const id = queue.shift() as string
       for (const child of byParent.get(id) ?? []) {
+        if (visited.has(child.id)) continue
+        visited.add(child.id)
         result.push(child)
         queue.push(child.id)
       }
@@ -665,7 +722,10 @@ export class RoadmapService {
   ): Promise<Record<string, NodeStatus>> {
     if (!user || nodes.length === 0) return {}
     const rows = await this.prisma.userProgress.findMany({
-      where: { clerkUserId: user.userId, nodeId: { in: nodes.map((n) => n.id) } },
+      where: {
+        clerkUserId: user.userId,
+        nodeId: { in: nodes.map((n) => n.id) },
+      },
     })
     const map: Record<string, NodeStatus> = {}
     for (const r of rows) map[r.nodeId] = r.status as NodeStatus
@@ -679,15 +739,19 @@ export class RoadmapService {
    * We still confirm the parent exists so we never write a dangling link.
    */
   private async validateParent(
+    client: TreeClient,
     parentId: string | null,
-    _childType: NodeType,
+    roadmapId: string,
     _selfId?: string
   ): Promise<void> {
     if (!parentId) return
-    const parent = await this.prisma.node.findFirst({
-      where: { id: parentId, isDeleted: false },
+    const parent = await client.node.findFirst({
+      where: { id: parentId },
+      select: { id: true, roadmapId: true, isDeleted: true },
     })
-    if (!parent) throw new RoadmapError("NOT_FOUND")
+    if (!parent || parent.isDeleted || parent.roadmapId !== roadmapId) {
+      throw new RoadmapError("INVALID_HIERARCHY", "INVALID_TREE")
+    }
   }
 
   // Deterministic `-{n}` suffix (n = 2..999) per notion-article-node Req 9.2.
@@ -712,7 +776,9 @@ export class RoadmapService {
     }
     for (let n = 2; n <= 999; n++) {
       const candidate = `${base}-${n}`
-      if (!(await this.prisma.node.findUnique({ where: { slug: candidate } }))) {
+      if (
+        !(await this.prisma.node.findUnique({ where: { slug: candidate } }))
+      ) {
         return candidate
       }
     }

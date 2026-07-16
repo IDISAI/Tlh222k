@@ -10,7 +10,8 @@ there is no shared root app env. Each app/package owns the env file beside it.
 | `apps/web`         | `apps/web/.env.example`         | `apps/web/.env.local`         | Next.js       |
 | `apps/admin`       | `apps/admin/.env.example`       | `apps/admin/.env.local`       | Next.js       |
 | `apps/super-admin` | `apps/super-admin/.env.example` | `apps/super-admin/.env.local` | Next.js       |
-| `apps/svc-api` | `apps/svc-api/.env.example` | `apps/svc-api/.env`       | NestJS/dotenv |
+| `apps/kernel-server` | documented below               | process/compose environment   | Go            |
+| `apps/svc-api`      | `apps/svc-api/.env.example`      | `apps/svc-api/.env`           | NestJS/dotenv |
 | `packages/db`      | `packages/db/.env.example`      | `packages/db/.env`            | Prisma CLI    |
 
 ```bash
@@ -47,7 +48,15 @@ cp packages/db/.env.example       packages/db/.env
 | `NEXT_PUBLIC_HOST_URL`                              | web, admin, super-admin              | Dev web host, usually `http://localhost:3000`                   |
 | `ADMIN_URL`                                         | web                                  | Production admin child-zone URL                                 |
 | `SUPER_ADMIN_URL`                                   | web                                  | Production super-admin child-zone URL                           |
-| `FRONTEND_ORIGINS`                                  | svc-api                          | Comma-separated frontend origins for CORS                       |
+| `FRONTEND_ORIGINS`                                  | svc-api                              | Comma-separated frontend origins for CORS                       |
+| `APP_ENV`                                           | kernel-server                        | `development`, `test`, or `production`                          |
+| `CLERK_JWKS_URL`                                    | kernel-server                        | Clerk JWKS HTTPS endpoint                                       |
+| `CLERK_ISSUER`                                      | kernel-server                        | Exact expected Clerk JWT `iss` claim                            |
+| `CLERK_AUDIENCE`                                    | kernel-server                        | Exact required Clerk JWT `aud` value                            |
+| `SESSION_TICKET_SECRET`                             | kernel-server                        | Random 32+ byte server-only secret                              |
+| `JUPYTER_BROKER_URL`                                | kernel-server                        | Internal Docker broker base URL                                 |
+| `JUPYTER_BROKER_TOKEN`                              | kernel-server, docker-broker         | Random 32+ byte internal bearer secret                          |
+| `JUPYTER_MAX_SESSIONS_PER_OWNER`                    | kernel-server                        | Per-user concurrent runtime cap; defaults to `1`                |
 | `NEXT_PUBLIC_SENTRY_DSN`                            | web, admin, super-admin              | Sentry project -> Settings -> Client Keys (DSN)                 |
 | `SENTRY_DSN`                                        | all server runtimes                  | Same Sentry DSN, or blank to disable                            |
 | `SENTRY_ORG`, `SENTRY_PROJECT`, `SENTRY_AUTH_TOKEN` | Next.js builds/CI                    | Sentry project/release settings; token needs `project:releases` |
@@ -93,6 +102,11 @@ GitHub Actions deploy secrets (`VERCEL_TOKEN`, `VERCEL_ORG_ID`,
 `VERCEL_PROJECT_ID_SUPER_ADMIN`) are CI secrets, not app `.env` variables.
 
 ## Security
+
+`kernel-server` defaults to `APP_ENV=production`. Production startup refuses
+`DEV_AUTH_ROLE`, incomplete JWT verification settings, non-HTTPS Clerk URLs,
+and ticket secrets shorter than 32 bytes. Local bypass requires explicit
+`APP_ENV=development`; `apps/kernel-server/dev.mjs` and compose set it for you.
 
 If a real secret was pasted into chat, screenshots, logs, or a commit, rotate it
 in the provider dashboard immediately. Do not try to "hide" it by editing only

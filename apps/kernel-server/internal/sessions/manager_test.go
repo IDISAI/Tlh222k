@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"slices"
+	"sync"
 	"testing"
 	"time"
 
@@ -179,7 +180,7 @@ func TestStopAllStopsEveryActiveRuntime(t *testing.T) {
 }
 
 func TestDevAuthenticatorSetsAuthenticatedPrincipal(t *testing.T) {
-	authenticator := auth.New("admin", "")
+	authenticator := auth.New(auth.Options{DevRole: "admin"})
 	var got auth.Principal
 	handler := authenticator.Middleware(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
 		got = auth.PrincipalFrom(r)
@@ -204,20 +205,173 @@ func TestRequireAuthenticatedRejectsMissingPrincipal(t *testing.T) {
 
 func TestConfigSessionDefaults(t *testing.T) {
 	for _, key := range []string{
-		"JUPYTER_MAX_SESSIONS", "JUPYTER_SESSION_IDLE_SECONDS", "JUPYTER_SESSION_CPU",
+		"JUPYTER_MAX_SESSIONS", "JUPYTER_MAX_SESSIONS_PER_OWNER", "JUPYTER_SESSION_IDLE_SECONDS", "JUPYTER_SESSION_CPU",
 		"JUPYTER_SESSION_MEMORY", "JUPYTER_SESSION_PIDS", "JUPYTER_DOCKER_NETWORK",
 	} {
 		t.Setenv(key, "")
 	}
 	cfg := config.Load()
 
-	if cfg.JupyterMaxSessions != 2 || cfg.JupyterSessionIdle != 15*time.Minute {
-		t.Fatalf("session limits = %d/%s, want 2/15m", cfg.JupyterMaxSessions, cfg.JupyterSessionIdle)
+	if cfg.JupyterMaxSessions != 2 || cfg.JupyterMaxSessionsPerOwner != 1 || cfg.JupyterSessionIdle != 15*time.Minute {
+		t.Fatalf("session limits = %d/%d/%s, want 2/1/15m", cfg.JupyterMaxSessions, cfg.JupyterMaxSessionsPerOwner, cfg.JupyterSessionIdle)
 	}
 	if cfg.JupyterSessionCPU != "1" || cfg.JupyterSessionMemory != "2g" || cfg.JupyterSessionPIDs != 128 {
 		t.Fatalf("runtime limits = %q/%q/%d, want 1/2g/128", cfg.JupyterSessionCPU, cfg.JupyterSessionMemory, cfg.JupyterSessionPIDs)
 	}
 	if cfg.JupyterDockerNetwork != "notebook-internal" {
 		t.Fatalf("docker network = %q, want notebook-internal", cfg.JupyterDockerNetwork)
+	}
+}
+
+type blockingRuntime struct {
+	mu           sync.Mutex
+	starts       int
+	stops        int
+	startEntered chan struct{}
+	releaseStart <-chan struct{}
+}
+
+func (r *blockingRuntime) Start(_ context.Context, _ sessions.StartRequest) (sessions.RuntimeHandle, error) {
+	r.mu.Lock()
+	r.starts++
+	startNumber := r.starts
+	entered := r.startEntered
+	release := r.releaseStart
+	r.mu.Unlock()
+	if entered != nil {
+		entered <- struct{}{}
+	}
+	if release != nil {
+		<-release
+	}
+	return sessions.RuntimeHandle{
+		ID:       fmt.Sprintf("ctr-%d", startNumber),
+		Endpoint: "http://notebook:8888",
+		Token:    "jupyter",
+	}, nil
+}
+
+func (r *blockingRuntime) Stop(context.Context, string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.stops++
+	return nil
+}
+
+func (r *blockingRuntime) Alive(context.Context, string) bool { return true }
+
+func (r *blockingRuntime) startCount() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.starts
+}
+
+func TestSlowStartDoesNotBlockExistingSessionTouch(t *testing.T) {
+	runtime := &blockingRuntime{}
+	options := managerOptions()
+	options.MaxSessionsPerOwner = 1
+	manager := sessions.NewManager(options, runtime, &fakeClock{now: time.Unix(100, 0)})
+	existing, err := manager.CreateOrResume(context.Background(), "user-1", "data-science")
+	if err != nil {
+		t.Fatalf("create existing session: %v", err)
+	}
+
+	entered := make(chan struct{}, 1)
+	release := make(chan struct{})
+	runtime.mu.Lock()
+	runtime.startEntered = entered
+	runtime.releaseStart = release
+	runtime.mu.Unlock()
+	createDone := make(chan error, 1)
+	go func() {
+		_, err := manager.CreateOrResume(context.Background(), "user-2", "data-science")
+		createDone <- err
+	}()
+	select {
+	case <-entered:
+	case <-time.After(time.Second):
+		t.Fatal("slow runtime start was not reached")
+	}
+
+	touchDone := make(chan error, 1)
+	go func() { touchDone <- manager.Touch("user-1", existing.ID) }()
+	select {
+	case err := <-touchDone:
+		if err != nil {
+			t.Fatalf("touch existing session: %v", err)
+		}
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("Touch blocked behind unrelated runtime.Start")
+	}
+	close(release)
+	if err := <-createDone; err != nil {
+		t.Fatalf("create slow session: %v", err)
+	}
+}
+
+func TestConcurrentStartsReserveGlobalCapacity(t *testing.T) {
+	entered := make(chan struct{}, 8)
+	release := make(chan struct{})
+	runtime := &blockingRuntime{startEntered: entered, releaseStart: release}
+	options := managerOptions()
+	options.MaxSessions = 2
+	options.MaxSessionsPerOwner = 1
+	manager := sessions.NewManager(options, runtime, &fakeClock{now: time.Unix(100, 0)})
+
+	start := make(chan struct{})
+	results := make(chan error, 6)
+	for i := 0; i < 6; i++ {
+		go func(index int) {
+			<-start
+			_, err := manager.CreateOrResume(context.Background(), fmt.Sprintf("user-%d", index), "data-science")
+			results <- err
+		}(i)
+	}
+	close(start)
+	for i := 0; i < 2; i++ {
+		select {
+		case <-entered:
+		case <-time.After(time.Second):
+			t.Fatal("capacity reservations serialized or lost a permitted start")
+		}
+	}
+	select {
+	case <-entered:
+		t.Fatal("runtime.Start exceeded global capacity")
+	case <-time.After(50 * time.Millisecond):
+	}
+	close(release)
+
+	successes := 0
+	capacityErrors := 0
+	for i := 0; i < 6; i++ {
+		err := <-results
+		switch {
+		case err == nil:
+			successes++
+		case errors.Is(err, sessions.ErrCapacity):
+			capacityErrors++
+		default:
+			t.Fatalf("unexpected create error: %v", err)
+		}
+	}
+	if successes != 2 || capacityErrors != 4 || runtime.startCount() != 2 {
+		t.Fatalf("success/capacity/start = %d/%d/%d, want 2/4/2", successes, capacityErrors, runtime.startCount())
+	}
+}
+
+func TestPerOwnerQuotaRejectsSecondProfileWithoutStartingRuntime(t *testing.T) {
+	runtime := &blockingRuntime{}
+	options := managerOptions()
+	options.MaxSessionsPerOwner = 1
+	manager := sessions.NewManager(options, runtime, &fakeClock{now: time.Unix(100, 0)})
+	if _, err := manager.CreateOrResume(context.Background(), "user-1", "data-science"); err != nil {
+		t.Fatalf("create first profile: %v", err)
+	}
+	if _, err := manager.CreateOrResume(context.Background(), "user-1", "ml-cpu"); !errors.Is(err, sessions.ErrOwnerCapacity) {
+		t.Fatalf("second owner profile error = %v, want ErrOwnerCapacity", err)
+	}
+	if runtime.startCount() != 1 {
+		t.Fatalf("runtime starts = %d, want 1", runtime.startCount())
 	}
 }

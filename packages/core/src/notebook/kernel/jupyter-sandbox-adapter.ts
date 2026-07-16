@@ -22,7 +22,7 @@ type SessionClient = Pick<
 >
 
 /**
- * Browser kernel adapter. Browser receives only short-lived proxy ticket;
+ * Browser kernel adapter. HttpOnly cookie authenticates proxy requests;
  * Jupyter token and sandbox endpoint stay inside kernel-server.
  */
 export class JupyterSandboxAdapter implements KernelAdapter {
@@ -111,8 +111,8 @@ export class JupyterSandboxAdapter implements KernelAdapter {
   private connectionHealthy(): boolean {
     return Boolean(
       this.kernel &&
-        !this.kernel.isDisposed &&
-        this.kernel.connectionStatus === "connected"
+      !this.kernel.isDisposed &&
+      this.kernel.connectionStatus === "connected"
     )
   }
 
@@ -150,13 +150,18 @@ export class JupyterSandboxAdapter implements KernelAdapter {
 
   private async connect(): Promise<void> {
     const session = await this.client.create(this.profile)
-    const baseUrl = trailingSlash(this.client.resolveProxyUrl(session.proxyBaseUrl))
+    const baseUrl = trailingSlash(
+      this.client.resolveProxyUrl(session.proxyBaseUrl)
+    )
     const wsUrl = baseUrl.replace(/^http:/, "ws:").replace(/^https:/, "wss:")
+    const credentialedFetch: typeof fetch = (input, init) =>
+      fetch(input, { ...init, credentials: "include" })
     const serverSettings = ServerConnection.makeSettings({
       baseUrl,
       wsUrl,
-      token: session.connectionTicket,
-      appendToken: true,
+      token: "",
+      appendToken: false,
+      fetch: credentialedFetch,
     })
     const manager = new KernelManager({ serverSettings })
     const kernel = await manager.startNew({ name: "python3" })
@@ -204,7 +209,12 @@ function emitIOPub(
 function toMimeBundle(data: Record<string, unknown>): MimeBundle {
   const text = data["text/plain"]
   const html = data["text/html"]
-  for (const mime of ["image/png", "image/jpeg", "image/gif", "image/svg+xml"]) {
+  for (const mime of [
+    "image/png",
+    "image/jpeg",
+    "image/gif",
+    "image/svg+xml",
+  ]) {
     const value = data[mime]
     if (typeof value === "string") {
       return {
