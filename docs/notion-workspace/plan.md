@@ -7,7 +7,7 @@ Branch: `feat/notion-workspace`. Trạng thái: plan, chưa code.
 - **Notion Document** (`packages/db` Prisma) luôn nằm ở DB của app web/admin.
   Cây: 1 root doc (`slug != null`) → các child (`parentDocumentId`, `slug = null`).
   `NotionService.create` KHÔNG set slug cho child.
-- **Roadmap Node** (`svc-roadmap` DB khi bật `NEXT_PUBLIC_SVC_ROADMAP_URL`, hoặc
+- **Roadmap Node** (`svc-api` DB khi bật `NEXT_PUBLIC_SVC_API_URL`, hoặc
   mock/localStorage khi trống). Store KHÁC store của Document.
 - Nối 2 store bằng **`slug`**: `node.slug == Document.slug`. Chỉ đúng cho root doc
   ↔ 1 article node hiện nay.
@@ -128,7 +128,7 @@ Phụ thuộc QĐ-3. Việc:
   best-effort, eventual-consistency. Chấp nhận drift hiếm; đừng cố 2-phase-commit.
 - **Hướng phụ thuộc.** Cross-service call phải ở app (Server Action), không nhét vào
   `packages/core` service.
-- **Mock mode.** Khi `NEXT_PUBLIC_SVC_ROADMAP_URL` trống, roadmap là localStorage —
+- **Mock mode.** Khi `NEXT_PUBLIC_SVC_API_URL` trống, roadmap là localStorage —
   sync node↔doc chỉ chạy phía client, không bền. Chốt: #3/#4 chỉ hỗ trợ chế độ backend
   thật, hay cả mock?
 - Phase 1-2 độc lập, làm ngay được. Phase 3-5 chờ QĐ-1/2/3.

@@ -10,14 +10,14 @@ there is no shared root app env. Each app/package owns the env file beside it.
 | `apps/web`         | `apps/web/.env.example`         | `apps/web/.env.local`         | Next.js       |
 | `apps/admin`       | `apps/admin/.env.example`       | `apps/admin/.env.local`       | Next.js       |
 | `apps/super-admin` | `apps/super-admin/.env.example` | `apps/super-admin/.env.local` | Next.js       |
-| `apps/svc-roadmap` | `apps/svc-roadmap/.env.example` | `apps/svc-roadmap/.env`       | NestJS/dotenv |
+| `apps/svc-api` | `apps/svc-api/.env.example` | `apps/svc-api/.env`       | NestJS/dotenv |
 | `packages/db`      | `packages/db/.env.example`      | `packages/db/.env`            | Prisma CLI    |
 
 ```bash
 cp apps/web/.env.example          apps/web/.env.local
 cp apps/admin/.env.example        apps/admin/.env.local
 cp apps/super-admin/.env.example  apps/super-admin/.env.local
-cp apps/svc-roadmap/.env.example  apps/svc-roadmap/.env
+cp apps/svc-api/.env.example  apps/svc-api/.env
 cp packages/db/.env.example       packages/db/.env
 ```
 
@@ -26,10 +26,11 @@ cp packages/db/.env.example       packages/db/.env
 - Commit only `.env.example` files. Never commit `.env`, `.env.local`, or
   `.env.*.local`.
 - `NEXT_PUBLIC_*` is bundled into browser code. Never store secrets there.
-- Next.js apps read `.env.local`; `svc-roadmap` and `packages/db` read `.env`.
-- If `NEXT_PUBLIC_SVC_ROADMAP_URL` is empty, `@workspace/core` falls back to the
+- Next.js apps read `.env.local`; `svc-api` and `packages/db` read `.env`.
+- If `NEXT_PUBLIC_SVC_API_URL` is empty, `@workspace/core` falls back to the
   local mock/localStorage roadmap service. Set it to `http://localhost:3005` to
-  use the real backend.
+  use the real backend. `NEXT_PUBLIC_SVC_ROADMAP_URL` is the legacy name, still
+  honored as a fallback after the `svc-roadmap` -> `svc-api` rename.
 - `NEXT_PUBLIC_DEV_AUTH_ROLE` is a dev-only Clerk bypass. Comment it out when
   testing real login. It is ignored in production.
 
@@ -38,15 +39,15 @@ cp packages/db/.env.example       packages/db/.env
 | Variable                                            | Used by                              | Where to get it                                                 |
 | --------------------------------------------------- | ------------------------------------ | --------------------------------------------------------------- |
 | `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`                 | web, admin, super-admin              | Clerk Dashboard -> application -> API Keys                      |
-| `CLERK_SECRET_KEY`                                  | web, admin, super-admin, svc-roadmap | Clerk Dashboard -> application -> API Keys                      |
-| `CLERK_PUBLISHABLE_KEY`                             | svc-roadmap                          | Same publishable key as the frontends                           |
-| `CLERK_WEBHOOK_SECRET`                              | svc-roadmap                          | Clerk Dashboard -> Webhooks -> add endpoint -> Signing Secret   |
-| `DATABASE_URL`                                      | svc-roadmap, packages/db             | Dev: `file:./dev.db`; prod: Postgres/Neon connection string     |
-| `NEXT_PUBLIC_SVC_ROADMAP_URL`                       | web, admin, super-admin              | Dev backend URL, usually `http://localhost:3005`                |
+| `CLERK_SECRET_KEY`                                  | web, admin, super-admin, svc-api | Clerk Dashboard -> application -> API Keys                      |
+| `CLERK_PUBLISHABLE_KEY`                             | svc-api                          | Same publishable key as the frontends                           |
+| `CLERK_WEBHOOK_SECRET`                              | svc-api                          | Clerk Dashboard -> Webhooks -> add endpoint -> Signing Secret   |
+| `DATABASE_URL`                                      | svc-api, packages/db             | Dev: `file:./dev.db`; prod: Postgres/Neon connection string     |
+| `NEXT_PUBLIC_SVC_API_URL`                           | web, admin, super-admin              | Dev backend URL, usually `http://localhost:3005` (legacy: `NEXT_PUBLIC_SVC_ROADMAP_URL`) |
 | `NEXT_PUBLIC_HOST_URL`                              | web, admin, super-admin              | Dev web host, usually `http://localhost:3000`                   |
 | `ADMIN_URL`                                         | web                                  | Production admin child-zone URL                                 |
 | `SUPER_ADMIN_URL`                                   | web                                  | Production super-admin child-zone URL                           |
-| `FRONTEND_ORIGINS`                                  | svc-roadmap                          | Comma-separated frontend origins for CORS                       |
+| `FRONTEND_ORIGINS`                                  | svc-api                          | Comma-separated frontend origins for CORS                       |
 | `NEXT_PUBLIC_SENTRY_DSN`                            | web, admin, super-admin              | Sentry project -> Settings -> Client Keys (DSN)                 |
 | `SENTRY_DSN`                                        | all server runtimes                  | Same Sentry DSN, or blank to disable                            |
 | `SENTRY_ORG`, `SENTRY_PROJECT`, `SENTRY_AUTH_TOKEN` | Next.js builds/CI                    | Sentry project/release settings; token needs `project:releases` |
@@ -57,9 +58,9 @@ cp packages/db/.env.example       packages/db/.env
 2. Copy the Publishable Key into all frontend `.env.local` files as
    `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`.
 3. Copy the Secret Key into all frontend `.env.local` files and
-   `apps/svc-roadmap/.env` as `CLERK_SECRET_KEY`.
+   `apps/svc-api/.env` as `CLERK_SECRET_KEY`.
 4. Use the same Clerk application for `web`, `admin`, `super-admin`, and
-   `svc-roadmap` so session cookies and user IDs line up.
+   `svc-api` so session cookies and user IDs line up.
 5. For user sync, add a webhook endpoint. Local development endpoint:
    `http://localhost:3005/webhooks/clerk`. Copy the Signing Secret into
    `CLERK_WEBHOOK_SECRET`.
@@ -74,7 +75,7 @@ pnpm -F @workspace/db db:push
 pnpm -F @workspace/db seed
 ```
 
-Keep both `packages/db/.env` and `apps/svc-roadmap/.env` on the same
+Keep both `packages/db/.env` and `apps/svc-api/.env` on the same
 `DATABASE_URL`. For production, use Postgres/Neon and the Postgres Prisma schema.
 
 ## Vercel

@@ -19,7 +19,7 @@ Super-admin frontend and user-management child zone, port 3003. Read the root
   `/super-admin-static/*`.
 - Auth uses Clerk plus `proxy.ts`. `NEXT_PUBLIC_DEV_AUTH_ROLE` bypasses Clerk in
   local dev only.
-- User and roadmap data come from `svc-roadmap` through the GraphQL client in
+- User and roadmap data come from `svc-api` through the GraphQL client in
   `@workspace/core`.
 - Env is `.env.example -> .env.local`. Use the same Clerk application as web,
-  admin, and svc-roadmap.
+  admin, and svc-api.

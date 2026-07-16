@@ -19,10 +19,14 @@ Current major features include `roadmap`, `navigation`, and `notebook`.
 
 ## Roadmap Data
 
-`NEXT_PUBLIC_SVC_ROADMAP_URL` controls the data source:
+`NEXT_PUBLIC_SVC_API_URL` controls the data source (`api/` = Apollo Client +
+provider):
 
-- set: use the real `svc-roadmap` GraphQL backend
+- set: use the real `svc-api` GraphQL backend
 - empty: use the mock/localStorage fallback
+
+`NEXT_PUBLIC_SVC_ROADMAP_URL` is the legacy name, still honored as a fallback
+after the `svc-roadmap` -> `svc-api` rename.
 
 ## Theme
 

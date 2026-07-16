@@ -12,7 +12,7 @@ Public frontend + **Multi-Zone host** (port 3000). Read the root [CLAUDE.md](../
 
 - **Host zone:** `next.config.ts` `rewrites()` proxy `/admin` and `/super-admin` to the child apps. Dev → child dev servers (`:3002`/`:3003`); prod → child domains (`ADMIN_URL`/`SUPER_ADMIN_URL`). Child zones build as root apps; this host owns the public prefixes and proxies `/admin-static/*` plus `/super-admin-static/*` for child assets.
 - **Auth:** Clerk. `proxy.ts` + `lib/` resolve the role; `RoadmapView` and pages gate on it. `NEXT_PUBLIC_DEV_AUTH_ROLE` bypasses Clerk in dev (ignored when `NODE_ENV=production`).
-- **Data:** the roadmap Apollo client lives in `@workspace/core` and calls `${NEXT_PUBLIC_SVC_ROADMAP_URL}/graphql` — the `svc-roadmap` backend must be running for real data.
+- **Data:** the roadmap Apollo client lives in `@workspace/core` and calls `${NEXT_PUBLIC_SVC_API_URL}/graphql` — the `svc-api` backend must be running for real data. `NEXT_PUBLIC_SVC_ROADMAP_URL` is the legacy name, still honored as a fallback.
 - **Env:** copy `.env.example` → `.env.local`. Every var is documented there. Never commit `.env.local`.
 - **Consuming core/ui:** `workspace:*` dep + `transpilePackages` + tsconfig `paths`. `lib/core.ts` is the per-app customization seam.
 - Sentry is wrapped via `withSentryConfig`; a no-op without a DSN, so don't add guards for missing Sentry.
