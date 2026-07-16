@@ -1,5 +1,6 @@
 // Ported from packages/core/src/roadmap (types.ts + utils/validate-hierarchy).
 // Kept local so the service has no @workspace/core dependency.
+import { RoadmapError } from "../common/roadmap-error"
 
 export type NodeType = "role" | "skill" | "chapter" | "article"
 export type ArticleType = "notion" | "jupyter"
@@ -36,6 +37,26 @@ export function validateHierarchy(
 
 export function isNodeType(v: unknown): v is NodeType {
   return typeof v === "string" && (NODE_TYPES as readonly string[]).includes(v)
+}
+
+/**
+ * Reject anything that isn't a plain http(s) URL. Blocks stored-XSS vectors
+ * like `javascript:` / `data:` that would fire if the value is ever rendered
+ * as a link href. Empty/undefined → null (field is optional).
+ */
+export function normalizeHttpUrl(raw: string | null | undefined): string | null {
+  const v = raw?.trim()
+  if (!v) return null
+  let url: URL
+  try {
+    url = new URL(v)
+  } catch {
+    throw new RoadmapError("INVALID_URL")
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    throw new RoadmapError("INVALID_URL")
+  }
+  return url.toString()
 }
 
 /**

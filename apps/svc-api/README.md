@@ -1,4 +1,4 @@
-# svc-roadmap
+# svc-api
 
 NestJS backend for roadmap data, admin writes, user sync, REST, GraphQL, Swagger,
 and server-sent events.
@@ -6,9 +6,9 @@ and server-sent events.
 ## Run
 
 ```bash
-cp apps/svc-roadmap/.env.example apps/svc-roadmap/.env
+cp apps/svc-api/.env.example apps/svc-api/.env
 pnpm -F @workspace/db generate:sqlite
-pnpm --filter svc-roadmap dev
+pnpm --filter svc-api dev
 ```
 
 Default port: `3005`.
@@ -22,7 +22,7 @@ Endpoints:
 ## Data
 
 The service uses Prisma through `@workspace/db`. For local dev, keep
-`apps/svc-roadmap/.env` and `packages/db/.env` on the same `DATABASE_URL`, then
+`apps/svc-api/.env` and `packages/db/.env` on the same `DATABASE_URL`, then
 run:
 
 ```bash

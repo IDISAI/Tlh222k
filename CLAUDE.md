@@ -20,7 +20,7 @@ pnpm format
 pnpm --filter web dev
 pnpm --filter admin dev
 pnpm --filter super-admin dev
-pnpm --filter svc-roadmap dev
+pnpm --filter svc-api dev
 pnpm -F @workspace/db generate
 pnpm -F @workspace/db db:push
 pnpm -F @workspace/db seed
@@ -42,7 +42,7 @@ Current committed system:
 - `apps/web`: public Next.js frontend and Multi-Zone host, port 3000.
 - `apps/admin`: admin/roadmap-builder Next.js child zone, port 3002.
 - `apps/super-admin`: super-admin/user-management child zone, port 3003.
-- `apps/svc-roadmap`: NestJS backend exposing GraphQL, REST, Swagger, and SSE,
+- `apps/svc-api`: NestJS backend exposing GraphQL, REST, Swagger, and SSE,
   default port 3005.
 - `apps/kernel-server`: **Go** backend for the notebook feature. Standalone Go
   module (not in the pnpm/turbo workspace). Port 3006. Notebook CRUD (filesystem
@@ -98,7 +98,7 @@ There is no shared root app env. Each app/package owns the env file beside it:
 cp apps/web/.env.example          apps/web/.env.local
 cp apps/admin/.env.example        apps/admin/.env.local
 cp apps/super-admin/.env.example  apps/super-admin/.env.local
-cp apps/svc-roadmap/.env.example  apps/svc-roadmap/.env
+cp apps/svc-api/.env.example  apps/svc-api/.env
 cp apps/kernel-server/.env.example apps/kernel-server/.env
 cp packages/db/.env.example       packages/db/.env
 ```

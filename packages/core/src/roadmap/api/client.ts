@@ -11,14 +11,23 @@ import { setContext } from "@apollo/client/link/context"
 import { devAuthRole } from "../../navigation"
 import { RoadmapServiceError, type RoadmapErrorCode } from "../types"
 
-/** True when the frontend should talk to svc-roadmap instead of the mock. */
+// NEXT_PUBLIC_SVC_ROADMAP_URL is the legacy name kept as a fallback after the
+// svc-roadmap → svc-api rename, so existing .env.local / Vercel envs still work.
+export function svcApiUrl(): string {
+  return (
+    process.env.NEXT_PUBLIC_SVC_API_URL ??
+    process.env.NEXT_PUBLIC_SVC_ROADMAP_URL ??
+    ""
+  )
+}
+
+/** True when the frontend should talk to svc-api instead of the mock. */
 export function roadmapBackendEnabled(): boolean {
-  return Boolean(process.env.NEXT_PUBLIC_SVC_ROADMAP_URL)
+  return Boolean(svcApiUrl())
 }
 
 function endpoint(): string {
-  const base = process.env.NEXT_PUBLIC_SVC_ROADMAP_URL ?? ""
-  return `${base.replace(/\/$/, "")}/graphql`
+  return `${svcApiUrl().replace(/\/$/, "")}/graphql`
 }
 
 interface ClerkGlobal {

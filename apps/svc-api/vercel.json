@@ -2,7 +2,7 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": null,
   "installCommand": "pnpm install --frozen-lockfile",
-  "buildCommand": "pnpm --filter svc-roadmap exec nest build",
+  "buildCommand": "pnpm --filter svc-api exec nest build",
   "outputDirectory": "public",
   "functions": {
     "api/index.ts": {

@@ -47,7 +47,9 @@ export function subscribeRoadmapUpdates(
   // Backend on → subscribe to the svc-roadmap SSE stream (real cross-origin
   // transport: an admin save on :3002 reaches a viewer on :3000). Falls back
   // to BroadcastChannel + storage for the offline mock.
-  const backendUrl = process.env.NEXT_PUBLIC_SVC_ROADMAP_URL
+  const backendUrl =
+    process.env.NEXT_PUBLIC_SVC_API_URL ??
+    process.env.NEXT_PUBLIC_SVC_ROADMAP_URL
   if (backendUrl) {
     const qs = roadmapId ? `?id=${encodeURIComponent(roadmapId)}` : ""
     const url = `${backendUrl.replace(/\/$/, "")}/roadmap-updates${qs}`

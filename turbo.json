@@ -9,6 +9,7 @@
     "CLERK_SECRET_KEY",
     "FRONTEND_ORIGINS",
     "NEXT_PUBLIC_SVC_ROADMAP_URL",
+    "NEXT_PUBLIC_SVC_API_URL",
     "SENTRY_DSN",
     "SENTRY_TRACES_SAMPLE_RATE",
     "SENTRY_ORG",
@@ -26,6 +27,7 @@
         "ADMIN_URL",
         "SUPER_ADMIN_URL",
         "NEXT_PUBLIC_SVC_ROADMAP_URL",
+        "NEXT_PUBLIC_SVC_API_URL",
         "DATABASE_URL",
         "CLERK_SECRET_KEY",
         "FRONTEND_ORIGINS"
@@ -41,6 +43,7 @@
     "typecheck": {
       "dependsOn": ["^typecheck"]
     },
+    "test": {},
     "dev": {
       "cache": false,
       "persistent": true

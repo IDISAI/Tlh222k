@@ -2,6 +2,7 @@
   "enabledPlugins": {
     "codex@openai-codex": false,
     "sentry@claude-plugins-official": true,
-    "sentry-cli@claude-plugins-official": true
+    "sentry-cli@claude-plugins-official": true,
+    "neon@claude-plugins-official": true
   }
 }

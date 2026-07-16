@@ -1,17 +1,21 @@
-// Roadmap Platform DB. Dev = SQLite (zero infra); prod = Postgres (schema
-// `roadmap`). SQLite has no native enums / @db.* / @@schema, so nodeType,
-// articleType and status are plain strings validated in the service layer
-// (apps/svc-roadmap). To move to Postgres: change `provider` to "postgresql",
-// point DATABASE_URL at Postgres, and (optionally) promote the string columns
-// to enums NodeType{role,skill,chapter,article} / ArticleType{notion,jupyter}.
+// Roadmap Platform DB — Postgres (Neon) for dev and prod. Dev runs on a Neon
+// `dev` branch, prod on the default branch, same engine end to end. nodeType,
+// articleType and status stay plain strings validated in the service layer
+// (apps/svc-roadmap); promote to native enums later if desired.
+//
+//   - DATABASE_URL: pooled (-pooler host) — used at runtime (serverless-safe).
+//   - DIRECT_URL:   direct (non-pooled)   — used by `prisma db push`/`migrate`.
+//   - binaryTargets: emit the Vercel Linux query engine alongside native.
 
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "rhel-openssl-3.0.x"]
 }
 
 datasource db {
-  provider = "sqlite"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 model Roadmap {

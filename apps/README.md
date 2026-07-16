@@ -7,7 +7,7 @@ Runtime applications live here.
 | `web`         | Public Next.js frontend and Multi-Zone host    | 3000         |
 | `admin`       | Next.js roadmap builder/admin child zone       | 3002         |
 | `super-admin` | Next.js super-admin/user-management child zone | 3003         |
-| `svc-roadmap` | NestJS GraphQL/REST/SSE backend                | 3005         |
+| `svc-api` | NestJS GraphQL/REST/SSE backend                | 3005         |
 
 Each app owns its env file and has its own `README.md` and `AGENTS.md`.
 

@@ -9,6 +9,7 @@ export type RoadmapErrorCode =
   | "CHILDREN_LIMIT_EXCEEDED"
   | "NOT_FOUND"
   | "TIMEOUT"
+  | "INVALID_URL"
 
 /**
  * Throwable that becomes a `GraphQLError` with `extensions.code`, so the

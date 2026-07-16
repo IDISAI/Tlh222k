@@ -1,15 +1,20 @@
 import { join } from "path"
-import { Module } from "@nestjs/common"
+import { Module, type MiddlewareConsumer, type NestModule } from "@nestjs/common"
 import { APP_FILTER } from "@nestjs/core"
 import { GraphQLModule } from "@nestjs/graphql"
 import { ApolloDriver, type ApolloDriverConfig } from "@nestjs/apollo"
+import { ApolloServerPluginLandingPageLocalDefault } from "@apollo/server/plugin/landingPage/default"
 import { SentryModule, SentryGlobalFilter } from "@sentry/nestjs/setup"
 import type { Request } from "express"
 import type { GraphQLFormattedError } from "graphql"
 
+const IS_PROD = process.env.NODE_ENV === "production"
+
 import { PrismaModule } from "./prisma/prisma.module"
 import { RoadmapModule } from "./roadmap/roadmap.module"
+import { NotionModule } from "./notion/notion.module"
 import { resolveUser, type CurrentUser } from "./auth/clerk"
+import { AuthMiddleware } from "./auth/auth.middleware"
 
 @Module({
   imports: [
@@ -20,7 +25,13 @@ import { resolveUser, type CurrentUser } from "./auth/clerk"
       driver: ApolloDriver,
       // Schema-first: load the SDL shared with the frontend codegen.
       typePaths: [join(__dirname, "schema.graphql")],
-      playground: true,
+      // Apollo Sandbox (embedded) replaces the legacy Playground, dev only.
+      // Introspection + Sandbox both expose the schema, so gate on prod.
+      playground: false,
+      introspection: !IS_PROD,
+      plugins: IS_PROD
+        ? []
+        : [ApolloServerPluginLandingPageLocalDefault({ embed: true })],
       // Resolve the Clerk user ONCE per request; resolvers read ctx.user.
       context: async ({
         req,
@@ -38,6 +49,7 @@ import { resolveUser, type CurrentUser } from "./auth/clerk"
       }),
     }),
     RoadmapModule,
+    NotionModule,
   ],
   providers: [
     // Catches unhandled exceptions and reports them to Sentry, then re-throws
@@ -45,4 +57,10 @@ import { resolveUser, type CurrentUser } from "./auth/clerk"
     { provide: APP_FILTER, useClass: SentryGlobalFilter },
   ],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  // Resolve the Clerk caller for REST requests (GraphQL does it in the Apollo
+  // context factory above). Runs on every route; guards decide access.
+  configure(consumer: MiddlewareConsumer): void {
+    consumer.apply(AuthMiddleware).forRoutes("*")
+  }
+}

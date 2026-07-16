@@ -1,4 +1,4 @@
-# apps/svc-roadmap - agent notes
+# apps/svc-api - agent notes
 
 NestJS backend for roadmap APIs. Read the root [CLAUDE.md](../../CLAUDE.md)
 first.

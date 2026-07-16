@@ -58,9 +58,10 @@ export class RoadmapRestController {
   })
   @ApiResponse({ status: 200, type: [RoadmapResponseDto] })
   listRoadmaps(
-    @Query("includeUnpublished") includeUnpublished?: string
+    @Query("includeUnpublished") includeUnpublished: string | undefined,
+    @CurrentUser() user: CurrentUserType | null
   ) {
-    return this.service.roadmaps(includeUnpublished === "true")
+    return this.service.roadmaps(includeUnpublished === "true", user)
   }
 
   @Get(":slug/graph")
@@ -134,8 +135,8 @@ export class RoadmapRestController {
   @Get("nodes/all")
   @ApiOperation({ summary: "List all nodes in the system" })
   @ApiResponse({ status: 200, type: [RoadmapNodeResponseDto] })
-  allNodes() {
-    return this.service.allNodes()
+  allNodes(@CurrentUser() user: CurrentUserType | null) {
+    return this.service.allNodes(user)
   }
 
   @Post("nodes")

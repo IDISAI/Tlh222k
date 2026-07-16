@@ -19,9 +19,10 @@ export class RoadmapResolver {
   // ── Queries ──
   @Query("roadmaps")
   roadmaps(
-    @Args("includeUnpublished") includeUnpublished?: boolean
+    @Args("includeUnpublished") includeUnpublished: boolean | undefined,
+    @CurrentUser() user: CurrentUserType | null
   ) {
-    return this.service.roadmaps(Boolean(includeUnpublished))
+    return this.service.roadmaps(Boolean(includeUnpublished), user)
   }
 
   @Query("roadmap")
@@ -46,8 +47,8 @@ export class RoadmapResolver {
   }
 
   @Query("allNodes")
-  allNodes() {
-    return this.service.allNodes()
+  allNodes(@CurrentUser() user: CurrentUserType | null) {
+    return this.service.allNodes(user)
   }
 
   @Query("myProgress")

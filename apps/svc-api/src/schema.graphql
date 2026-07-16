@@ -61,6 +61,22 @@ type RoadmapProgress {
   totalCount: Int!
 }
 
+type NotionDoc {
+  id: ID!
+  slug: String
+  title: String!
+  authorId: String!
+  isArchived: Boolean!
+  parentDocumentId: ID
+  content: String
+  coverImage: String
+  icon: String
+  isPublished: Boolean!
+  position: Int!
+  createdAt: String!
+  updatedAt: String!
+}
+
 type Query {
   roadmaps(includeUnpublished: Boolean = false): [Roadmap!]!
   roadmap(slug: String!): Roadmap
@@ -68,6 +84,11 @@ type Query {
   roadmapGraphById(id: ID!): RoadmapGraph
   allNodes: [RoadmapNode!]!
   myProgress: [RoadmapProgress!]!
+  notionDoc(id: ID!): NotionDoc
+  notionDocBySlug(slug: String!): NotionDoc
+  notionChildren(parentDocumentId: ID!): [NotionDoc!]!
+  notionTrash: [NotionDoc!]!
+  notionSearch: [NotionDoc!]!
 }
 
 type Mutation {
@@ -79,6 +100,30 @@ type Mutation {
   deleteNode(id: ID!): Boolean!
   saveRoadmap(roadmapId: ID!, nodes: [NodeInput!]!): Boolean!
   setNodeStatus(nodeId: ID!, status: NodeStatus!): Boolean!
+  createNotionDoc(input: CreateNotionDocInput!): NotionDoc!
+  updateNotionDoc(input: UpdateNotionDocInput!): NotionDoc!
+  archiveNotionDoc(id: ID!): Boolean!
+  restoreNotionDoc(id: ID!): Boolean!
+  removeNotionDoc(id: ID!): Boolean!
+  moveNotionDoc(id: ID!, parentDocumentId: ID): NotionDoc!
+  reorderNotionDocs(parentDocumentId: ID!, orderedIds: [ID!]!): Boolean!
+  removeNotionIcon(id: ID!): NotionDoc!
+  removeNotionCover(id: ID!): NotionDoc!
+}
+
+input CreateNotionDocInput {
+  title: String
+  parentDocumentId: ID
+  slug: String
+}
+
+input UpdateNotionDocInput {
+  id: ID!
+  title: String
+  content: String
+  icon: String
+  coverImage: String
+  isPublished: Boolean
 }
 
 input CreateRoadmapInput {

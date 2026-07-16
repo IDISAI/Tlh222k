@@ -11,6 +11,7 @@ import { NestFactory } from "@nestjs/core"
 import { DocumentBuilder, SwaggerModule } from "@nestjs/swagger"
 import type { Request, Response } from "express"
 import { AppModule } from "./app.module"
+import { isAllowedOrigin } from "./http/cors"
 
 let cachedHandler: ((req: Request, res: Response) => void) | null = null
 
@@ -21,36 +22,25 @@ async function bootstrap(): Promise<(req: Request, res: Response) => void> {
     .split(",")
     .map((o) => o.trim())
     .filter(Boolean)
-  // Vercel preview deploys get a per-commit hostname a static allowlist can't
-  // enumerate. Web previews drop the app name (tlh222k-<hash>-idis.vercel.app);
-  // admin/super-admin keep it (tlh222k-admin-<hash>-…). Match any deploy under
-  // this project's tlh222k- prefix so previews aren't blocked by CORS while
-  // production stays explicit via FRONTEND_ORIGINS.
-  const previewOrigin = /^https:\/\/tlh222k-[\w-]+\.vercel\.app$/
+  // allowAllWhenEmpty: an unset FRONTEND_ORIGINS falls back to allow-all so
+  // preview deploys aren't blocked before the env is configured.
   app.enableCors({
-    origin: (origin, callback) => {
-      if (
-        !origin ||
-        !origins.length ||
-        origins.includes(origin) ||
-        previewOrigin.test(origin)
-      ) {
-        callback(null, true)
-        return
-      }
-      callback(null, false)
-    },
+    origin: (origin, callback) =>
+      callback(null, isAllowedOrigin(origin, origins, { allowAllWhenEmpty: true })),
     credentials: true,
     allowedHeaders: ["Content-Type", "Authorization"],
   })
 
-  const swaggerConfig = new DocumentBuilder()
-    .setTitle("svc-roadmap API")
-    .setDescription("REST API cho roadmap service — chạy song song với GraphQL (/graphql).")
-    .setVersion("1.0")
-    .addBearerAuth()
-    .build()
-  SwaggerModule.setup("api-docs", app, SwaggerModule.createDocument(app, swaggerConfig))
+  // Never mount in production — it maps the entire API surface for attackers.
+  if (process.env.NODE_ENV !== "production") {
+    const swaggerConfig = new DocumentBuilder()
+      .setTitle("svc-api API")
+      .setDescription("REST API cho roadmap service — chạy song song với GraphQL (/graphql).")
+      .setVersion("1.0")
+      .addBearerAuth()
+      .build()
+    SwaggerModule.setup("api-docs", app, SwaggerModule.createDocument(app, swaggerConfig))
+  }
 
   await app.init()
   return app.getHttpAdapter().getInstance()

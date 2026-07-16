@@ -9,11 +9,7 @@
   "scripts": {
     "postinstall": "node scripts/prisma-generate.mjs",
     "generate": "prisma generate --schema prisma/schema.prisma",
-    "generate:sqlite": "prisma generate --schema prisma/schema.prisma",
-    "generate:postgres": "prisma generate --schema prisma/schema.postgres.prisma",
     "db:push": "prisma db push --schema prisma/schema.prisma",
-    "db:push:sqlite": "prisma db push --schema prisma/schema.prisma",
-    "db:push:postgres": "prisma db push --schema prisma/schema.postgres.prisma",
     "seed": "tsx prisma/seed.ts",
     "seed:ai": "tsx prisma/seed-ai-roadmap.ts",
     "seed:jupyter": "tsx prisma/seed-jupyter-platform.ts",

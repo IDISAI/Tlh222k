@@ -9,6 +9,7 @@ import {
   MAX_TITLE_LENGTH,
   NODE_TYPES,
   isNodeType,
+  normalizeHttpUrl,
   slugify,
   type ArticleType,
   type NodeStatus,
@@ -114,9 +115,15 @@ export class RoadmapService {
 
   // ── Queries ────────────────────────────────────────────────────────────────
 
-  async roadmaps(includeUnpublished: boolean): Promise<RoadmapDto[]> {
+  async roadmaps(
+    includeUnpublished: boolean,
+    user: CurrentUser | null
+  ): Promise<RoadmapDto[]> {
+    // includeUnpublished is honored only for admins; every other caller sees
+    // published roadmaps regardless of the flag.
+    const isAdmin = user?.role === "admin" || user?.role === "super-admin"
     const rows = await this.prisma.roadmap.findMany({
-      where: includeUnpublished ? {} : { isPublished: true },
+      where: includeUnpublished && isAdmin ? {} : { isPublished: true },
       include: {
         _count: { select: { nodes: { where: { isDeleted: false } } } },
       },
@@ -222,7 +229,9 @@ export class RoadmapService {
   }
 
   /** Every node in the system for the sidebar (Req 3.6, incl. deleted). */
-  async allNodes(): Promise<NodeDto[]> {
+  async allNodes(user: CurrentUser | null): Promise<NodeDto[]> {
+    // Exposes soft-deleted + unpublished content: admins only.
+    assertCanWrite(user)
     const nodes = await this.prisma.node.findMany({ orderBy: { order: "asc" } })
     return this.attachComputed(nodes, {})
   }
@@ -353,7 +362,7 @@ export class RoadmapService {
         description: input.description?.trim() || null,
         notionPageId: input.notionPageId ?? null,
         articleType: input.articleType ?? null,
-        jupyterUrl: input.jupyterUrl ?? null,
+        jupyterUrl: normalizeHttpUrl(input.jupyterUrl),
         positionX: input.positionX,
         positionY: input.positionY,
         order,
@@ -376,41 +385,59 @@ export class RoadmapService {
       await this.validateParent(input.parentId ?? null, node.nodeType as NodeType, id)
     }
 
-    const updated = await this.prisma.node.update({
-      where: { id },
-      data: {
-        parentId:
-          input.parentId !== undefined ? (input.parentId ?? null) : undefined,
-        title:
-          input.title !== undefined && input.title !== null
-            ? input.title.trim().slice(0, MAX_TITLE_LENGTH)
-            : undefined,
-        description:
-          input.description !== undefined
-            ? input.description?.trim() || null
-            : undefined,
-        articleType:
-          input.articleType !== undefined ? (input.articleType ?? null) : undefined,
-        notionPageId:
-          input.notionPageId !== undefined
-            ? input.notionPageId?.trim() || null
-            : undefined,
-        jupyterUrl:
-          input.jupyterUrl !== undefined
-            ? input.jupyterUrl?.trim() || null
-            : undefined,
-        positionX: input.positionX ?? undefined,
-        positionY: input.positionY ?? undefined,
-        order: input.order ?? undefined,
-        linkedRoadmapId:
-          input.linkedRoadmapId !== undefined
-            ? (input.linkedRoadmapId ?? null)
-            : undefined,
-        isPublished:
-          input.isPublished !== undefined && input.isPublished !== null
-            ? input.isPublished
-            : undefined,
-      },
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const u = await tx.node.update({
+        where: { id },
+        data: {
+          parentId:
+            input.parentId !== undefined ? (input.parentId ?? null) : undefined,
+          title:
+            input.title !== undefined && input.title !== null
+              ? input.title.trim().slice(0, MAX_TITLE_LENGTH)
+              : undefined,
+          description:
+            input.description !== undefined
+              ? input.description?.trim() || null
+              : undefined,
+          articleType:
+            input.articleType !== undefined ? (input.articleType ?? null) : undefined,
+          notionPageId:
+            input.notionPageId !== undefined
+              ? input.notionPageId?.trim() || null
+              : undefined,
+          jupyterUrl:
+            input.jupyterUrl !== undefined
+              ? normalizeHttpUrl(input.jupyterUrl)
+              : undefined,
+          positionX: input.positionX ?? undefined,
+          positionY: input.positionY ?? undefined,
+          order: input.order ?? undefined,
+          linkedRoadmapId:
+            input.linkedRoadmapId !== undefined
+              ? (input.linkedRoadmapId ?? null)
+              : undefined,
+          isPublished:
+            input.isPublished !== undefined && input.isPublished !== null
+              ? input.isPublished
+              : undefined,
+        },
+      })
+
+      // Atomic cross-link: a notion node's title/publish change must not drift
+      // from its linked Document. Same transaction as the node write, so both
+      // commit or neither does. updateMany is a no-op when no doc is linked.
+      if (node.notionPageId) {
+        const docData: { title?: string; isPublished?: boolean } = {}
+        if (input.title != null) docData.title = u.title
+        if (input.isPublished != null) docData.isPublished = input.isPublished
+        if (Object.keys(docData).length > 0) {
+          await tx.document.updateMany({
+            where: { id: node.notionPageId },
+            data: docData,
+          })
+        }
+      }
+      return u
     })
     this.events.emit(updated.roadmapId)
     const childrenCount = await this.childrenCount(id)
@@ -423,9 +450,29 @@ export class RoadmapService {
     const node = await this.prisma.node.findUnique({ where: { id } })
     if (!node) throw new RoadmapError("NOT_FOUND")
     const doomed = await this.collectSubtreeIds(id)
-    await this.prisma.node.updateMany({
-      where: { id: { in: [...doomed] } },
-      data: { isDeleted: true },
+
+    await this.prisma.$transaction(async (tx) => {
+      // Archive the Documents linked to the doomed notion nodes in the same
+      // transaction as the soft-delete, so a node delete and its doc archive
+      // can't diverge.
+      const doomedNodes = await tx.node.findMany({
+        where: { id: { in: [...doomed] } },
+        select: { notionPageId: true },
+      })
+      const docIds = doomedNodes
+        .map((n) => n.notionPageId)
+        .filter((v): v is string => Boolean(v))
+
+      await tx.node.updateMany({
+        where: { id: { in: [...doomed] } },
+        data: { isDeleted: true },
+      })
+      if (docIds.length > 0) {
+        await tx.document.updateMany({
+          where: { id: { in: docIds } },
+          data: { isArchived: true },
+        })
+      }
     })
     this.events.emit(node.roadmapId)
     return true

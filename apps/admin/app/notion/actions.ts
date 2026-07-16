@@ -7,47 +7,46 @@ import type {
   NotionDoc,
   UpdateDocumentInput,
 } from "@workspace/core"
-import { NotionService } from "@workspace/core/notion/notion.service"
+import { notionApi } from "@workspace/core/notion/api/notion.api"
 
-import { getRole, getUserId } from "@/lib/auth"
+import { getAuthToken, getRole } from "@/lib/auth"
 
-// Every action re-resolves the caller's role from the Clerk session and hands
-// it to the service, which enforces assertCanWrite — the admin proxy and the
-// page's getRole() gate are optimistic; THIS is the trust boundary.
-const service = new NotionService()
+// Every action forwards the caller's token (real Clerk token, or the dev:<role>
+// bypass in development) to svc-roadmap, which re-checks the role server-side —
+// THAT is the trust boundary. uploadFile stays here because it writes to Vercel
+// Blob (a Next/runtime concern), returning only a URL saved via the API.
 
 const MAX_UPLOAD_BYTES = 10 * 1024 * 1024 // 10 MB
 
 export async function getById(id: string): Promise<NotionDoc | null> {
-  return service.getById(await getRole(), id)
+  return notionApi.getById(id, await getAuthToken())
 }
 
 export async function getChildren(
   parentDocumentId: string
 ): Promise<NotionDoc[]> {
-  return service.getChildren(await getRole(), parentDocumentId)
+  return notionApi.getChildren(parentDocumentId, await getAuthToken())
 }
 
 export async function create(input: CreateDocumentInput): Promise<NotionDoc> {
-  const userId = await getUserId()
-  return service.create(await getRole(), userId ?? "unknown", input)
+  return notionApi.create(input, await getAuthToken())
 }
 
 export async function update(input: UpdateDocumentInput): Promise<NotionDoc> {
-  return service.update(await getRole(), input)
+  return notionApi.update(input, await getAuthToken())
 }
 
 /**
- * Cross-service title sync (QĐ-2): a roadmap node rename pushes its new title
- * to the Document with the same slug. Best-effort — no-op if no doc is linked.
+ * Cross-service title sync: a roadmap node rename pushes its new title to the
+ * Document with the same slug. Best-effort — no-op if no doc is linked.
  */
 export async function syncTitleBySlug(
   slug: string,
   title: string
 ): Promise<void> {
-  const role = await getRole()
-  const doc = await service.getBySlug(role, slug)
-  if (doc) await service.update(role, { id: doc.id, title })
+  const token = await getAuthToken()
+  const doc = await notionApi.getBySlug(slug, token)
+  if (doc) await notionApi.update({ id: doc.id, title }, token)
 }
 
 /** "css-grid-lab" → "Css grid lab" as a starter title for a fresh root doc. */
@@ -58,40 +57,31 @@ function titleFromSlug(slug: string): string {
 
 /**
  * Auto-create the Document backing a new notion article node with the SAME
- * slug (join key) — notion-article-node Req 2.1/2.2. The doc is parented
- * under the chapter's ROOT doc (A1 model) so it shows up in the workspace
- * sidebar tree; the root is auto-created here when the admin never opened
- * the chapter workspace before. Returns null on failure so the canvas can
- * leave the node unlinked instead of throwing.
+ * slug (join key), parented under the chapter's ROOT doc. Returns null on
+ * failure so the canvas can leave the node unlinked instead of throwing.
  */
 export async function createDocumentForNode(
   slug: string,
   title: string,
   parentChapterSlug?: string
 ): Promise<{ id: string } | null> {
-  const userId = await getUserId()
-  const role = await getRole()
-  const authorId = userId ?? "unknown"
+  const token = await getAuthToken()
   try {
     let parentDocumentId: string | undefined
     if (parentChapterSlug) {
-      let root = await service.getBySlug(role, parentChapterSlug)
+      let root = await notionApi.getBySlug(parentChapterSlug, token)
       if (!root) {
-        root = await service
-          .create(role, authorId, {
-            slug: parentChapterSlug,
-            title: titleFromSlug(parentChapterSlug),
-          })
+        root = await notionApi
+          .create(
+            { slug: parentChapterSlug, title: titleFromSlug(parentChapterSlug) },
+            token
+          )
           // Unique-slug race: the loser refetches.
-          .catch(() => service.getBySlug(role, parentChapterSlug))
+          .catch(() => notionApi.getBySlug(parentChapterSlug, token))
       }
       parentDocumentId = root?.id
     }
-    const doc = await service.create(role, authorId, {
-      slug,
-      title,
-      parentDocumentId,
-    })
+    const doc = await notionApi.create({ slug, title, parentDocumentId }, token)
     return { id: doc.id }
   } catch {
     return null
@@ -100,57 +90,56 @@ export async function createDocumentForNode(
 
 /**
  * Publish-state sync from a notion article node to its linked Document
- * (`notionPageId` = Document.id) — notion-article-node Req 7. Missing
- * documents are skipped silently (Req 7.3).
+ * (`notionPageId` = Document.id). Missing documents are skipped silently.
  */
 export async function syncPublishByNotionPageId(
   notionPageId: string,
   isPublished: boolean
 ): Promise<void> {
-  const role = await getRole()
-  const doc = await service.getById(role, notionPageId)
+  const token = await getAuthToken()
+  const doc = await notionApi.getById(notionPageId, token)
   if (!doc) return
-  await service.update(role, { id: notionPageId, isPublished })
+  await notionApi.update({ id: notionPageId, isPublished }, token)
 }
 
 /**
- * Archive the Document linked to a permanently-deleted notion article node —
- * notion-article-node Req 8.2. Missing documents are a no-op.
+ * Archive the Document linked to a permanently-deleted notion article node.
+ * Missing documents are a no-op.
  */
 export async function archiveByNotionPageId(
   notionPageId: string
 ): Promise<void> {
-  const role = await getRole()
-  const doc = await service.getById(role, notionPageId)
+  const token = await getAuthToken()
+  const doc = await notionApi.getById(notionPageId, token)
   if (!doc) return
-  await service.archive(role, notionPageId)
+  await notionApi.archive(notionPageId, token)
 }
 
 export async function archive(id: string): Promise<void> {
-  await service.archive(await getRole(), id)
+  await notionApi.archive(id, await getAuthToken())
 }
 
 export async function restore(id: string): Promise<void> {
-  await service.restore(await getRole(), id)
+  await notionApi.restore(id, await getAuthToken())
 }
 
 export async function remove(id: string): Promise<void> {
-  await service.remove(await getRole(), id)
+  await notionApi.remove(id, await getAuthToken())
 }
 
 export async function getTrash(): Promise<NotionDoc[]> {
-  return service.getTrash(await getRole())
+  return notionApi.getTrash(await getAuthToken())
 }
 
 export async function getSearch(): Promise<NotionDoc[]> {
-  return service.getSearch(await getRole())
+  return notionApi.getSearch(await getAuthToken())
 }
 
 export async function reorder(
   parentDocumentId: string,
   orderedIds: string[]
 ): Promise<void> {
-  await service.reorder(await getRole(), parentDocumentId, orderedIds)
+  await notionApi.reorder(parentDocumentId, orderedIds, await getAuthToken())
 }
 
 /** Drag-to-nest: re-parent a doc in the sidebar tree (null = top level). */
@@ -158,17 +147,17 @@ export async function move(
   id: string,
   parentDocumentId: string | null
 ): Promise<NotionDoc> {
-  return service.move(await getRole(), id, parentDocumentId)
+  return notionApi.move(id, parentDocumentId, await getAuthToken())
 }
 
 export async function removeIcon(id: string): Promise<NotionDoc> {
-  return service.removeIcon(await getRole(), id)
+  return notionApi.removeIcon(id, await getAuthToken())
 }
 
 export async function removeCoverImage(id: string): Promise<NotionDoc> {
-  const role = await getRole()
-  const doc = await service.getById(role, id)
-  const updated = await service.removeCoverImage(role, id)
+  const token = await getAuthToken()
+  const doc = await notionApi.getById(id, token)
+  const updated = await notionApi.removeCoverImage(id, token)
   // Best-effort blob cleanup — an orphaned file must not fail the action.
   if (doc?.coverImage)
     await del(doc.coverImage, {
@@ -179,6 +168,7 @@ export async function removeCoverImage(id: string): Promise<NotionDoc> {
 
 /** Cover images + BlockNote file blocks → Vercel Blob (public). */
 export async function uploadFile(form: FormData): Promise<{ url: string }> {
+  // Admin gate: uploads never reach svc-roadmap, so enforce the role here.
   const role = await getRole()
   if (role !== "admin" && role !== "super-admin") {
     throw new Error("PERMISSION_DENIED")
@@ -192,9 +182,6 @@ export async function uploadFile(form: FormData): Promise<{ url: string }> {
   }
   const blob = await put(`notion/${crypto.randomUUID()}-${file.name}`, file, {
     access: "public",
-    // Explicit token forces token-auth over OIDC. Local dev runs in the
-    // "development" env where project OIDC isn't enabled, so OIDC-mode put()
-    // throws; the BLOB_READ_WRITE_TOKEN works local and on Vercel.
     token: process.env.BLOB_READ_WRITE_TOKEN,
   })
   return { url: blob.url }

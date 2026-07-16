@@ -52,9 +52,14 @@ export async function resolveUser(
   }
 }
 
+/** True for admin | super-admin callers. */
+export function isAdmin(user: CurrentUser | null): boolean {
+  return user?.role === "admin" || user?.role === "super-admin"
+}
+
 /** Guard for write mutations (Req 1.4): admin | super-admin only. */
 export function assertCanWrite(user: CurrentUser | null): CurrentUser {
-  if (!user || (user.role !== "admin" && user.role !== "super-admin")) {
+  if (!user || !isAdmin(user)) {
     throw new RoadmapError("PERMISSION_DENIED")
   }
   return user
