@@ -24,6 +24,11 @@ describe("release workflow policy", () => {
     expect(ci).toContain("go build ./...")
   })
 
+  it("supplies the fail-closed backend URL to the CI build gate", () => {
+    const ci = workflow("ci.yml")
+    expect(ci).toContain("NEXT_PUBLIC_SVC_API_URL: http://localhost:3005")
+  })
+
   it("deploys svc-api and pins one exact Vercel CLI version", () => {
     const staging = workflow("deploy-staging.yml")
     const release = workflow("release.yml")
