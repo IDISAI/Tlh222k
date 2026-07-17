@@ -65,7 +65,6 @@ type NotionDoc {
   id: ID!
   slug: String
   title: String!
-  authorId: String!
   isArchived: Boolean!
   parentDocumentId: ID
   content: String

@@ -9,7 +9,6 @@ export interface NotionDoc {
   id: string
   slug: string | null
   title: string
-  authorId: string
   isArchived: boolean
   parentDocumentId: string | null
   content: string | null
@@ -50,7 +49,6 @@ const toDoc = (d: Document): NotionDoc => ({
   id: d.id,
   slug: d.slug,
   title: d.title,
-  authorId: d.authorId,
   isArchived: d.isArchived,
   parentDocumentId: d.parentDocumentId,
   content: d.content,

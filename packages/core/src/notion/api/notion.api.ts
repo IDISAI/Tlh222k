@@ -10,7 +10,7 @@ import type {
 import { notionGql } from "./server-client"
 
 const DOC_FIELDS = `
-  id slug title authorId isArchived parentDocumentId content coverImage icon
+  id slug title isArchived parentDocumentId content coverImage icon
   isPublished position createdAt updatedAt
 `
 
@@ -31,7 +31,10 @@ export const notionApi = {
     ).then((d) => d.notionDocBySlug)
   },
 
-  getChildren(parentDocumentId: string, token: string | null): Promise<NotionDoc[]> {
+  getChildren(
+    parentDocumentId: string,
+    token: string | null
+  ): Promise<NotionDoc[]> {
     return notionGql<{ notionChildren: NotionDoc[] }>(
       `query ($p: ID!) { notionChildren(parentDocumentId: $p) { ${DOC_FIELDS} } }`,
       { p: parentDocumentId },
@@ -74,21 +77,27 @@ export const notionApi = {
   },
 
   archive(id: string, token: string | null): Promise<void> {
-    return notionGql(`mutation ($id: ID!) { archiveNotionDoc(id: $id) }`, { id }, token).then(
-      () => undefined
-    )
+    return notionGql(
+      `mutation ($id: ID!) { archiveNotionDoc(id: $id) }`,
+      { id },
+      token
+    ).then(() => undefined)
   },
 
   restore(id: string, token: string | null): Promise<void> {
-    return notionGql(`mutation ($id: ID!) { restoreNotionDoc(id: $id) }`, { id }, token).then(
-      () => undefined
-    )
+    return notionGql(
+      `mutation ($id: ID!) { restoreNotionDoc(id: $id) }`,
+      { id },
+      token
+    ).then(() => undefined)
   },
 
   remove(id: string, token: string | null): Promise<void> {
-    return notionGql(`mutation ($id: ID!) { removeNotionDoc(id: $id) }`, { id }, token).then(
-      () => undefined
-    )
+    return notionGql(
+      `mutation ($id: ID!) { removeNotionDoc(id: $id) }`,
+      { id },
+      token
+    ).then(() => undefined)
   },
 
   move(

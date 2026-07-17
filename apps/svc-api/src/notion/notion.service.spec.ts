@@ -70,3 +70,19 @@ describe("NotionService.move", () => {
     expect(recursiveSql[0]).not.toContain("UNION ALL")
   })
 })
+
+describe("NotionService public responses", () => {
+  it("omits authorId from viewer notion responses", async () => {
+    const published = { ...document("published"), isPublished: true }
+    const prisma = {
+      document: {
+        findUnique: vi.fn(async () => published),
+      },
+    }
+    const service = new NotionService(prisma as never)
+
+    const result = await service.getById(null, published.id)
+
+    expect(result).not.toHaveProperty("authorId")
+  })
+})

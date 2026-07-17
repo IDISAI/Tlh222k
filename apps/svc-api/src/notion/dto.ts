@@ -36,8 +36,6 @@ export class NotionDocResponseDto {
   })
   slug!: string | null
   @ApiProperty({ example: "Tư duy lập trình Python" }) title!: string
-  @ApiProperty({ example: "user_2abcDEF3ghiJKL", description: "Clerk user id" })
-  authorId!: string
   @ApiProperty({ example: false }) isArchived!: boolean
   @ApiPropertyOptional({
     type: String,

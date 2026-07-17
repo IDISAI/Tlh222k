@@ -10,13 +10,12 @@ import type {
 import { notionApi } from "@workspace/core/notion/api/notion.api"
 
 import { getAuthToken, getRole } from "@/lib/auth"
+import { inspectUpload } from "./upload-policy"
 
 // Every action forwards the caller's token (real Clerk token, or the dev:<role>
 // bypass in development) to svc-roadmap, which re-checks the role server-side —
 // THAT is the trust boundary. uploadFile stays here because it writes to Vercel
 // Blob (a Next/runtime concern), returning only a URL saved via the API.
-
-const MAX_UPLOAD_BYTES = 10 * 1024 * 1024 // 10 MB
 
 export async function getById(id: string): Promise<NotionDoc | null> {
   return notionApi.getById(id, await getAuthToken())
@@ -73,7 +72,10 @@ export async function createDocumentForNode(
       if (!root) {
         root = await notionApi
           .create(
-            { slug: parentChapterSlug, title: titleFromSlug(parentChapterSlug) },
+            {
+              slug: parentChapterSlug,
+              title: titleFromSlug(parentChapterSlug),
+            },
             token
           )
           // Unique-slug race: the loser refetches.
@@ -174,15 +176,20 @@ export async function uploadFile(form: FormData): Promise<{ url: string }> {
     throw new Error("PERMISSION_DENIED")
   }
   const file = form.get("file")
-  if (!(file instanceof File) || file.size === 0) {
+  if (!(file instanceof File)) {
     throw new Error("NO_FILE")
   }
-  if (file.size > MAX_UPLOAD_BYTES) {
-    throw new Error("FILE_TOO_LARGE")
-  }
-  const blob = await put(`notion/${crypto.randomUUID()}-${file.name}`, file, {
-    access: "public",
-    token: process.env.BLOB_READ_WRITE_TOKEN,
-  })
+  const policy = inspectUpload(file)
+  if (!policy.ok) throw new Error(policy.code)
+
+  const blob = await put(
+    `notion/${crypto.randomUUID()}-${policy.sanitizedName}`,
+    file,
+    {
+      access: "public",
+      contentType: policy.contentType,
+      token: process.env.BLOB_READ_WRITE_TOKEN,
+    }
+  )
   return { url: blob.url }
 }
