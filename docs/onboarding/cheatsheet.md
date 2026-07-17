@@ -31,16 +31,16 @@ pnpm --filter @vizteck/lesson test         # Vitest — lesson (passWithNoTests)
 ### Database (cần chạy với DATABASE_URL)
 
 ```bash
-DATABASE_URL="postgresql://vizteck:vizteck@localhost:5432/lh222k" \
+DATABASE_URL="postgresql://vizteck:vizteck@localhost:5432/tlh222k" \
   pnpm --filter @vizteck/db db:push      # Đẩy schema (không tạo migration file)
 
-DATABASE_URL="postgresql://vizteck:vizteck@localhost:5432/lh222k" \
+DATABASE_URL="postgresql://vizteck:vizteck@localhost:5432/tlh222k" \
   pnpm --filter @vizteck/db db:migrate   # Tạo và áp dụng migration
 
-DATABASE_URL="postgresql://vizteck:vizteck@localhost:5432/lh222k" \
+DATABASE_URL="postgresql://vizteck:vizteck@localhost:5432/tlh222k" \
   pnpm --filter @vizteck/db db:seed      # Seed dữ liệu demo
 
-DATABASE_URL="postgresql://vizteck:vizteck@localhost:5432/lh222k" \
+DATABASE_URL="postgresql://vizteck:vizteck@localhost:5432/tlh222k" \
   pnpm --filter @vizteck/db db:studio    # Mở Prisma Studio trên trình duyệt
 ```
 
@@ -109,13 +109,13 @@ pnpm --filter @vizteck/e2e test:report  # Xem báo cáo lần chạy trước
 
 ## 6. Biến môi trường
 
-| Biến                  | Giá trị mặc định                                     | Dùng bởi                          |
-| --------------------- | ---------------------------------------------------- | --------------------------------- |
-| `DATABASE_URL`        | `postgresql://vizteck:vizteck@localhost:5432/lh222k` | `packages/db`, `apps/api-gateway` |
-| `ADMIN_TOKEN`         | `supersecret`                                        | `apps/api-gateway`                |
-| `NEXT_PUBLIC_API_URL` | `http://localhost:3000`                              | `apps/web`, `apps/admin`          |
-| `PORT`                | `3000`                                               | `apps/api-gateway`                |
-| `UPLOADTHING_TOKEN`   | _(bắt buộc)_                                         | `apps/admin` — upload ảnh cover   |
+| Biến                  | Giá trị mặc định                                      | Dùng bởi                          |
+| --------------------- | ----------------------------------------------------- | --------------------------------- |
+| `DATABASE_URL`        | `postgresql://vizteck:vizteck@localhost:5432/tlh222k` | `packages/db`, `apps/api-gateway` |
+| `ADMIN_TOKEN`         | `supersecret`                                         | `apps/api-gateway`                |
+| `NEXT_PUBLIC_API_URL` | `http://localhost:3000`                               | `apps/web`, `apps/admin`          |
+| `PORT`                | `3000`                                                | `apps/api-gateway`                |
+| `UPLOADTHING_TOKEN`   | _(bắt buộc)_                                          | `apps/admin` — upload ảnh cover   |
 
 **Cách cấu hình:**
 
@@ -193,11 +193,11 @@ Authorization: Bearer supersecret
 
 ## 12. CI/CD triggers
 
-| Trigger                            | Pipeline                                                    | Deploy tới      |
-| ---------------------------------- | ----------------------------------------------------------- | --------------- |
-| PR hoặc push vào main/develop/release | `lint → typecheck → build`                               | —               |
-| Push vào `develop` / `release/**`  | `lint → typecheck → build → Vercel deploy (3 apps)`         | Staging         |
-| Push tag `v*`                      | `lint → typecheck → build → Vercel deploy + GitHub Release` | Production      |
+| Trigger                               | Pipeline                                                    | Deploy tới |
+| ------------------------------------- | ----------------------------------------------------------- | ---------- |
+| PR hoặc push vào main/develop/release | `lint → typecheck → build`                                  | —          |
+| Push vào `develop` / `release/**`     | `lint → typecheck → build → Vercel deploy (3 apps)`         | Staging    |
+| Push tag `v*`                         | `lint → typecheck → build → Vercel deploy + GitHub Release` | Production |
 
 PR không được merge cho đến khi CI pass.
 

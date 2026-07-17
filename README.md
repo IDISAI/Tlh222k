@@ -1,64 +1,92 @@
-# lh222k
+# tlh222k
 
-Turborepo + pnpm monorepo. Frontend Next.js dùng chung UI và domain logic qua các package nội bộ; một phần code được tách ra repo riêng bằng **git submodule**.
+Turborepo + pnpm monorepo for the tlh222k roadmap platform. The repo contains
+three Next.js frontends, one NestJS roadmap service, and shared packages for UI,
+domain logic, database, lint, and TypeScript config.
 
-## Yêu cầu
+## Requirements
 
-- Node ≥ 20
-- pnpm 10.33.4 (đã ghim trong `packageManager`)
+- Node >= 20
+- pnpm 10.33.4, pinned in `packageManager`
 
-## Bắt đầu
+## Quick Start
 
 ```bash
-git clone --recurse-submodules <repo-url>   # QUAN TRỌNG: kèm submodule
-cd lh222k
 pnpm install
-pnpm dev
+pnpm -F @workspace/db generate
+pnpm -F @workspace/db db:push
+pnpm -F @workspace/db seed
+pnpm dev         # starts all JS apps + Go kernel-server
 ```
 
-Lỡ clone thiếu submodule: `git submodule update --init --recursive`. Xem [docs/onboarding/submodules.md](docs/onboarding/submodules.md).
-
-## Lệnh thường dùng
-
-| Lệnh | Việc |
-|------|------|
-| `pnpm dev` | Chạy dev toàn bộ app (turbo) |
-| `pnpm build` | Build toàn monorepo |
-| `pnpm lint` | ESLint (lint thật) |
-| `pnpm typecheck` | `tsc --noEmit` (task riêng với lint) |
-| `pnpm format` | Prettier |
-| `pnpm --filter web <script>` | Chạy 1 package, vd `pnpm --filter web dev` |
-
-Chưa có test runner. Chuỗi CI = `install --frozen-lockfile → lint → typecheck → build`.
-
-## Cấu trúc
-
-```
-apps/
-  web/          Next.js app — public (mount RoadmapView)
-  admin/        Next.js app — quản trị, port 3002 (mount NotionView + GraphView)
-  super-admin/  Next.js app — port 3003 (mount RoadmapView + NotionView)
-packages/
-  core/         @workspace/core — domain logic (feature-first)
-    src/roadmap/  ← submodule: IDISAI/roadmap
-  ui/           @workspace/ui  ← submodule: IDISAI/ui (shadcn/ui)
-  eslint-config/, typescript-config/  cấu hình dùng chung
-```
-
-`apps/*` import từ `packages/*`; không bao giờ ngược lại. Chi tiết: [rules/packages.md](rules/packages.md).
-
-## Thêm shadcn/ui component
-
-Chạy ở gốc, output vào `packages/ui/src/components`:
+Copy env templates before running apps that need real auth/backend data:
 
 ```bash
-pnpm dlx shadcn@latest add button -c apps/web
+cp apps/web/.env.example           apps/web/.env.local
+cp apps/admin/.env.example         apps/admin/.env.local
+cp apps/super-admin/.env.example   apps/super-admin/.env.local
+cp apps/svc-api/.env.example   apps/svc-api/.env
+cp apps/kernel-server/.env.example apps/kernel-server/.env
+cp packages/db/.env.example        packages/db/.env
 ```
 
-Dùng: `import { Button } from "@workspace/ui/components/button"`
+See [docs/onboarding/env.md](docs/onboarding/env.md) for key-by-key setup.
 
-## Tài liệu
+## Common Commands
 
-- [Kiến trúc](docs/onboarding/architecture.md) · [Bắt đầu](docs/onboarding/getting-started.md) · [Quy trình ngày](docs/onboarding/daily-workflow.md)
-- [CI/CD](docs/onboarding/cicd.md) · [Biến môi trường (.env)](docs/onboarding/env.md) · [Submodules](docs/onboarding/submodules.md) · [Git hooks](docs/onboarding/git-hooks.md)
-- [CLAUDE.md](CLAUDE.md) / [AGENTS.md](AGENTS.md) — hướng dẫn cho AI agent
+| Command                         | Purpose                                      |
+| ------------------------------- | -------------------------------------------- |
+| `pnpm dev`                      | Turbo JS apps + Go kernel-server             |
+| `pnpm dev:js`                   | Turbo JS apps only (no Go)                   |
+| `pnpm dev:go`                   | Go kernel-server only                        |
+| `pnpm build`                    | Build the monorepo                           |
+| `pnpm lint`                     | Run ESLint                                   |
+| `pnpm typecheck`                | Run `tsc --noEmit`                           |
+| `pnpm format`                   | Run Prettier                                 |
+| `pnpm --filter web dev`         | Public web app only (port 3000)              |
+| `pnpm --filter admin dev`       | Admin app only (port 3002)                   |
+| `pnpm --filter super-admin dev` | Super-admin app only (port 3003)             |
+| `pnpm --filter svc-api dev` | NestJS backend only (port 3005)              |
+
+There is no test runner configured yet. CI is:
+`install --frozen-lockfile -> lint -> typecheck -> build`.
+
+## Workspace Map
+
+```text
+apps/
+  web/           Next.js public frontend and Multi-Zone host, port 3000
+  admin/         Next.js roadmap builder/admin child zone, port 3002
+  super-admin/   Next.js super-admin child zone, port 3003
+  svc-api/   NestJS GraphQL/REST/SSE roadmap backend, port 3005
+  kernel-server/ Go notebook backend (standalone — not in pnpm workspace), port 3006
+packages/
+  core/          @workspace/core domain logic and feature modules
+                 src/notebook  — NotebookService, viewer, editor, kernel, exercise, runtime
+                 src/roadmap   — roadmap domain logic
+                 src/navigation — navigation helpers
+  db/            @workspace/db Prisma schema, generated client, seed data
+  ui/            @workspace/ui shadcn/ui + Tailwind v4 components
+  eslint-config/
+  typescript-config/
+```
+
+`apps/*` may import `packages/*`; packages must not import apps. Package scope is
+`@workspace/*`.
+
+## Important Notes
+
+- `packages/ui` and `packages/core/src/roadmap` used to be submodules but are now
+  inline. Edit and commit them like normal repo folders.
+- Docs under `docs/onboarding/` include both current setup and target-system
+  notes. Treat future NestJS/Admin CMS/Prisma architecture docs as roadmap until
+  code exists.
+- This repo pins Next.js 16.2.6. Before writing Next.js code, read the relevant
+  guide under the installed Next docs in `node_modules/.pnpm/.../next/dist/docs/`.
+
+## More Docs
+
+- [CLAUDE.md](CLAUDE.md) and [AGENTS.md](AGENTS.md) for AI-agent rules.
+- [docs/onboarding/env.md](docs/onboarding/env.md) for env setup.
+- [docs/onboarding/cicd.md](docs/onboarding/cicd.md) for CI/CD.
+- [rules/packages.md](rules/packages.md) for package boundaries.

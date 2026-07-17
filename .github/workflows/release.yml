@@ -4,6 +4,9 @@ on:
   push:
     tags: ["v*"]
 
+permissions:
+  contents: read
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -13,6 +16,7 @@ jobs:
           - { app: web, project: WEB }
           - { app: admin, project: ADMIN }
           - { app: super-admin, project: SUPER_ADMIN }
+          - { app: svc-api, project: SVC_API }
     env:
       VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
       VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
@@ -34,14 +38,14 @@ jobs:
 
       - run: pnpm build
 
-      - run: pnpm dlx vercel@latest pull --yes --environment=production --token="$VERCEL_TOKEN"
+      - run: pnpm dlx vercel@54.21.1 pull --yes --environment=production --token="$VERCEL_TOKEN"
 
-      - run: pnpm dlx vercel@latest build --prod --token="$VERCEL_TOKEN"
+      - run: pnpm dlx vercel@54.21.1 build --prod --token="$VERCEL_TOKEN"
 
-      - run: pnpm dlx vercel@latest deploy --prebuilt --prod --token="$VERCEL_TOKEN"
+      - run: pnpm dlx vercel@54.21.1 deploy --prebuilt --prod --token="$VERCEL_TOKEN"
 
   github-release:
-    needs: [deploy] # waits for all matrix legs (web + admin)
+    needs: [deploy] # waits for all frontend + svc-api matrix legs
     runs-on: ubuntu-latest
     permissions:
       contents: write

@@ -1,74 +1,187 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file is the canonical guide for AI agents working in this repository.
 
 ## Commands
 
-Turborepo + pnpm workspace. Node ≥20, pnpm 10.33.4 (pinned via `packageManager`).
+Turborepo + pnpm workspace. Node >= 20, pnpm 10.33.4. `apps/kernel-server` is a
+standalone Go module — it is NOT part of the pnpm/turbo workspace.
 
 ```bash
-pnpm install                      # install all workspaces
-pnpm dev                          # turbo dev (persistent, all apps)
-pnpm build                        # turbo build
-pnpm lint                         # eslint across packages (real lint, not typecheck)
-pnpm typecheck                    # tsc --noEmit across packages (separate task from lint)
-pnpm format                       # prettier --write
+pnpm install
+pnpm dev          # turbo apps + kernel-server Go binary (via apps/kernel-server/dev.mjs)
+pnpm dev:js       # turbo JS apps only (no Go)
+pnpm dev:go       # kernel-server Go binary only
+pnpm build
+pnpm lint
+pnpm typecheck
+pnpm format
 
-pnpm --filter <name> <script>     # run one package, e.g. pnpm --filter web build
-pnpm --filter web dev             # run only the web app
+pnpm --filter web dev
+pnpm --filter admin dev
+pnpm --filter super-admin dev
+pnpm --filter svc-api dev
+pnpm -F @workspace/db generate
+pnpm -F @workspace/db db:push
+pnpm -F @workspace/db seed
+
+# kernel-server (Go, from apps/kernel-server/)
+go build ./...
+go vet ./...
+APP_ENV=development DEV_AUTH_ROLE=super-admin SESSION_TICKET_SECRET=development-only-ticket-secret go run ./cmd/server   # listens on :3006
 ```
 
-There is **no test runner configured yet** — `pnpm test` does not exist. The CI chain is `install --frozen-lockfile → lint → typecheck → build`. Run that locally before pushing.
-
-Note: [docs/onboarding/cicd.md](docs/onboarding/cicd.md) says "`pnpm lint` = TypeScript type check" — that is outdated. `lint` and `typecheck` are distinct turbo tasks here.
-
-## Git submodules (critical)
-
-Two working paths are git submodules, each its own repo:
-
-| Path | Repo |
-|------|------|
-| `packages/ui` | `git@github.com:IDISAI/ui.git` |
-| `packages/core/src/roadmap` | `git@github.com:IDISAI/roadmap.git` |
-
-- Clone with `git clone --recurse-submodules`, or after clone run `git submodule update --init --recursive`. A missing submodule means empty dirs and a broken build (`web` needs `@workspace/ui`; `packages/core/src/index.ts` re-exports `./roadmap`).
-- Editing submodule code = commit **in the child repo**, then in the parent repo commit the updated gitlink to pin the new version.
-- Setup/procedure is documented in [docs/onboarding/submodules.md](docs/onboarding/submodules.md).
+There is no test runner configured yet. CI is
+`install --frozen-lockfile -> lint -> typecheck -> build`. `lint` is ESLint;
+`typecheck` is `tsc --noEmit`. CI does NOT cover the Go kernel-server.
 
 ## Architecture
 
-**What exists today:** two Next.js frontends (`apps/web`, `apps/admin`) plus shared `packages/*`. `apps/admin` (port 3002) and `apps/super-admin` (port 3003) mirror `apps/web` and mount core features; `web` mounts `RoadmapView`, `admin` mounts `NotionView` + `GraphView`, `super-admin` mounts `RoadmapView` + `NotionView`. The docs under [docs/onboarding/](docs/onboarding/) describe a larger **target** system (NestJS `api-gateway`, Prisma `packages/db`, admin CMS, Playwright e2e) that is **not built yet** — treat those as roadmap, not current state.
+Current committed system:
 
-**Dependency direction** (enforced by convention, see [rules/packages.md](rules/packages.md)):
+- `apps/web`: public Next.js frontend and Multi-Zone host, port 3000.
+- `apps/admin`: admin/roadmap-builder Next.js child zone, port 3002.
+- `apps/super-admin`: super-admin/user-management child zone, port 3003.
+- `apps/svc-api`: NestJS backend exposing GraphQL, REST, Swagger, and SSE,
+  default port 3005.
+- `apps/kernel-server`: **Go** backend for the notebook feature. Standalone Go
+  module (not in the pnpm/turbo workspace). Port 3006. Notebook CRUD (filesystem
+  store), Clerk-gated auth, CORS, sandbox session tickets. Phase 3: Jupyter
+  WebSocket proxy for live kernel execution.
+- `packages/core`: shared domain logic, feature-first. Key modules:
+  - `src/notebook`: `NotebookService`, viewer, editor, kernel client, exercise,
+    runtime, utils. All nbformat parsing lives here — not in Go.
+  - `src/roadmap`: roadmap domain logic. `api/` holds the Apollo Client + React
+    provider that talk GraphQL to `svc-api`; env-flag seam falls back to a
+    localStorage mock service when no backend URL is set.
+  - `src/navigation`: navigation helpers (incl. `no-script-next-themes`).
+- `packages/db`: Prisma schema/client and seed data.
+- `packages/ui`: shared shadcn/ui + Tailwind v4 components.
+- `packages/eslint-config` and `packages/typescript-config`: shared tooling.
+
+Dependency direction:
+
+```text
+apps/*      -> packages/*   OK
+packages/*  -> apps/*       never
 ```
-apps/*  →  packages/*        ✓
-packages/* → apps/*          ✗ never
+
+Package scope is `@workspace/*`, not `@vizteck/*`.
+
+## Former Submodules
+
+`packages/ui` and `packages/core/src/roadmap` used to be separate git
+submodules. They are now inline in this repo. `.gitmodules` is empty, there are
+no gitlinks, and one parent-repo commit covers changes to them. Ignore old docs
+that still say to clone or bump submodules.
+
+## Domain Logic
+
+Put shared domain logic in `packages/core`, organized feature-first:
+
+```text
+src/<feature>/
+  types.ts
+  <feature>.service.ts
+  hooks/
+  components/
+  utils/
+  index.ts
 ```
 
-**`packages/core` (`@workspace/core`)** — all domain logic lives here, organized feature-first:
+Apps consume packages through `workspace:*`, `transpilePackages`, and tsconfig
+paths. `apps/web/lib/core.ts` is the reference for per-app customization.
+
+## Env
+
+There is no shared root app env. Each app/package owns the env file beside it:
+
+```bash
+cp apps/web/.env.example          apps/web/.env.local
+cp apps/admin/.env.example        apps/admin/.env.local
+cp apps/super-admin/.env.example  apps/super-admin/.env.local
+cp apps/svc-api/.env.example  apps/svc-api/.env
+cp apps/kernel-server/.env.example apps/kernel-server/.env
+cp packages/db/.env.example       packages/db/.env
 ```
-src/<feature>/            e.g. roadmap/ (submodule), notion/
-  <sub-feature>/          e.g. roadmap/graph, notion/{content-editor,sidebar,search}
-```
-Every feature/sub-feature follows the same shape: `types.ts`, `<slug>.service.ts`, `hooks/`, `components/`, `utils/`, and an `index.ts` barrel that re-exports them (parent features also re-export their sub-features up to `src/index.ts`). `core` uses `moduleResolution: Bundler` so barrels can `export *` without file extensions.
 
-**Consuming a package from an app:** add `"@workspace/<pkg>": "workspace:*"` to the app's deps, add it to `transpilePackages` in `next.config.ts`, and map it under `paths` in the app's `tsconfig.json` (see `apps/web`). `apps/web/lib/core.ts` is the reference example of importing core and customizing per-app.
+Rules:
 
-**Package naming is `@workspace/*`** (e.g. `@workspace/ui`, `@workspace/core`). Some docs/rules mention `@vizteck/*` — that is outdated; the real scope is `@workspace`.
+- Commit only `.env.example`; never commit real `.env` or `.env.local`.
+- `NEXT_PUBLIC_*` is browser-visible.
+- `NEXT_PUBLIC_SVC_API_URL` selects the real `svc-api` backend
+  (`http://localhost:3005` in dev). If empty, `@workspace/core` uses the
+  mock/localStorage roadmap service. `NEXT_PUBLIC_SVC_ROADMAP_URL` is the legacy
+  name, still honored as a fallback after the `svc-roadmap` -> `svc-api` rename.
+- `NEXT_PUBLIC_KERNEL_SERVER_URL` points web and admin at the Go kernel-server
+  (`http://localhost:3006` in dev). If empty, web falls back to committed
+  `.ipynb` fixtures and the admin editor uses per-browser localStorage.
+- `NEXT_PUBLIC_DEV_AUTH_ROLE` is a dev-only Clerk bypass and is ignored in
+  production. The Go kernel-server has a matching `DEV_AUTH_ROLE` env var.
 
-## Next.js version warning
+Full guide: [docs/onboarding/env.md](docs/onboarding/env.md).
 
-This repo pins a modified Next.js (see [AGENTS.md](AGENTS.md)) with breaking changes vs. common knowledge. Before writing Next.js code, read the relevant guide in `node_modules/next/dist/docs/`.
+## Next.js 16.2.6
+
+This repo pins Next.js 16.2.6. Before writing Next code, read the relevant
+installed guide under `node_modules/.pnpm/.../node_modules/next/dist/docs/`.
+The plain `node_modules/next/dist/docs/` path may not exist with this pnpm
+layout.
+
+React 19 warns when a client component renders a `<script>` tag. The apps alias
+`next-themes` to `packages/core/src/navigation/no-script-next-themes.tsx` in
+their Next config to keep `useTheme()` behavior without the inline script.
+
+## Documentation
+
+Keep `README.md` for human orientation and `AGENTS.md` for AI-agent notes in
+committed workspace folders. Do not add those files to generated/cache folders
+such as `.git`, `.next`, `.turbo`, `dist`, or `node_modules`.
+
+Docs under `docs/onboarding/` sometimes describe a larger target system. Treat
+anything not represented in committed code as roadmap, not current behavior.
 
 ## CI/CD
 
-Three workflows in `.github/workflows/` (see [docs/onboarding/cicd.md](docs/onboarding/cicd.md)):
-- `ci.yml` — PRs + push to `main`/`develop`/`release/**`: lint → typecheck → build.
-- `deploy-staging.yml` — push `develop`/`release/**`: Vercel preview (web).
-- `release.yml` — tag `v*`: Vercel production (web) + GitHub Release.
+Workflows live in `.github/workflows/`:
 
-Deploys cover **web + admin + super-admin** (matrix job per app) and require GitHub secrets `VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID_WEB`, `VERCEL_PROJECT_ID_ADMIN`, `VERCEL_PROJECT_ID_SUPER_ADMIN` (note underscore — hyphens are invalid in secret names, so the matrix maps `super-admin` → `SUPER_ADMIN`); each Vercel project's Root Directory = the app dir.
+- `ci.yml`: lint -> typecheck -> build.
+- `deploy-staging.yml`: Vercel preview deploys.
+- `release.yml`: Vercel production deploys and GitHub release.
 
-App env vars (`.env.local`, Vercel dashboard) are separate from CI secrets — see [docs/onboarding/env.md](docs/onboarding/env.md). Current app code consumes none yet.
+Deploys cover web, admin, and super-admin. Required GitHub secrets include
+`VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID_WEB`,
+`VERCEL_PROJECT_ID_ADMIN`, and `VERCEL_PROJECT_ID_SUPER_ADMIN`.
 
-Because `packages/ui` and the `core` features are **private submodules**, every workflow checks out with `submodules: recursive` and `token: ${{ secrets.SUBMODULE_PAT || github.token }}` — set `SUBMODULE_PAT` (a PAT with read access to the `IDISAI/*` submodule repos) or the build fails to fetch them.
+## Skill routing
+
+When the user's request matches an available skill, invoke it via the Skill tool. When in doubt, invoke the skill.
+
+Key routing rules:
+- Product ideas/brainstorming → invoke /office-hours
+- Strategy/scope → invoke /plan-ceo-review
+- Architecture → invoke /plan-eng-review
+- Design system/plan review → invoke /design-consultation or /plan-design-review
+- Full review pipeline → invoke /autoplan
+- Bugs/errors → invoke /investigate
+- QA/testing site behavior → invoke /qa or /qa-only
+- Code review/diff check → invoke /review
+- Visual polish → invoke /design-review
+- Ship/deploy/PR → invoke /ship or /land-and-deploy
+- Save progress → invoke /context-save
+- Resume context → invoke /context-restore
+- Author a backlog-ready spec/issue → invoke /spec
+
+## Agent skills
+
+### Issue tracker
+
+Issues live in GitHub Issues on `IDISAI/Tlh222k`, via the `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Default five canonical roles (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: one `CONTEXT.md` + `docs/adr/` at the repo root. See `docs/agents/domain.md`.

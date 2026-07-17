@@ -1,0 +1,27 @@
+# Vercel builds on its own servers (runs pnpm install + build), so never upload
+# local dependencies or build artifacts. These are what blew the upload up to
+# 11.6GB and tripped the 100MB single-file limit (turbo/next caches).
+node_modules
+**/node_modules
+.next
+**/.next
+.turbo
+**/.turbo
+dist
+**/dist
+build
+**/build
+out
+**/out
+coverage
+**/coverage
+
+# Local databases / caches that must never ship to a deploy.
+*.db
+*.db-journal
+*.tar.zst
+*.sst
+
+# VCS + editor
+.git
+.vscode

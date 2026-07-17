@@ -1,10 +1,18 @@
+import Link from "next/link"
 import { Geist_Mono, Inter } from "next/font/google"
+import { ClerkProvider } from "@clerk/nextjs"
 
-import { PlatformSwitch, ThemeToggle } from "@workspace/core"
+import {
+  devAuthRole,
+  ReloadOnBackForward,
+  RoadmapApolloProvider,
+  ThemeToggle,
+} from "@workspace/core"
 
 import "@workspace/ui/globals.css"
 import { ThemeProvider } from "@/components/theme-provider"
 import { cn } from "@workspace/ui/lib/utils"
+import { AuthHeader } from "@/components/auth-header"
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-sans" })
 
@@ -18,7 +26,7 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode
 }>) {
-  return (
+  const tree = (
     <html
       lang="en"
       suppressHydrationWarning
@@ -30,14 +38,31 @@ export default function RootLayout({
       )}
     >
       <body>
+        <ReloadOnBackForward />
         <ThemeProvider>
           <header className="flex items-center justify-between border-b p-3">
-            <PlatformSwitch current="web" />
-            <ThemeToggle />
+            <Link
+              href="/"
+              className="font-heading text-sm font-bold uppercase italic"
+            >
+              Roadmap
+            </Link>
+            <div className="flex items-center gap-2">
+              <ThemeToggle />
+              <AuthHeader />
+            </div>
           </header>
-          {children}
+          <RoadmapApolloProvider>{children}</RoadmapApolloProvider>
         </ThemeProvider>
       </body>
     </html>
   )
+
+  // Dev bypass: skip <ClerkProvider> so the client never loads Clerk's external
+  // hosted JS (blocked by the localhost-only preview / headless QA sandbox).
+  const devBypass = devAuthRole(
+    process.env.NODE_ENV,
+    process.env.NEXT_PUBLIC_DEV_AUTH_ROLE
+  )
+  return devBypass ? tree : <ClerkProvider>{tree}</ClerkProvider>
 }

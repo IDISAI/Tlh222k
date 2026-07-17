@@ -1,0 +1,49 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "web",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": [
+        "--filter",
+        "web",
+        "dev"
+      ],
+      "port": 3000,
+      "autoPort": false
+    },
+    {
+      "name": "admin",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": [
+        "--filter",
+        "admin",
+        "dev"
+      ],
+      "port": 3002,
+      "autoPort": false
+    },
+    {
+      "name": "super-admin",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": [
+        "--filter",
+        "super-admin",
+        "dev"
+      ],
+      "port": 3003,
+      "autoPort": false
+    },
+    {
+      "name": "svc-api",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": [
+        "--filter",
+        "svc-api",
+        "dev"
+      ],
+      "port": 3005,
+      "autoPort": false
+    }
+  ]
+}

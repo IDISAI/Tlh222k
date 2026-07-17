@@ -1,0 +1,22 @@
+/*
+ * Notion-style light code blocks.
+ *
+ * BlockNote hardcodes code blocks dark (`[data-content-type=codeBlock]` gets
+ * `color:#fff; background-color:#161616`) regardless of the editor theme — a
+ * terminal look, not Notion's. We run the editor in light mode (data-color-
+ * scheme=light) so shiki colors tokens with github-light (dark-on-light); this
+ * override makes the container match: a warm paper surface with dark default
+ * text, so highlighted and plain code are both readable.
+ */
+.bn-container [data-content-type="codeBlock"] {
+  /* Airbnb tokens (docs/design-system.md): surface-soft / ink / hairline. */
+  background-color: #f7f7f7;
+  color: #222222;
+  border: 1px solid #dddddd;
+}
+
+/* Language picker select sits top-right; BlockNote colors it white for the dark
+   surface — flip to dark ink for the light surface. */
+.bn-container [data-content-type="codeBlock"] > div > select {
+  color: #222222;
+}

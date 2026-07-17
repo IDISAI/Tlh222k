@@ -1,6 +1,6 @@
 # Git Hooks (Husky)
 
-lh222k dùng **Husky** để tự động kiểm tra code và format commit message mỗi khi bạn `git commit` hoặc `git push`. Tài liệu này giải thích hooks hoạt động như thế nào và cách xử lý khi chúng fail.
+tlh222k dùng **Husky** để tự động kiểm tra code và format commit message mỗi khi bạn `git commit` hoặc `git push`. Tài liệu này giải thích hooks hoạt động như thế nào và cách xử lý khi chúng fail.
 
 ---
 

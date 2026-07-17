@@ -1,0 +1,33 @@
+{
+  "name": "@workspace/db",
+  "version": "0.0.0",
+  "type": "module",
+  "private": true,
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "postinstall": "node scripts/prisma-generate.mjs",
+    "generate": "prisma generate --schema prisma/schema.prisma",
+    "db:push": "prisma db push --schema prisma/schema.prisma",
+    "seed": "tsx prisma/seed.ts",
+    "seed:ai": "tsx prisma/seed-ai-roadmap.ts",
+    "seed:jupyter": "tsx prisma/seed-jupyter-platform.ts",
+    "seed:full": "tsx prisma/seed-full-flow.ts",
+    "build": "prisma generate --schema prisma/schema.prisma",
+    "lint": "eslint",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.16.2"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "@workspace/eslint-config": "workspace:*",
+    "@workspace/typescript-config": "workspace:*",
+    "eslint": "^9",
+    "prisma": "^6.16.2",
+    "tsx": "^4.20.3",
+    "typescript": "^5"
+  }
+}
