@@ -38,3 +38,18 @@ Production: unset `DEV_AUTH_ROLE`; set Clerk issuer/JWKS/audience, random
 `JUPYTER_BROKER_TOKEN`, and exact HTTPS `ALLOWED_ORIGINS`. Put port 3006 behind
 HTTPS reverse proxy and firewall. On Linux, set `DOCKER_GID` to Docker socket
 group ID for broker access. Never publish broker port 3007.
+
+## Immutable release images
+
+`.github/workflows/kernel-image.yml` publishes both Dockerfile targets on Git
+tags and manual dispatch. Images use only the triggering commit SHA:
+
+```text
+ghcr.io/<owner>/<repo>/kernel-server:<github.sha>
+ghcr.io/<owner>/<repo>/docker-broker:<github.sha>
+```
+
+Production compose or host configuration must pin both images to the same
+reviewed SHA. Do not deploy `latest` or another floating tag. The workflow emits
+max-mode provenance and an SBOM for each image; publishing requires only
+read-only repository access plus `packages: write`.
