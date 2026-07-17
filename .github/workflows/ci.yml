@@ -44,6 +44,11 @@ jobs:
       - run: pnpm test
 
       - run: pnpm build
+        env:
+          # Production builds fail closed without a backend URL
+          # (service-selector). CI only gates the build; real values live in
+          # the Vercel project env.
+          NEXT_PUBLIC_SVC_API_URL: http://localhost:3005
 
       - run: go test -race ./...
         working-directory: apps/kernel-server
