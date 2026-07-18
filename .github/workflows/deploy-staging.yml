@@ -11,20 +11,13 @@ concurrency:
 permissions:
   contents: read
 
+# Preview deploys are handled by Vercel's native Git integration (push to develop
+# => preview). This workflow only syncs the preview Postgres schema — it must NOT
+# `vercel deploy`, or its CLI build (missing the project's NEXT_PUBLIC_* env)
+# overwrites the good native preview deployment with a broken one.
 jobs:
-  deploy:
+  migrate:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        include: # project = suffix of secret VERCEL_PROJECT_ID_<PROJECT> (hyphens not allowed in secret names)
-          - { app: web, project: WEB }
-          - { app: admin, project: ADMIN }
-          - { app: super-admin, project: SUPER_ADMIN }
-          - { app: svc-api, project: SVC_API }
-    env:
-      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-      VERCEL_PROJECT_ID: ${{ secrets[format('VERCEL_PROJECT_ID_{0}', matrix.project)] }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -40,14 +33,11 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      - run: pnpm build
-
       # Keep the preview Postgres schema in sync with the deployed svc-api code.
       # DATABASE_URL comes from the STAGING_DATABASE_URL secret (Neon integration
       # keeps the runtime URL out of `vercel pull`). Skips when the secret is unset
       # so develop deploys never break. Derives a direct connection when needed.
-      - if: matrix.app == 'svc-api'
-        env:
+      - env:
           DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
           DIRECT_URL: ${{ secrets.STAGING_DIRECT_URL }}
         run: |
@@ -57,9 +47,3 @@ jobs:
           : "${DIRECT_URL:=${DATABASE_URL/-pooler./.}}"
           export DIRECT_URL
           pnpm -F @workspace/db db:push
-
-      - run: pnpm dlx vercel@54.21.1 pull --yes --environment=preview --token="$VERCEL_TOKEN"
-
-      - run: pnpm dlx vercel@54.21.1 build --token="$VERCEL_TOKEN"
-
-      - run: pnpm dlx vercel@54.21.1 deploy --prebuilt --token="$VERCEL_TOKEN"
