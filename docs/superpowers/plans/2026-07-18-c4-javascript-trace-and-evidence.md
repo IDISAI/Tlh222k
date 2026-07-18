@@ -298,7 +298,7 @@ For each opt-in Compose profile, start service, wait for `/health`, create sessi
 - JavaScript → `deno`
 - C++ → `xcpp17`
 - Java → `java`
-- Rust → `evcxr`
+- Rust → `rust`
 - Go → `gophernotes`
 - Julia → `julia`
 

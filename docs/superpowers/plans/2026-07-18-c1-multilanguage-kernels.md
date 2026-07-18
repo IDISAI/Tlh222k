@@ -65,7 +65,7 @@ const expected = [
   ["javascript", "javascript", "deno"],
   ["cpp", "cpp", "xcpp17"],
   ["java", "java", "java"],
-  ["rust", "rust", "evcxr"],
+  ["rust", "rust", "rust"],
   ["go", "go", "gophernotes"],
   ["julia", "julia", "julia"],
 ] as const
@@ -150,7 +150,7 @@ export function profileForNotebook(
 }
 ```
 
-Use kernel IDs `python3`, `deno`, `xcpp17`, `java`, `evcxr`, `gophernotes`, and stable Julia alias `julia`.
+Use kernel IDs `python3`, `deno`, `xcpp17`, `java`, `rust`, `gophernotes`, and stable Julia alias `julia`.
 
 - [ ] **Step 5: Run tests and confirm green**
 
@@ -193,7 +193,7 @@ it("rewrites notebook language metadata and runtime profile", async () => {
   act(() => result.current.setLanguage("rust"))
   expect(result.current.language).toBe("rust")
   expect(result.current.record.notebook.metadata).toMatchObject({
-    kernelspec: { name: "evcxr", language: "rust" },
+    kernelspec: { name: "rust", language: "rust" },
     language_info: { name: "rust" },
   })
   expect(result.current.record.meta.runtimeProfile).toBe("rust")
@@ -474,7 +474,7 @@ Use these build outcomes:
 javascript -> deno jupyter --install --name deno
 cpp        -> conda-forge xeus-cling -> xcpp17
 java       -> OpenJDK + IJava -> java
-rust       -> evcxr_jupyter -> evcxr
+rust       -> evcxr_jupyter -> rust
 go         -> gophernotes -> gophernotes
 julia      -> IJulia plus copied stable alias -> julia
 ```

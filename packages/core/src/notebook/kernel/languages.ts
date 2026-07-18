@@ -60,7 +60,7 @@ export const LANGUAGES: readonly LanguageSpec[] = [
     language: "rust",
     label: "Rust",
     profile: "rust",
-    kernelName: "evcxr",
+    kernelName: "rust",
     displayName: "Rust (evcxr)",
   },
   {

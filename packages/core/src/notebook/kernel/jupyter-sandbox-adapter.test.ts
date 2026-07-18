@@ -28,7 +28,7 @@ const EXPECTED_KERNELS: ReadonlyArray<[RuntimeProfile, string]> = [
   ["javascript", "deno"],
   ["cpp", "xcpp17"],
   ["java", "java"],
-  ["rust", "evcxr"],
+  ["rust", "rust"],
   ["go", "gophernotes"],
   ["julia", "julia"],
 ]
@@ -58,8 +58,8 @@ describe("JupyterSandboxAdapter kernel selection", () => {
     async (profile, kernelName) => {
       const client = {
         create: vi.fn(async () => session(profile)),
-        interrupt: vi.fn(async () => undefined),
-        restart: vi.fn(async () => undefined),
+        interrupt: vi.fn(async () => session(profile)),
+        restart: vi.fn(async () => session(profile)),
         remove: vi.fn(async () => undefined),
         resolveProxyUrl: vi.fn(
           () => `http://localhost:3006/api/sessions/session-${profile}/proxy/`

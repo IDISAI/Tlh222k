@@ -12,7 +12,7 @@ const EXPECTED_LANGUAGES = [
   ["javascript", "javascript", "deno"],
   ["cpp", "cpp", "xcpp17"],
   ["java", "java", "java"],
-  ["rust", "rust", "evcxr"],
+  ["rust", "rust", "rust"],
   ["go", "go", "gophernotes"],
   ["julia", "julia", "julia"],
 ] as const

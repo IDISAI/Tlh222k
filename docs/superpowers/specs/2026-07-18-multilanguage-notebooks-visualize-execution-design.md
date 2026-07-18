@@ -91,7 +91,7 @@ tested in each image:
 | JavaScript | `javascript` | `deno` |
 | C++ | `cpp` | `xcpp17` |
 | Java | `java` | `java` |
-| Rust | `rust` | `evcxr` |
+| Rust | `rust` | `rust` |
 | Go | `go` | `gophernotes` |
 | Julia | `julia` | versioned `julia-1.x` with a stable `julia` alias |
 

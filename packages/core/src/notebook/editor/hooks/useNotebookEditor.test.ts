@@ -59,7 +59,7 @@ describe("useNotebookEditor language metadata", () => {
     expect(result.current.language).toBe("rust")
     expect(result.current.snapshot().metadata).toMatchObject({
       kernelspec: {
-        name: "evcxr",
+        name: "rust",
         display_name: "Rust (evcxr)",
         language: "rust",
       },
