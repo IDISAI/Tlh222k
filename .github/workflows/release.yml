@@ -40,6 +40,18 @@ jobs:
 
       - run: pnpm dlx vercel@54.21.1 pull --yes --environment=production --token="$VERCEL_TOKEN"
 
+      # Sync the Postgres schema before deploying svc-api so prod DB never drifts
+      # behind the deployed code (missing columns/tables => 500s). Additive push,
+      # reusing DATABASE_URL from the pulled Vercel env. svc-api leg only.
+      # db push needs a direct (non-pooled) connection; derive it from the pooled
+      # URL when DIRECT_URL is unset (Neon direct host = pooled host minus -pooler).
+      - if: matrix.app == 'svc-api'
+        run: |
+          set -a; . ./.vercel/.env.production.local; set +a
+          : "${DIRECT_URL:=${DATABASE_URL/-pooler./.}}"
+          export DIRECT_URL
+          pnpm -F @workspace/db db:push
+
       - run: pnpm dlx vercel@54.21.1 build --prod --token="$VERCEL_TOKEN"
 
       - run: pnpm dlx vercel@54.21.1 deploy --prebuilt --prod --token="$VERCEL_TOKEN"
