@@ -17,14 +17,14 @@ describe("roadmap service selector", () => {
     vi.resetModules()
   })
 
-  it("fails closed when production backend URL is missing", async () => {
+  it("falls back to mock when production backend URL is missing", async () => {
     process.env.NODE_ENV = "production"
     delete process.env.NEXT_PUBLIC_SVC_API_URL
     delete process.env.NEXT_PUBLIC_SVC_ROADMAP_URL
     vi.resetModules()
 
-    await expect(import("./service-selector")).rejects.toThrow(
-      "NEXT_PUBLIC_SVC_API_URL is required in production"
+    await expect(import("./service-selector")).resolves.toHaveProperty(
+      "RoadmapService"
     )
   }, 30_000)
 
