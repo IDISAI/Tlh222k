@@ -71,5 +71,7 @@ export default async function RootLayout({
     </html>
   )
 
-  return devBypass ? tree : <ClerkProvider>{tree}</ClerkProvider>
+  // `dynamic`: render Clerk at request time so the statically prerendered
+  // /_not-found boundary doesn't call auth() without middleware context.
+  return devBypass ? tree : <ClerkProvider dynamic>{tree}</ClerkProvider>
 }

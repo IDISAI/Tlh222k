@@ -1,4 +1,3 @@
-import Link from "next/link"
 import { Geist_Mono, Inter } from "next/font/google"
 import { ClerkProvider } from "@clerk/nextjs"
 
@@ -6,13 +5,12 @@ import {
   devAuthRole,
   ReloadOnBackForward,
   RoadmapApolloProvider,
-  ThemeToggle,
 } from "@workspace/core"
 
 import "@workspace/ui/globals.css"
 import { ThemeProvider } from "@/components/theme-provider"
 import { cn } from "@workspace/ui/lib/utils"
-import { AuthHeader } from "@/components/auth-header"
+import { SiteHeader } from "@/components/site-header"
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-sans" })
 
@@ -40,18 +38,7 @@ export default function RootLayout({
       <body>
         <ReloadOnBackForward />
         <ThemeProvider>
-          <header className="flex items-center justify-between border-b p-3">
-            <Link
-              href="/"
-              className="font-heading text-sm font-bold uppercase italic"
-            >
-              Roadmap
-            </Link>
-            <div className="flex items-center gap-2">
-              <ThemeToggle />
-              <AuthHeader />
-            </div>
-          </header>
+          <SiteHeader />
           <RoadmapApolloProvider>{children}</RoadmapApolloProvider>
         </ThemeProvider>
       </body>
@@ -64,5 +51,9 @@ export default function RootLayout({
     process.env.NODE_ENV,
     process.env.NEXT_PUBLIC_DEV_AUTH_ROLE
   )
-  return devBypass ? tree : <ClerkProvider>{tree}</ClerkProvider>
+  // `dynamic`: render Clerk at request time. Without it the statically
+  // prerendered /_not-found boundary calls auth() with no middleware context
+  // → "can't detect clerkMiddleware()". Vercel runs preview as production, so
+  // the dev bypass never applies there and this path always executes.
+  return devBypass ? tree : <ClerkProvider dynamic>{tree}</ClerkProvider>
 }
