@@ -1,6 +1,14 @@
 import type { CellOutput, Notebook } from "../types"
 
-export type RuntimeProfile = "data-science" | "ml-cpu"
+export type RuntimeProfile =
+  | "data-science" // python (existing)
+  | "ml-cpu" // python + torch (existing)
+  | "javascript"
+  | "cpp"
+  | "java"
+  | "rust"
+  | "go"
+  | "julia"
 
 export interface SandboxSession {
   id: string
