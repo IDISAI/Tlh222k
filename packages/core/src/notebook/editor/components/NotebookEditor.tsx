@@ -99,6 +99,14 @@ export function NotebookEditor({
     [getToken, createKernelWorker, profile, editor.language]
   )
   const runtime = useNotebookRuntime(snapshot, adapter)
+  const runUnavailableReason =
+    profile === null
+      ? `Unsupported notebook language: ${editor.language}`
+      : adapter === null
+        ? editor.language === "python"
+          ? "Python execution worker is not configured."
+          : "This language requires the kernel server."
+        : null
 
   const handleDownload = () => {
     const raw = service.serialize(editor.snapshot())
@@ -200,6 +208,12 @@ export function NotebookEditor({
         </p>
       )}
 
+      {runUnavailableReason && (
+        <p role="status" className="px-4 text-sm text-muted-foreground">
+          {runUnavailableReason}
+        </p>
+      )}
+
       <div className="mx-auto w-full max-w-4xl flex-1 overflow-y-auto p-4">
         {editor.cells.map((cell, index) => (
           <Fragment key={cell.id}>
@@ -215,10 +229,10 @@ export function NotebookEditor({
               onDuplicate={() => editor.duplicate(cell.id)}
               onDelete={() => editor.remove(cell.id)}
               runtime={runtime.cells[cell.id]}
-              onRun={cell.cellType === "code"
+              onRun={cell.cellType === "code" && adapter
                 ? () => void runtime.runCell(cell.id).catch(() => undefined)
                 : undefined}
-              onRunAdvance={cell.cellType === "code"
+              onRunAdvance={cell.cellType === "code" && adapter
                 ? () => {
                     void runtime.runCell(cell.id).catch(() => undefined)
                     const next = editor.cells[index + 1]

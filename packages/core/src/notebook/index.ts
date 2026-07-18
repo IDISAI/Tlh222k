@@ -13,7 +13,7 @@ export {
   parseAnsi,
   sanitizeHtml,
   stripAnsi,
-  tokenizePython,
+  tokenizeCode,
   type AnsiSpan,
   type CodeToken,
 } from "./utils"

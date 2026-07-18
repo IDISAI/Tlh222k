@@ -6,6 +6,7 @@ import {
 } from "@jupyterlab/services"
 
 import type { CellOutput, MimeBundle } from "../types"
+import { kernelNameForProfile } from "./languages"
 import type { SandboxSessionClient } from "./session-client"
 import type {
   ExecuteCallbacks,
@@ -164,7 +165,9 @@ export class JupyterSandboxAdapter implements KernelAdapter {
       fetch: credentialedFetch,
     })
     const manager = new KernelManager({ serverSettings })
-    const kernel = await manager.startNew({ name: "python3" })
+    const kernel = await manager.startNew({
+      name: kernelNameForProfile(this.profile),
+    })
     this.session = session
     this.manager = manager
     this.kernel = kernel

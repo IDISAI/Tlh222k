@@ -21,6 +21,7 @@ export function InteractiveNotebook({
   adapter,
   signedIn = true,
   onSignIn,
+  runUnavailableReason,
   onStartExercise,
   exerciseTitle,
 }: {
@@ -28,6 +29,8 @@ export function InteractiveNotebook({
   adapter: KernelAdapter | null
   signedIn?: boolean
   onSignIn?: () => void
+  /** When set, execution is unavailable (e.g. language needs the kernel server); shown instead of the sign-in button. */
+  runUnavailableReason?: string
   /** Fires when user clicks "Start Exercise" in the floating card. */
   onStartExercise?: () => void
   /** Title of the companion exercise; triggers the floating card when set. */
@@ -49,7 +52,11 @@ export function InteractiveNotebook({
           <span className="text-sm text-muted-foreground">
             Kernel: {runtime.status}
           </span>
-          {!signedIn ? (
+          {runUnavailableReason ? (
+            <span className="text-xs text-muted-foreground">
+              {runUnavailableReason}
+            </span>
+          ) : !signedIn ? (
             <Button type="button" size="sm" onClick={onSignIn}>
               Sign in to run
             </Button>
@@ -59,7 +66,7 @@ export function InteractiveNotebook({
                 type="button"
                 size="sm"
                 variant="outline"
-                disabled={busy}
+                disabled={busy || !adapter}
                 onClick={() => void runtime.runAll()}
               >
                 <Play className="size-3.5" /> Run all
@@ -99,7 +106,8 @@ export function InteractiveNotebook({
                 <InteractiveCodeCell
                   key={cell.id}
                   cell={runtime.cells[cell.id]!}
-                  disabled={!signedIn || busy}
+                  language={notebook.language}
+                  disabled={!signedIn || busy || !adapter}
                   onChange={(source) => runtime.updateSource(cell.id, source)}
                   onRun={() => void runtime.runCell(cell.id)}
                 />

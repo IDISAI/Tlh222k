@@ -7,11 +7,14 @@ import type { RuntimeCellState } from "../use-notebook-runtime"
 
 export function InteractiveCodeCell({
   cell,
+  language,
   disabled,
   onChange,
   onRun,
 }: {
   cell: RuntimeCellState
+  /** Notebook language (nbformat); picks the code editor grammar. */
+  language?: string
   disabled?: boolean
   onChange: (source: string) => void
   onRun: () => void
@@ -30,6 +33,7 @@ export function InteractiveCodeCell({
         <div className="rounded-md border bg-muted/40 transition-colors focus-within:border-primary focus-within:ring-1 focus-within:ring-primary/30">
           <CodeCellEditor
             source={cell.source}
+            language={language}
             onChange={onChange}
             onRun={disabled ? undefined : onRun}
             onRunAdvance={disabled ? undefined : onRun}

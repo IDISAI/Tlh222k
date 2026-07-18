@@ -8,6 +8,7 @@ import {
   JupyterSandboxAdapter,
   PyodideKernelAdapter,
   SandboxSessionClient,
+  profileForNotebook,
   type KernelAdapter,
   type Notebook,
 } from "@workspace/core"
@@ -20,6 +21,37 @@ import {
 } from "@workspace/ui/components/tabs"
 
 type LearnTab = "tutorial" | "exercise"
+
+// Pyodide (the no-kernel-server fallback) only runs Python.
+function runUnavailableReason(
+  notebook: Notebook,
+  kernelUrl: string | undefined
+): string | undefined {
+  if (!profileForNotebook(notebook.language)) {
+    return `Ngôn ngữ notebook "${notebook.language}" chưa được hỗ trợ.`
+  }
+  if (kernelUrl || notebook.language === "python") return undefined
+  return "Notebook này cần kernel server để chạy (chỉ Python chạy được ngay trên trình duyệt)."
+}
+
+function createNotebookAdapter(
+  notebook: Notebook,
+  kernelUrl: string | undefined,
+  getToken: () => Promise<string | null>
+): KernelAdapter | null {
+  const profile = profileForNotebook(notebook.language)
+  if (!profile) return null
+  if (kernelUrl) {
+    return new JupyterSandboxAdapter(
+      new SandboxSessionClient(kernelUrl, getToken),
+      profile
+    )
+  }
+  if (notebook.language !== "python") return null
+  return new PyodideKernelAdapter(
+    () => new Worker(new URL("./pyodide.worker.ts", import.meta.url))
+  )
+}
 
 interface LearnClientProps {
   slug: string
@@ -52,23 +84,17 @@ function DevLearnClient({ slug, tutorial, exercise }: LearnClientProps) {
   const getDevToken = async () => "dev-token"
 
   const makeAdapter = useMemo(
-    () => (): KernelAdapter =>
-      kernelUrl
-        ? new JupyterSandboxAdapter(
-            new SandboxSessionClient(kernelUrl, getDevToken),
-            "data-science"
-          )
-        : new PyodideKernelAdapter(
-            () => new Worker(new URL("./pyodide.worker.ts", import.meta.url))
-          ),
+    () =>
+      (notebook: Notebook): KernelAdapter | null =>
+        createNotebookAdapter(notebook, kernelUrl, getDevToken),
     [kernelUrl]
   )
   const tutorialAdapter = useMemo(
-    () => (canRun ? makeAdapter() : null),
-    [canRun, makeAdapter]
+    () => (canRun ? makeAdapter(tutorial) : null),
+    [canRun, makeAdapter, tutorial]
   )
   const exerciseAdapter = useMemo(
-    () => (canRun && exercise ? makeAdapter() : null),
+    () => (canRun && exercise ? makeAdapter(exercise) : null),
     [canRun, exercise, makeAdapter]
   )
 
@@ -89,6 +115,7 @@ function DevLearnClient({ slug, tutorial, exercise }: LearnClientProps) {
           notebook={tutorial}
           adapter={tutorialAdapter}
           signedIn={canRun}
+          runUnavailableReason={runUnavailableReason(tutorial, kernelUrl)}
           onSignIn={() => {}}
           exerciseTitle={exercise?.title ?? "Exercise"}
           onStartExercise={() => setTab("exercise")}
@@ -101,6 +128,7 @@ function DevLearnClient({ slug, tutorial, exercise }: LearnClientProps) {
             notebook={exercise}
             adapter={exerciseAdapter}
             signedIn={canRun}
+            runUnavailableReason={runUnavailableReason(exercise, kernelUrl)}
             onSignIn={() => {}}
           />
         ) : (
@@ -133,23 +161,17 @@ function ClerkLearnClient({ slug, tutorial, exercise }: LearnClientProps) {
   const canRun = usePyodide || isSignedIn
 
   const makeAdapter = useMemo(
-    () => (): KernelAdapter =>
-      kernelUrl
-        ? new JupyterSandboxAdapter(
-            new SandboxSessionClient(kernelUrl, getToken),
-            "data-science"
-          )
-        : new PyodideKernelAdapter(
-            () => new Worker(new URL("./pyodide.worker.ts", import.meta.url))
-          ),
+    () =>
+      (notebook: Notebook): KernelAdapter | null =>
+        createNotebookAdapter(notebook, kernelUrl, getToken),
     [getToken, kernelUrl]
   )
   const tutorialAdapter = useMemo(
-    () => (canRun ? makeAdapter() : null),
-    [canRun, makeAdapter]
+    () => (canRun ? makeAdapter(tutorial) : null),
+    [canRun, makeAdapter, tutorial]
   )
   const exerciseAdapter = useMemo(
-    () => (canRun && exercise ? makeAdapter() : null),
+    () => (canRun && exercise ? makeAdapter(exercise) : null),
     [canRun, exercise, makeAdapter]
   )
 
@@ -170,6 +192,7 @@ function ClerkLearnClient({ slug, tutorial, exercise }: LearnClientProps) {
           notebook={tutorial}
           adapter={tutorialAdapter}
           signedIn={canRun}
+          runUnavailableReason={runUnavailableReason(tutorial, kernelUrl)}
           onSignIn={() => void clerk.openSignIn()}
           exerciseTitle={exercise?.title ?? "Exercise"}
           onStartExercise={() => setTab("exercise")}
@@ -182,6 +205,7 @@ function ClerkLearnClient({ slug, tutorial, exercise }: LearnClientProps) {
             notebook={exercise}
             adapter={exerciseAdapter}
             signedIn={canRun}
+            runUnavailableReason={runUnavailableReason(exercise, kernelUrl)}
             onSignIn={() => void clerk.openSignIn()}
           />
         ) : (
