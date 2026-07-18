@@ -9,6 +9,9 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   verify:
     runs-on: ubuntu-latest
@@ -27,10 +30,31 @@ jobs:
           node-version: 20
           cache: pnpm
 
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: apps/kernel-server/go.mod
+          cache-dependency-path: apps/kernel-server/go.sum
+
       - run: pnpm install --frozen-lockfile
 
       - run: pnpm lint
 
       - run: pnpm typecheck
 
+      - run: pnpm test
+
       - run: pnpm build
+        env:
+          # Production builds fail closed without a backend URL
+          # (service-selector). CI only gates the build; real values live in
+          # the Vercel project env.
+          NEXT_PUBLIC_SVC_API_URL: http://localhost:3005
+
+      - run: go test -race ./...
+        working-directory: apps/kernel-server
+
+      - run: go vet ./...
+        working-directory: apps/kernel-server
+
+      - run: go build ./...
+        working-directory: apps/kernel-server

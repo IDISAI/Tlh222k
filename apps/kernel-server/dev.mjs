@@ -46,6 +46,7 @@ const commands = [
     command: "go",
     args: ["run", "./cmd/server"],
     env: {
+      APP_ENV: "development",
       SESSION_TICKET_SECRET:
         process.env.SESSION_TICKET_SECRET || "development-only-ticket-secret",
       // Host-run kernel-server cannot resolve Docker network DNS names.

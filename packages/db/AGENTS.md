@@ -9,5 +9,5 @@ Prisma package for shared database access.
   `db:push:postgres` for deploys. Do not mutate `schema.prisma` to switch
   providers.
 - If schema changes, update seed data and any `@workspace/core` or
-  `svc-roadmap` code that consumes the changed model.
+  `svc-api` code that consumes the changed model.
 - Do not commit real `.env` or generated local databases.

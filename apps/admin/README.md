@@ -9,11 +9,11 @@ pnpm --filter admin dev      # http://localhost:3002 (dev, không prefix)
 pnpm --filter admin build
 ```
 
-Truy cập thật qua host web tại `http://localhost:3000/admin` (web rewrite sang app này). Cần `svc-roadmap` ở `:3005`. Env: [.env.example](.env.example) → `.env.local`.
+Truy cập thật qua host web tại `http://localhost:3000/admin` (web rewrite sang app này). Cần `svc-api` ở `:3005`. Env: [.env.example](.env.example) → `.env.local`.
 
 ## Chức năng
 
-- **Roadmap builder**: CRUD roadmap/node dưới [app/roadmaps](app/roadmaps) và [app/roadmap](app/roadmap), ghi qua GraphQL của `svc-roadmap`.
+- **Roadmap builder**: CRUD roadmap/node dưới [app/roadmaps](app/roadmaps) và [app/roadmap](app/roadmap), ghi qua GraphQL của `svc-api`.
 - **Auth theo role**: Clerk + [proxy.ts](proxy.ts); chặn truy cập trả về [app/403](app/403). Dev bỏ qua Clerk bằng `NEXT_PUBLIC_DEV_AUTH_ROLE`.
 - **Multi-Zone path**: production URL public là `/admin/*`, nhưng app này build ở root để Clerk [proxy.ts](proxy.ts) chạy trước `auth()` trên Vercel. Host web strip `/admin` khi forward và proxy asset `/admin-static/*`.
 

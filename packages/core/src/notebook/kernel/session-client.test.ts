@@ -11,7 +11,6 @@ describe("SandboxSessionClient", () => {
           profile: "data-science",
           status: "idle",
           proxyBaseUrl: "https://kernel.example/api/sessions/session-1/jupyter",
-          connectionTicket: "ticket",
           expiresAt: "2026-07-10T00:00:00Z",
         }),
         { status: 201, headers: { "Content-Type": "application/json" } }
@@ -20,10 +19,7 @@ describe("SandboxSessionClient", () => {
     vi.stubGlobal("fetch", fetchMock)
 
     const getToken = vi.fn().mockResolvedValue("clerk")
-    const client = new SandboxSessionClient(
-      "https://kernel.example",
-      getToken
-    )
+    const client = new SandboxSessionClient("https://kernel.example", getToken)
 
     await expect(client.create("data-science")).resolves.toMatchObject({
       id: "session-1",
@@ -34,6 +30,7 @@ describe("SandboxSessionClient", () => {
       "https://kernel.example/api/sessions",
       expect.objectContaining({
         method: "POST",
+        credentials: "include",
         headers: expect.objectContaining({ Authorization: "Bearer clerk" }),
       })
     )

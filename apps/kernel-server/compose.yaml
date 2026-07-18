@@ -17,31 +17,59 @@ services:
     image: local/notebook-ml-cpu:dev
     entrypoint: ["true"]
 
-  kernel-server:
-    build: .
+  docker-broker:
+    build:
+      context: .
+      target: docker-broker
     depends_on:
       runtime-data-science: { condition: service_completed_successfully }
       runtime-ml-cpu: { condition: service_completed_successfully }
     environment:
-      PORT: "3006"
-      STORAGE_DIR: /app/storage/notebooks
-      DEV_AUTH_ROLE: ${DEV_AUTH_ROLE:-super-admin}
-      CLERK_JWKS_URL: ${CLERK_JWKS_URL:-}
-      SESSION_TICKET_SECRET: ${SESSION_TICKET_SECRET:-local-development-change-me}
-      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000,http://localhost:3002,http://localhost:3003}
-      JUPYTER_MAX_SESSIONS: ${JUPYTER_MAX_SESSIONS:-2}
-      JUPYTER_SESSION_IDLE_SECONDS: ${JUPYTER_SESSION_IDLE_SECONDS:-900}
+      BROKER_PORT: "3007"
+      BROKER_TOKEN: ${JUPYTER_BROKER_TOKEN:-local-broker-control-secret-32bytes}
+      JUPYTER_IMAGE_DATA_SCIENCE: local/notebook-data-science:dev
+      JUPYTER_IMAGE_ML_CPU: local/notebook-ml-cpu:dev
       JUPYTER_SESSION_CPU: ${JUPYTER_SESSION_CPU:-1}
       JUPYTER_SESSION_MEMORY: ${JUPYTER_SESSION_MEMORY:-2g}
       JUPYTER_SESSION_PIDS: ${JUPYTER_SESSION_PIDS:-128}
       JUPYTER_DOCKER_NETWORK: notebook-internal
+    group_add: ["${DOCKER_GID:-0}"]
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks: [broker-control, notebook-internal]
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3007/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  kernel-server:
+    build:
+      context: .
+      target: kernel-server
+    depends_on:
+      docker-broker: { condition: service_healthy }
+    environment:
+      APP_ENV: development
+      PORT: "3006"
+      STORAGE_DIR: /app/storage/notebooks
+      DEV_AUTH_ROLE: ${DEV_AUTH_ROLE:-super-admin}
+      CLERK_JWKS_URL: ${CLERK_JWKS_URL:-}
+      CLERK_ISSUER: ${CLERK_ISSUER:-}
+      CLERK_AUDIENCE: ${CLERK_AUDIENCE:-}
+      SESSION_TICKET_SECRET: ${SESSION_TICKET_SECRET:-local-development-change-me}
+      JUPYTER_BROKER_URL: http://docker-broker:3007
+      JUPYTER_BROKER_TOKEN: ${JUPYTER_BROKER_TOKEN:-local-broker-control-secret-32bytes}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000,http://localhost:3002,http://localhost:3003}
+      JUPYTER_MAX_SESSIONS: ${JUPYTER_MAX_SESSIONS:-2}
+      JUPYTER_MAX_SESSIONS_PER_OWNER: ${JUPYTER_MAX_SESSIONS_PER_OWNER:-1}
+      JUPYTER_SESSION_IDLE_SECONDS: ${JUPYTER_SESSION_IDLE_SECONDS:-900}
     ports: ["3006:3006"]
     volumes:
       - notebook-metadata:/app/storage/notebooks
-      - /var/run/docker.sock:/var/run/docker.sock
-    # default (non-internal) carries the published :3006; runtime containers
-    # join only notebook-internal and stay offline.
-    networks: [notebook-internal, default]
+    # default carries published :3006; broker-control and notebook-internal are
+    # internal networks with no host route.
+    networks: [broker-control, notebook-internal, default]
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3006/health"]
       interval: 5s
@@ -51,6 +79,8 @@ services:
 networks:
   notebook-internal:
     name: notebook-internal
+    internal: true
+  broker-control:
     internal: true
 
 volumes:

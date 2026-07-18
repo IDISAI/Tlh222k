@@ -1,9 +1,9 @@
 import { redirect } from "next/navigation"
 
 import { NotionWorkspace } from "@workspace/core"
-import { NotionService } from "@workspace/core/notion/notion.service"
+import { notionApi } from "@workspace/core/notion/api/notion.api"
 
-import { getRole, getUserId } from "@/lib/auth"
+import { getAuthToken, getRole } from "@/lib/auth"
 import { FORBIDDEN_PATH } from "@/lib/paths"
 
 import {
@@ -28,8 +28,6 @@ export const metadata = { title: "Notion editor" }
 // The workspace tree is edited live — never cache against the latest writes.
 export const dynamic = "force-dynamic"
 
-const service = new NotionService()
-
 /** "css-grid-lab" → "Css grid lab" as a starter title for a fresh root doc. */
 function titleFromSlug(slug: string): string {
   const words = slug.replace(/-/g, " ").trim()
@@ -53,16 +51,16 @@ export default async function AdminNotionPage({
   const { page } = await searchParams
   const role = await getRole()
   if (role !== "admin" && role !== "super-admin") redirect(FORBIDDEN_PATH)
-  const userId = await getUserId()
-  const authorId = userId ?? "unknown"
+  const token = await getAuthToken()
 
   // Root doc = the roadmap CHAPTER (A1). Auto-created on first admin visit.
-  let doc = await service.getBySlug(role, slug)
+  // authorId is set server-side from the token, so the client no longer sends it.
+  let doc = await notionApi.getBySlug(slug, token)
   if (!doc) {
-    doc = await service
-      .create(role, authorId, { slug, title: titleFromSlug(slug) })
+    doc = await notionApi
+      .create({ slug, title: titleFromSlug(slug) }, token)
       // Unique-slug race (two admins' first visit): the loser refetches.
-      .catch(() => service.getBySlug(role, slug))
+      .catch(() => notionApi.getBySlug(slug, token))
     if (!doc) redirect(FORBIDDEN_PATH)
   }
 
@@ -71,15 +69,14 @@ export default async function AdminNotionPage({
   // has no doc yet (article authored in the builder, not the notion sidebar).
   let initialSelectedId: string | undefined
   if (page && page !== slug) {
-    let pageDoc = await service.getBySlug(role, page)
+    let pageDoc = await notionApi.getBySlug(page, token)
     if (!pageDoc) {
-      pageDoc = await service
-        .create(role, authorId, {
-          slug: page,
-          parentDocumentId: doc.id,
-          title: titleFromSlug(page),
-        })
-        .catch(() => service.getBySlug(role, page))
+      pageDoc = await notionApi
+        .create(
+          { slug: page, parentDocumentId: doc.id, title: titleFromSlug(page) },
+          token
+        )
+        .catch(() => notionApi.getBySlug(page, token))
     }
     initialSelectedId = pageDoc?.id
   }

@@ -1,14 +1,12 @@
 import { FileText } from "lucide-react"
 
 import { NotionWorkspace } from "@workspace/core"
-import { NotionService } from "@workspace/core/notion/notion.service"
+import { notionApi } from "@workspace/core/notion/api/notion.api"
 
 import { getById, getChildren } from "../actions"
 
 // Content is edited live in the admin zone — never serve a stale cache.
 export const dynamic = "force-dynamic"
-
-const service = new NotionService()
 
 export async function generateMetadata({
   params,
@@ -16,7 +14,7 @@ export async function generateMetadata({
   params: Promise<{ slug: string }>
 }) {
   const { slug } = await params
-  const doc = await service.getBySlug("viewer", slug)
+  const doc = await notionApi.getBySlug(slug, null)
   return { title: doc?.title ?? "Tài liệu" }
 }
 
@@ -35,8 +33,8 @@ export default async function NotionPage({
 }) {
   const { slug } = await params
   const { page } = await searchParams
-  // "viewer" on purpose: the web zone is published-only for every role.
-  const doc = await service.getBySlug("viewer", slug)
+  // No token on purpose: the web zone is published-only for every role.
+  const doc = await notionApi.getBySlug(slug, null)
 
   if (!doc) return <NotionNotReady slug={slug} />
 
@@ -46,7 +44,7 @@ export default async function NotionPage({
   // (notion-article-node Req 6.5).
   let initialSelectedId: string | undefined
   if (page && page !== slug) {
-    const pageDoc = await service.getBySlug("viewer", page)
+    const pageDoc = await notionApi.getBySlug(page, null)
     if (!pageDoc) return <NotionNotReady slug={page} />
     initialSelectedId = pageDoc.id
   }

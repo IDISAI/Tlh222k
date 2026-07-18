@@ -1,22 +1,18 @@
 "use server"
 
 import type { NotionDoc } from "@workspace/core"
-import { NotionService } from "@workspace/core/notion/notion.service"
-
-const service = new NotionService()
+import { notionApi } from "@workspace/core/notion/api/notion.api"
 
 // Read-only zone: EVERYONE on web — guest, viewer, even a signed-in admin —
-// gets the "viewer" view (published, non-archived documents only). Editing
-// lives exclusively in the admin zone; hiding buttons is not the boundary,
-// these actions are.
-const WEB_ROLE = "viewer" as const
-
+// gets the "viewer" view (published, non-archived docs only). We send NO token,
+// so svc-roadmap resolves the caller as a guest and returns published content
+// only. The server enforces it, not the UI.
 export async function getById(id: string): Promise<NotionDoc | null> {
-  return service.getById(WEB_ROLE, id)
+  return notionApi.getById(id, null)
 }
 
 export async function getChildren(
   parentDocumentId: string
 ): Promise<NotionDoc[]> {
-  return service.getChildren(WEB_ROLE, parentDocumentId)
+  return notionApi.getChildren(parentDocumentId, null)
 }

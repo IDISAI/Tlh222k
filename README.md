@@ -25,7 +25,7 @@ Copy env templates before running apps that need real auth/backend data:
 cp apps/web/.env.example           apps/web/.env.local
 cp apps/admin/.env.example         apps/admin/.env.local
 cp apps/super-admin/.env.example   apps/super-admin/.env.local
-cp apps/svc-roadmap/.env.example   apps/svc-roadmap/.env
+cp apps/svc-api/.env.example   apps/svc-api/.env
 cp apps/kernel-server/.env.example apps/kernel-server/.env
 cp packages/db/.env.example        packages/db/.env
 ```
@@ -46,7 +46,7 @@ See [docs/onboarding/env.md](docs/onboarding/env.md) for key-by-key setup.
 | `pnpm --filter web dev`         | Public web app only (port 3000)              |
 | `pnpm --filter admin dev`       | Admin app only (port 3002)                   |
 | `pnpm --filter super-admin dev` | Super-admin app only (port 3003)             |
-| `pnpm --filter svc-roadmap dev` | NestJS backend only (port 3005)              |
+| `pnpm --filter svc-api dev` | NestJS backend only (port 3005)              |
 
 There is no test runner configured yet. CI is:
 `install --frozen-lockfile -> lint -> typecheck -> build`.
@@ -58,7 +58,7 @@ apps/
   web/           Next.js public frontend and Multi-Zone host, port 3000
   admin/         Next.js roadmap builder/admin child zone, port 3002
   super-admin/   Next.js super-admin child zone, port 3003
-  svc-roadmap/   NestJS GraphQL/REST/SSE roadmap backend, port 3005
+  svc-api/   NestJS GraphQL/REST/SSE roadmap backend, port 3005
   kernel-server/ Go notebook backend (standalone — not in pnpm workspace), port 3006
 packages/
   core/          @workspace/core domain logic and feature modules

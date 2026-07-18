@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -153,5 +154,77 @@ func TestInstallPairSecondBackupReservationRollsBack(t *testing.T) {
 		if strings.Contains(entry.Name(), ".tmp-") || strings.Contains(entry.Name(), ".backup-") {
 			t.Fatalf("rollback left temporary artifact: %s", entry.Name())
 		}
+	}
+}
+
+func TestFSStoreConcurrentSaveLoadKeepsNotebookMetadataPairConsistent(t *testing.T) {
+	s, err := NewFSStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Save("shared", []byte("body-a"), "title-a", false, "data-science"); err != nil {
+		t.Fatal(err)
+	}
+
+	start := make(chan struct{})
+	done := make(chan struct{})
+	errorsSeen := make(chan error, 1)
+	report := func(err error) {
+		select {
+		case errorsSeen <- err:
+		default:
+		}
+	}
+
+	var readers sync.WaitGroup
+	readers.Add(1)
+	go func() {
+		defer readers.Done()
+		<-start
+		for {
+			select {
+			case <-done:
+				return
+			default:
+			}
+			body, meta, err := s.Load("shared")
+			if err != nil {
+				report(err)
+				continue
+			}
+			pair := string(body) + "/" + meta.Title
+			if pair != "body-a/title-a" && pair != "body-b/title-b" {
+				report(errors.New("mixed notebook/metadata pair: " + pair))
+			}
+		}
+	}()
+
+	var writers sync.WaitGroup
+	for i := 0; i < 4; i++ {
+		body, title := []byte("body-a"), "title-a"
+		if i%2 == 1 {
+			body, title = []byte("body-b"), "title-b"
+		}
+		writers.Add(1)
+		go func() {
+			defer writers.Done()
+			<-start
+			for j := 0; j < 100; j++ {
+				if _, err := s.Save("shared", body, title, false, "data-science"); err != nil {
+					report(err)
+					return
+				}
+			}
+		}()
+	}
+	close(start)
+	writers.Wait()
+	close(done)
+	readers.Wait()
+
+	select {
+	case err := <-errorsSeen:
+		t.Fatal(err)
+	default:
 	}
 }

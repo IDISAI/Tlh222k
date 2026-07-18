@@ -9,7 +9,8 @@
     "dev:go": "node apps/kernel-server/dev.mjs --go-only",
     "lint": "turbo lint",
     "format": "turbo format",
-    "typecheck": "turbo typecheck"
+    "typecheck": "turbo typecheck",
+    "test": "turbo test"
   },
   "devDependencies": {
     "@playwright/test": "^1.61.1",

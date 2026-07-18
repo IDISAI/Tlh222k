@@ -15,12 +15,19 @@ test("dev launcher starts Turbo apps and kernel-server", () => {
     {
       command: "pnpm",
       args: ["turbo", "dev"],
-      env: { NEXT_PUBLIC_KERNEL_SERVER_URL: "http://localhost:3006" },
+      env: {
+        NEXT_PUBLIC_KERNEL_SERVER_URL: "http://localhost:3006",
+        NEXT_PUBLIC_DEV_AUTH_ROLE: "",
+      },
     },
     {
       command: "go",
       args: ["run", "./cmd/server"],
-      env: { SESSION_TICKET_SECRET: "development-only-ticket-secret" },
+      env: {
+        APP_ENV: "development",
+        SESSION_TICKET_SECRET: "development-only-ticket-secret",
+        JUPYTER_HOST_PROXY: "1",
+      },
     },
   ])
 })

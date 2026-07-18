@@ -45,3 +45,18 @@ export async function getUserId(): Promise<string | null> {
   const { userId } = await auth()
   return userId
 }
+
+/**
+ * Bearer token for authorizing calls to svc-roadmap. Under the dev bypass we
+ * send `dev:<role>` (svc-roadmap accepts it only outside production); otherwise
+ * the real short-lived Clerk session token.
+ */
+export async function getAuthToken(): Promise<string | null> {
+  const devRole = devAuthRole(
+    process.env.NODE_ENV,
+    process.env.NEXT_PUBLIC_DEV_AUTH_ROLE
+  )
+  if (devRole) return `dev:${devRole}`
+  const { getToken } = await auth()
+  return getToken()
+}

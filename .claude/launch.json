@@ -35,11 +35,11 @@
       "autoPort": false
     },
     {
-      "name": "svc-roadmap",
+      "name": "svc-api",
       "runtimeExecutable": "pnpm",
       "runtimeArgs": [
         "--filter",
-        "svc-roadmap",
+        "svc-api",
         "dev"
       ],
       "port": 3005,

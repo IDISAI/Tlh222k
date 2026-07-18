@@ -15,7 +15,6 @@ export interface NotionDoc {
   /** Set only on ROOT docs backing a roadmap "notion" article node. */
   slug: string | null
   title: string
-  authorId: string
   isArchived: boolean
   parentDocumentId: string | null
   /** BlockNote block array as JSON string. */

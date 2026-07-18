@@ -20,7 +20,7 @@ pnpm format
 pnpm --filter web dev
 pnpm --filter admin dev
 pnpm --filter super-admin dev
-pnpm --filter svc-roadmap dev
+pnpm --filter svc-api dev
 pnpm -F @workspace/db generate
 pnpm -F @workspace/db db:push
 pnpm -F @workspace/db seed
@@ -28,7 +28,7 @@ pnpm -F @workspace/db seed
 # kernel-server (Go, from apps/kernel-server/)
 go build ./...
 go vet ./...
-DEV_AUTH_ROLE=super-admin go run ./cmd/server   # listens on :3006
+APP_ENV=development DEV_AUTH_ROLE=super-admin SESSION_TICKET_SECRET=development-only-ticket-secret go run ./cmd/server   # listens on :3006
 ```
 
 There is no test runner configured yet. CI is
@@ -42,7 +42,7 @@ Current committed system:
 - `apps/web`: public Next.js frontend and Multi-Zone host, port 3000.
 - `apps/admin`: admin/roadmap-builder Next.js child zone, port 3002.
 - `apps/super-admin`: super-admin/user-management child zone, port 3003.
-- `apps/svc-roadmap`: NestJS backend exposing GraphQL, REST, Swagger, and SSE,
+- `apps/svc-api`: NestJS backend exposing GraphQL, REST, Swagger, and SSE,
   default port 3005.
 - `apps/kernel-server`: **Go** backend for the notebook feature. Standalone Go
   module (not in the pnpm/turbo workspace). Port 3006. Notebook CRUD (filesystem
@@ -51,7 +51,9 @@ Current committed system:
 - `packages/core`: shared domain logic, feature-first. Key modules:
   - `src/notebook`: `NotebookService`, viewer, editor, kernel client, exercise,
     runtime, utils. All nbformat parsing lives here — not in Go.
-  - `src/roadmap`: roadmap domain logic.
+  - `src/roadmap`: roadmap domain logic. `api/` holds the Apollo Client + React
+    provider that talk GraphQL to `svc-api`; env-flag seam falls back to a
+    localStorage mock service when no backend URL is set.
   - `src/navigation`: navigation helpers (incl. `no-script-next-themes`).
 - `packages/db`: Prisma schema/client and seed data.
 - `packages/ui`: shared shadcn/ui + Tailwind v4 components.
@@ -98,7 +100,7 @@ There is no shared root app env. Each app/package owns the env file beside it:
 cp apps/web/.env.example          apps/web/.env.local
 cp apps/admin/.env.example        apps/admin/.env.local
 cp apps/super-admin/.env.example  apps/super-admin/.env.local
-cp apps/svc-roadmap/.env.example  apps/svc-roadmap/.env
+cp apps/svc-api/.env.example  apps/svc-api/.env
 cp apps/kernel-server/.env.example apps/kernel-server/.env
 cp packages/db/.env.example       packages/db/.env
 ```
@@ -107,8 +109,10 @@ Rules:
 
 - Commit only `.env.example`; never commit real `.env` or `.env.local`.
 - `NEXT_PUBLIC_*` is browser-visible.
-- `NEXT_PUBLIC_SVC_ROADMAP_URL` selects the real backend. If empty,
-  `@workspace/core` uses the mock/localStorage roadmap service.
+- `NEXT_PUBLIC_SVC_API_URL` selects the real `svc-api` backend
+  (`http://localhost:3005` in dev). If empty, `@workspace/core` uses the
+  mock/localStorage roadmap service. `NEXT_PUBLIC_SVC_ROADMAP_URL` is the legacy
+  name, still honored as a fallback after the `svc-roadmap` -> `svc-api` rename.
 - `NEXT_PUBLIC_KERNEL_SERVER_URL` points web and admin at the Go kernel-server
   (`http://localhost:3006` in dev). If empty, web falls back to committed
   `.ipynb` fixtures and the admin editor uses per-browser localStorage.
@@ -167,3 +171,17 @@ Key routing rules:
 - Save progress → invoke /context-save
 - Resume context → invoke /context-restore
 - Author a backlog-ready spec/issue → invoke /spec
+
+## Agent skills
+
+### Issue tracker
+
+Issues live in GitHub Issues on `IDISAI/Tlh222k`, via the `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Default five canonical roles (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: one `CONTEXT.md` + `docs/adr/` at the repo root. See `docs/agents/domain.md`.

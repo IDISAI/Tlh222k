@@ -9,13 +9,13 @@ pnpm --filter web dev      # http://localhost:3000
 pnpm --filter web build
 ```
 
-Cần backend `svc-roadmap` chạy ở `:3005` để roadmap có dữ liệu. Env: copy `.env.example` → `.env.local` (xem [.env.example](.env.example) và [../../docs/onboarding/env.md](../../docs/onboarding/env.md)).
+Cần backend `svc-api` chạy ở `:3005` để roadmap có dữ liệu. Env: copy `.env.example` → `.env.local` (xem [.env.example](.env.example) và [../../docs/onboarding/env.md](../../docs/onboarding/env.md)).
 
 ## Vai trò trong hệ thống
 
 - **Host zone**: [next.config.ts](next.config.ts) `rewrites()` proxy `/admin` → app admin (:3002) và `/super-admin` → super-admin (:3003). Child apps build ở root để Clerk proxy chạy đúng; host strip prefix khi forward và proxy asset `/admin-static/*` / `/super-admin-static/*`. Dev trỏ tới dev server của child; prod trỏ tới domain child (override bằng `ADMIN_URL` / `SUPER_ADMIN_URL`).
 - **Auth**: Clerk. [proxy.ts](proxy.ts) + [lib/](lib/) phân giải role. Dev có thể bỏ qua Clerk bằng `NEXT_PUBLIC_DEV_AUTH_ROLE`.
-- **Dữ liệu roadmap**: Apollo client trong `@workspace/core` gọi `${NEXT_PUBLIC_SVC_ROADMAP_URL}/graphql`.
+- **Dữ liệu roadmap**: Apollo client trong `@workspace/core` gọi `${NEXT_PUBLIC_SVC_API_URL}/graphql` (`NEXT_PUBLIC_SVC_ROADMAP_URL` = tên legacy, vẫn fallback).
 - **Sentry**: bọc qua `withSentryConfig` (no-op nếu không có DSN).
 
 ## Thư mục `app/`

@@ -16,7 +16,7 @@ type recordedCommand struct {
 }
 
 func TestDockerRuntimeStopsContainerWhenJupyterReadinessFails(t *testing.T) {
-	runner := &recordingRunner{output: []byte("container-1\n")}
+	runner := &recordingRunner{outputs: [][]byte{[]byte("container-1\n"), []byte("true kernel-broker\n"), nil}}
 	runtime := NewDockerRuntime(runner, Images{DataScience: "data-image"}, WithReadyCheck(func(context.Context, string, string) error {
 		return errors.New("not ready")
 	}))
@@ -27,10 +27,10 @@ func TestDockerRuntimeStopsContainerWhenJupyterReadinessFails(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "wait for Jupyter runtime: not ready") {
 		t.Fatalf("start error = %v, want readiness error", err)
 	}
-	if len(runner.commands) != 2 {
-		t.Fatalf("commands = %d, want docker run then cleanup", len(runner.commands))
+	if len(runner.commands) != 3 {
+		t.Fatalf("commands = %d, want docker run, managed-label inspect, then cleanup", len(runner.commands))
 	}
-	if command := runner.commands[1]; command.name != "docker" || !slices.Equal(command.args, []string{"rm", "--force", "container-1"}) {
+	if command := runner.commands[2]; command.name != "docker" || !slices.Equal(command.args, []string{"rm", "--force", "container-1"}) {
 		t.Fatalf("cleanup command = %q %#v, want docker rm --force container-1", command.name, command.args)
 	}
 }
@@ -114,6 +114,7 @@ func TestDockerRuntimeStartUsesLockedDownRunArguments(t *testing.T) {
 		"--cap-drop", "ALL", "--security-opt", "no-new-privileges",
 		"--pids-limit", "128", "--cpus", "1", "--memory", "2g",
 		"--user", "1000:100", "--label", "notebook.session=session-1",
+		"--label", "notebook.managed-by=kernel-broker",
 	}
 	if len(command.args) < len(wantPrefix) || !slices.Equal(command.args[:len(wantPrefix)], wantPrefix) {
 		t.Fatalf("docker run prefix = %#v, want %#v", command.args, wantPrefix)
@@ -151,18 +152,41 @@ func TestDockerRuntimeStartRejectsUnknownProfile(t *testing.T) {
 }
 
 func TestDockerRuntimeStopForceRemovesContainer(t *testing.T) {
-	runner := &recordingRunner{}
+	runner := &recordingRunner{outputs: [][]byte{[]byte("true kernel-broker\n"), nil}}
 	runtime := NewDockerRuntime(runner, Images{})
 
 	if err := runtime.Stop(context.Background(), "container-1"); err != nil {
 		t.Fatalf("stop runtime: %v", err)
 	}
-	if len(runner.commands) != 1 {
-		t.Fatalf("commands = %d, want 1", len(runner.commands))
+	if len(runner.commands) != 2 {
+		t.Fatalf("commands = %d, want managed-label inspect then removal", len(runner.commands))
 	}
-	command := runner.commands[0]
+	command := runner.commands[1]
 	if command.name != "docker" || !slices.Equal(command.args, []string{"rm", "--force", "container-1"}) {
 		t.Fatalf("stop command = %q %#v, want docker rm --force container-1", command.name, command.args)
+	}
+}
+
+func TestDockerRuntimeRefusesUnmanagedContainer(t *testing.T) {
+	runner := &recordingRunner{output: []byte("true other-controller\n")}
+	runtime := NewDockerRuntime(runner, Images{})
+
+	if err := runtime.Stop(context.Background(), "database"); err == nil || !strings.Contains(err.Error(), "not managed") {
+		t.Fatalf("stop unmanaged error = %v, want refusal", err)
+	}
+	if len(runner.commands) != 1 || slices.Contains(runner.commands[0].args, "rm") {
+		t.Fatalf("commands = %#v, unmanaged container must not be removed", runner.commands)
+	}
+}
+
+func TestDockerRuntimeAliveRequiresManagedLabel(t *testing.T) {
+	managed := NewDockerRuntime(&recordingRunner{output: []byte("true kernel-broker\n")}, Images{})
+	if !managed.Alive(context.Background(), "container-1") {
+		t.Fatal("running managed container reported dead")
+	}
+	unmanaged := NewDockerRuntime(&recordingRunner{output: []byte("true other-controller\n")}, Images{})
+	if unmanaged.Alive(context.Background(), "database") {
+		t.Fatal("unmanaged container reported alive")
 	}
 }
 
@@ -177,7 +201,7 @@ func TestDockerRuntimeRemovesOnlyStaleNotebookSessionContainers(t *testing.T) {
 		t.Fatalf("commands = %d, want 2", len(runner.commands))
 	}
 	if command := runner.commands[0]; command.name != "docker" || !slices.Equal(command.args, []string{
-		"ps", "--all", "--quiet", "--filter", "label=notebook.session",
+		"ps", "--all", "--quiet", "--filter", "label=notebook.managed-by=kernel-broker",
 	}) {
 		t.Fatalf("list command = %q %#v, want label-scoped docker ps", command.name, command.args)
 	}

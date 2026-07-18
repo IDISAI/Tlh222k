@@ -25,6 +25,9 @@ import (
 
 func main() {
 	cfg := config.Load()
+	if err := cfg.Validate(); err != nil {
+		log.Fatalf("config: %v", err)
+	}
 	processCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
@@ -33,11 +36,19 @@ func main() {
 		log.Fatalf("store: %v", err)
 	}
 
-	runtimeOptions := []runtime.DockerRuntimeOption{}
-	if cfg.JupyterHostProxy {
-		runtimeOptions = append(runtimeOptions, runtime.WithHostProxy())
+	var containerRuntime managedRuntime
+	if cfg.JupyterBrokerURL != "" {
+		containerRuntime, err = runtime.NewBrokerRuntime(cfg.JupyterBrokerURL, cfg.JupyterBrokerToken, nil)
+		if err != nil {
+			log.Fatalf("broker runtime: %v", err)
+		}
+	} else {
+		runtimeOptions := []runtime.DockerRuntimeOption{}
+		if cfg.JupyterHostProxy {
+			runtimeOptions = append(runtimeOptions, runtime.WithHostProxy())
+		}
+		containerRuntime = runtime.NewDockerRuntime(nil, runtime.DefaultImages(), runtimeOptions...)
 	}
-	containerRuntime := runtime.NewDockerRuntime(nil, runtime.DefaultImages(), runtimeOptions...)
 	if err := containerRuntime.RemoveStaleContainers(processCtx); err != nil {
 		// Keep local notebook editing available when Docker Desktop is stopped.
 		// Production has no dev auth bypass, so a missing sandbox runtime remains fatal.
@@ -47,22 +58,24 @@ func main() {
 		log.Printf("sandbox runtime unavailable; notebook execution disabled: %v", err)
 	}
 	sessionManager := sessions.NewManager(sessions.Options{
-		MaxSessions: cfg.JupyterMaxSessions,
-		IdleTimeout: cfg.JupyterSessionIdle,
-		CPU:         cfg.JupyterSessionCPU,
-		Memory:      cfg.JupyterSessionMemory,
-		Pids:        cfg.JupyterSessionPIDs,
-		Network:     cfg.JupyterDockerNetwork,
+		MaxSessions:         cfg.JupyterMaxSessions,
+		MaxSessionsPerOwner: cfg.JupyterMaxSessionsPerOwner,
+		IdleTimeout:         cfg.JupyterSessionIdle,
+		CPU:                 cfg.JupyterSessionCPU,
+		Memory:              cfg.JupyterSessionMemory,
+		Pids:                cfg.JupyterSessionPIDs,
+		Network:             cfg.JupyterDockerNetwork,
 	}, containerRuntime, sessions.SystemClock{})
-	ticketSecret := os.Getenv("SESSION_TICKET_SECRET")
-	if ticketSecret == "" {
-		log.Fatal("SESSION_TICKET_SECRET is required")
-	}
-	tickets := proxy.NewTickets([]byte(ticketSecret), time.Now)
+	tickets := proxy.NewTickets([]byte(cfg.SessionTicketSecret), time.Now)
 	mux := http.NewServeMux()
 	api.NewWithSessions(fsStore, sessionManager, tickets, cfg.AllowedOrigins).Register(mux)
 
-	authn := auth.New(cfg.DevAuthRole, cfg.ClerkJWKSURL)
+	authn := auth.New(auth.Options{
+		DevRole:  cfg.DevAuthRole,
+		JWKSURL:  cfg.ClerkJWKSURL,
+		Issuer:   cfg.ClerkIssuer,
+		Audience: cfg.ClerkAudience,
+	})
 	handler := httpx.CORS(cfg.AllowedOrigins, authn.Middleware(mux))
 	go reapSessions(processCtx, sessionManager)
 
@@ -99,6 +112,11 @@ type shutdownServer interface {
 
 type sessionStopper interface {
 	StopAll(context.Context) error
+}
+
+type managedRuntime interface {
+	sessions.Runtime
+	RemoveStaleContainers(context.Context) error
 }
 
 func shutdownServices(server shutdownServer, sessions sessionStopper, timeout time.Duration) error {
