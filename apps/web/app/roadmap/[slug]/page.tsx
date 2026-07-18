@@ -17,9 +17,13 @@ export default async function RoadmapDetailPage({
   const { slug } = await params
   const isAuthenticated = await getIsAuthenticated()
 
-  const graph = await service.graphBySlug(slug, {
-    authenticated: isAuthenticated,
-  })
+  let graph
+  try {
+    graph = await service.graphBySlug(slug, { authenticated: isAuthenticated })
+  } catch {
+    // svc-api unreachable (e.g. Vercel deployment protection, cold-start timeout)
+    notFound()
+  }
   if (!graph) notFound()
 
   return (
