@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/lh222k/kernel-server/internal/profiles"
 	"github.com/lh222k/kernel-server/internal/sessions"
 )
 
@@ -19,15 +20,18 @@ type CommandRunner interface {
 	Run(ctx context.Context, name string, args ...string) ([]byte, error)
 }
 
-type Images struct {
-	DataScience string
-	MLCPU       string
-}
+type Images map[string]string
 
 func DefaultImages() Images {
 	return Images{
-		DataScience: "local/notebook-data-science:dev",
-		MLCPU:       "local/notebook-ml-cpu:dev",
+		profiles.DataScience: "local/notebook-data-science:dev",
+		profiles.MLCPU:       "local/notebook-ml-cpu:dev",
+		profiles.JavaScript:  "local/notebook-javascript:dev",
+		profiles.CPP:         "local/notebook-cpp:dev",
+		profiles.Java:        "local/notebook-java:dev",
+		profiles.Rust:        "local/notebook-rust:dev",
+		profiles.Go:          "local/notebook-go:dev",
+		profiles.Julia:       "local/notebook-julia:dev",
 	}
 }
 
@@ -251,15 +255,10 @@ func (r *DockerRuntime) RemoveStaleContainers(ctx context.Context) error {
 }
 
 func (r *DockerRuntime) imageFor(profile string) (string, error) {
-	var image string
-	switch profile {
-	case "data-science":
-		image = r.images.DataScience
-	case "ml-cpu":
-		image = r.images.MLCPU
-	default:
+	if !profiles.Valid(profile) {
 		return "", fmt.Errorf("unsupported runtime profile %q", profile)
 	}
+	image := strings.TrimSpace(r.images[profile])
 	if image == "" {
 		return "", fmt.Errorf("runtime image for profile %q is not configured", profile)
 	}

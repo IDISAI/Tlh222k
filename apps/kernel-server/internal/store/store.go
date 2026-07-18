@@ -14,6 +14,8 @@ import (
 	"sort"
 	"sync"
 	"time"
+
+	"github.com/lh222k/kernel-server/internal/profiles"
 )
 
 var ErrNotFound = errors.New("notebook not found")
@@ -32,10 +34,10 @@ type Meta struct {
 	RuntimeProfile string `json:"runtimeProfile"`
 }
 
-const DefaultRuntimeProfile = "data-science"
+const DefaultRuntimeProfile = profiles.DataScience
 
 func ValidRuntimeProfile(profile string) bool {
-	return profile == "data-science" || profile == "ml-cpu"
+	return profiles.Valid(profile)
 }
 
 type Store interface {

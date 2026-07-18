@@ -3,6 +3,7 @@ package broker
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -91,5 +92,54 @@ func TestServerUsesFixedPolicyAndRequiresInternalBearer(t *testing.T) {
 	var handle sessions.RuntimeHandle
 	if err := json.Unmarshal(recorder.Body.Bytes(), &handle); err != nil || handle.ID != "container-1" || handle.Token != "jupyter-token" {
 		t.Fatalf("response handle/error = %+v/%v", handle, err)
+	}
+}
+
+func TestServerAcceptsEveryRuntimeProfileWithFixedPolicy(t *testing.T) {
+	for _, profile := range []string{
+		"data-science",
+		"ml-cpu",
+		"javascript",
+		"cpp",
+		"java",
+		"rust",
+		"go",
+		"julia",
+	} {
+		t.Run(profile, func(t *testing.T) {
+			controller := &fakeController{}
+			handler := NewServer(
+				"0123456789abcdef0123456789abcdef",
+				controller,
+				Policy{CPU: "1", Memory: "2g", Pids: 128, Network: "notebook-internal"},
+			)
+			body := fmt.Sprintf(
+				`{"sessionId":"session-0123456789abcdef0123456789abcdef","profile":%q}`,
+				profile,
+			)
+			request := httptest.NewRequest(
+				http.MethodPost,
+				"/v1/sessions",
+				strings.NewReader(body),
+			)
+			request.Header.Set(
+				"Authorization",
+				"Bearer 0123456789abcdef0123456789abcdef",
+			)
+			recorder := httptest.NewRecorder()
+
+			handler.ServeHTTP(recorder, request)
+
+			if recorder.Code != http.StatusCreated {
+				t.Fatalf("status = %d, want 201: %s", recorder.Code, recorder.Body.String())
+			}
+			if controller.start.Profile != profile ||
+				controller.start.CPU != "1" ||
+				controller.start.Memory != "2g" ||
+				controller.start.Pids != 128 ||
+				controller.start.Network != "notebook-internal" {
+				t.Fatalf("start request = %+v, want profile plus fixed policy", controller.start)
+			}
+		})
 	}
 }
