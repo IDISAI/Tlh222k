@@ -14,6 +14,8 @@ import type { RuntimeCellState } from "../../runtime/use-notebook-runtime"
 
 interface EditableCellProps {
   cell: NotebookCell
+  /** Notebook language (nbformat); picks the code editor grammar. */
+  language?: string
   selected: boolean
   onSelect: () => void
   onDeselect?: () => void
@@ -31,6 +33,7 @@ interface EditableCellProps {
 /** One editable cell, Colab-style: run gutter + editor + hover toolbar. */
 export function EditableCell({
   cell,
+  language,
   selected,
   onSelect,
   onDeselect,
@@ -78,6 +81,7 @@ export function EditableCell({
           {isCode ? (
             <CodeCellEditor
               source={cell.source}
+              language={language}
               onChange={onChange}
               onFocus={onSelect}
               onRun={onRun}

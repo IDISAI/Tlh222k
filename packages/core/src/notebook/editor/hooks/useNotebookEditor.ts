@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 
 import type { CellType, Notebook, NotebookCell } from "../../types"
 import type { NotebookMeta, NotebookRecord } from "../../kernel/types"
+import { languageSpec } from "../../kernel/languages"
 import {
   changeCellType,
   deleteCell,
@@ -20,11 +21,15 @@ export type SaveState = "idle" | "dirty" | "saving" | "saved"
 export interface NotebookEditorApi {
   loading: boolean
   title: string
+  /** Notebook language (nbformat), e.g. "python", "javascript". */
+  language: string
   cells: NotebookCell[]
   selectedId: string | null
   saveState: SaveState
   error: string | null
   setTitle: (title: string) => void
+  /** Switch the notebook language: rewrites kernelspec + runtime profile. */
+  setLanguage: (language: string) => void
   select: (id: string | null) => void
   edit: (id: string, source: string) => void
   setType: (id: string, type: CellType) => void
@@ -189,6 +194,7 @@ export function useNotebookEditor(
   return {
     loading,
     title: record.notebook.title,
+    language: record.notebook.language,
     cells: record.notebook.cells,
     selectedId,
     saveState,
@@ -198,6 +204,34 @@ export function useNotebookEditor(
         { ...record, notebook: { ...record.notebook, title } },
         "edit:title"
       ),
+    setLanguage: (language) => {
+      const spec = languageSpec(language)
+      if (!spec) return
+      markDirty({
+        notebook: {
+          ...record.notebook,
+          language: spec.language,
+          metadata: {
+            ...record.notebook.metadata,
+            kernelspec: {
+              name: spec.kernelName,
+              display_name: spec.displayName,
+              language: spec.language,
+            },
+            language_info: { name: spec.language },
+          },
+        },
+        meta: {
+          ...record.meta,
+          runtimeProfile:
+            spec.language === "python"
+              ? record.meta.runtimeProfile === "ml-cpu"
+                ? "ml-cpu"
+                : "data-science"
+              : spec.profile,
+        },
+      })
+    },
     select: setSelectedId,
     edit: (id, source) =>
       patchCells(updateSource(record.notebook.cells, id, source), `edit:${id}`),

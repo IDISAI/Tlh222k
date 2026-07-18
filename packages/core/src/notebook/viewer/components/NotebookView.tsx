@@ -49,6 +49,7 @@ export function NotebookView({
           <CellRenderer
             key={cell.id}
             cell={cell}
+            language={notebook.language}
           />
         ))}
       </article>

@@ -3,7 +3,8 @@
 // can keep an undo history. Kept framework-agnostic so it is trivially testable.
 
 import type { CellType, Notebook, NotebookCell } from "../types"
-import type { NotebookMeta, NotebookRecord, RuntimeProfile } from "../kernel/types"
+import type { NotebookMeta, NotebookRecord } from "../kernel/types"
+import { isRuntimeProfile } from "../kernel/languages"
 
 let idCounter = 0
 
@@ -59,9 +60,7 @@ export function emptyNotebookRecord(
   return { notebook: emptyNotebook(title), meta: createNotebookMeta(meta) }
 }
 
-export function isRuntimeProfile(value: string): value is RuntimeProfile {
-  return value === "data-science" || value === "ml-cpu"
-}
+export { isRuntimeProfile }
 
 const indexOf = (cells: NotebookCell[], id: string) =>
   cells.findIndex((c) => c.id === id)

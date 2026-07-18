@@ -1,7 +1,18 @@
-// Tiny regex tokenizer for Python code cells — enough for the Kaggle-style
-// viewer (keywords / strings / comments / numbers / builtins) without pulling
-// a highlighter dependency. Output is a token array rendered as React spans,
-// never innerHTML.
+// Static syntax highlighting for read-only code cells. Reuses the Lezer
+// parsers that already ship with the CodeMirror editor deps, so viewer and
+// editor highlight identically without a second highlighter dependency.
+// Output is a token array rendered as React spans, never innerHTML.
+
+import { classHighlighter, highlightCode } from "@lezer/highlight"
+import { cppLanguage } from "@codemirror/lang-cpp"
+import { goLanguage } from "@codemirror/lang-go"
+import { javaLanguage } from "@codemirror/lang-java"
+import { javascriptLanguage } from "@codemirror/lang-javascript"
+import { pythonLanguage } from "@codemirror/lang-python"
+import { rustLanguage } from "@codemirror/lang-rust"
+import { juliaLanguage } from "@plutojl/lang-julia"
+
+import type { NotebookLanguage } from "../kernel/languages"
 
 export interface CodeToken {
   text: string
@@ -9,53 +20,48 @@ export interface CodeToken {
   type: string
 }
 
-const KEYWORDS = new Set([
-  "False", "None", "True", "and", "as", "assert", "async", "await", "break",
-  "class", "continue", "def", "del", "elif", "else", "except", "finally",
-  "for", "from", "global", "if", "import", "in", "is", "lambda", "nonlocal",
-  "not", "or", "pass", "raise", "return", "try", "while", "with", "yield",
-])
+// Viewer uses the same language packages as the editable CodeMirror cells.
+const PARSERS: Partial<
+  Record<NotebookLanguage, typeof pythonLanguage.parser>
+> = {
+  python: pythonLanguage.parser,
+  javascript: javascriptLanguage.parser,
+  cpp: cppLanguage.parser,
+  java: javaLanguage.parser,
+  rust: rustLanguage.parser,
+  go: goLanguage.parser,
+  julia: juliaLanguage.parser,
+}
 
-const BUILTINS = new Set([
-  "print", "len", "range", "int", "float", "str", "list", "dict", "set",
-  "tuple", "type", "input", "round", "abs", "min", "max", "sum", "sorted",
-  "enumerate", "zip", "open", "isinstance", "super", "map", "filter",
-])
+/** classHighlighter emits "tok-*" class lists; fold them onto our palette. */
+function tokenType(classes: string): string {
+  if (!classes) return ""
+  if (classes.includes("comment")) return "com"
+  if (classes.includes("string")) return "str"
+  if (classes.includes("keyword")) return "kw"
+  if (classes.includes("number")) return "num"
+  if (classes.includes("operator")) return "op"
+  if (
+    classes.includes("typeName") ||
+    classes.includes("className") ||
+    classes.includes("variableName2") // builtins (e.g. Python's print)
+  ) {
+    return "fn"
+  }
+  return ""
+}
 
-const TOKEN_PATTERN = new RegExp(
-  [
-    /(#[^\n]*)/.source, // 1 comment
-    /("""[\s\S]*?"""|'''[\s\S]*?'''|"(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*')/
-      .source, // 2 string
-    /\b(\d+\.?\d*(?:[eE][+-]?\d+)?)\b/.source, // 3 number
-    /\b([A-Za-z_][A-Za-z0-9_]*)\b/.source, // 4 identifier
-    /([+\-*/%=<>!&|^~@]+)/.source, // 5 operator
-  ].join("|"),
-  "g"
-)
-
-export function tokenizePython(code: string): CodeToken[] {
+/** Tokenize source for a notebook language; unknown languages → plain text. */
+export function tokenizeCode(code: string, language: string): CodeToken[] {
+  const parser = PARSERS[language as NotebookLanguage]
+  if (!parser) return [{ text: code, type: "" }]
   const tokens: CodeToken[] = []
-  let lastIndex = 0
-
-  for (const match of code.matchAll(TOKEN_PATTERN)) {
-    if (match.index > lastIndex) {
-      tokens.push({ text: code.slice(lastIndex, match.index), type: "" })
-    }
-    lastIndex = match.index + match[0].length
-
-    const [, comment, string, number, ident, op] = match
-    if (comment !== undefined) tokens.push({ text: comment, type: "com" })
-    else if (string !== undefined) tokens.push({ text: string, type: "str" })
-    else if (number !== undefined) tokens.push({ text: number, type: "num" })
-    else if (ident !== undefined) {
-      if (KEYWORDS.has(ident)) tokens.push({ text: ident, type: "kw" })
-      else if (BUILTINS.has(ident)) tokens.push({ text: ident, type: "fn" })
-      else tokens.push({ text: ident, type: "" })
-    } else if (op !== undefined) tokens.push({ text: op, type: "op" })
-  }
-  if (lastIndex < code.length) {
-    tokens.push({ text: code.slice(lastIndex), type: "" })
-  }
+  highlightCode(
+    code,
+    parser.parse(code),
+    classHighlighter,
+    (text, classes) => tokens.push({ text, type: tokenType(classes) }),
+    () => tokens.push({ text: "\n", type: "" })
+  )
   return tokens
 }

@@ -47,3 +47,36 @@ describe("useNotebookEditor persistence errors", () => {
     expect(result.current.error).toBe("save failed")
   })
 })
+
+describe("useNotebookEditor language metadata", () => {
+  it("rewrites kernelspec, language_info, and runtime profile", () => {
+    const { result } = renderHook(() =>
+      useNotebookEditor("demo", storeWith(), null)
+    )
+
+    act(() => result.current.setLanguage("rust"))
+
+    expect(result.current.language).toBe("rust")
+    expect(result.current.snapshot().metadata).toMatchObject({
+      kernelspec: {
+        name: "evcxr",
+        display_name: "Rust (evcxr)",
+        language: "rust",
+      },
+      language_info: { name: "rust" },
+    })
+    expect(result.current.meta.runtimeProfile).toBe("rust")
+  })
+
+  it("ignores unsupported language values", () => {
+    const { result } = renderHook(() =>
+      useNotebookEditor("demo", storeWith(), null)
+    )
+    const before = result.current.snapshot()
+
+    act(() => result.current.setLanguage("brainfuck"))
+
+    expect(result.current.snapshot()).toEqual(before)
+    expect(result.current.saveState).toBe("idle")
+  })
+})

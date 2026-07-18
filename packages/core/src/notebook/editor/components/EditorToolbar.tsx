@@ -20,13 +20,24 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@workspace/ui/components/popover"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@workspace/ui/components/select"
 import { cn } from "@workspace/ui/lib/utils"
 
-import type { KernelStatus } from "../../kernel"
+import { LANGUAGES, type KernelStatus } from "../../kernel"
 import type { SaveState } from "../hooks/useNotebookEditor"
 
 interface EditorToolbarProps {
   saveState: SaveState
+  /** Notebook language (nbformat); shown in the language selector. */
+  language?: string
+  /** Switches the notebook language (rewrites kernelspec + profile). */
+  onLanguageChange?: (language: string) => void
   onAddCode: () => void
   onAddMarkdown: () => void
   onDownload: () => void
@@ -64,6 +75,8 @@ const KERNEL_LABEL: Record<KernelStatus, string> = {
 /** Editor top bar. Run All requires a kernel (signed-in + kernel-server configured). */
 export function EditorToolbar({
   saveState,
+  language,
+  onLanguageChange,
   onAddCode,
   onAddMarkdown,
   onDownload,
@@ -135,6 +148,31 @@ export function EditorToolbar({
       </Button>
 
       <div className="mx-1 h-5 w-px bg-border" />
+
+      {language && onLanguageChange && (
+        <>
+          <Select
+            value={language}
+            onValueChange={(value) => onLanguageChange(String(value))}
+          >
+            <SelectTrigger
+              size="sm"
+              title="Ngôn ngữ của notebook (mỗi notebook một ngôn ngữ)"
+              aria-label="Ngôn ngữ notebook"
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {LANGUAGES.map((spec) => (
+                <SelectItem key={spec.language} value={spec.language}>
+                  {spec.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <div className="mx-1 h-5 w-px bg-border" />
+        </>
+      )}
 
       <Button
         type="button"

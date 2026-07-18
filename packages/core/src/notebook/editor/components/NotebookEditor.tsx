@@ -11,6 +11,7 @@ import {
   JupyterSandboxAdapter,
   PyodideKernelAdapter,
   SandboxSessionClient,
+  profileForNotebook,
 } from "../../kernel"
 import { useNotebookRuntime } from "../../runtime/use-notebook-runtime"
 import {
@@ -79,18 +80,23 @@ export function NotebookEditor({
     [store, getToken, apiBaseUrl]
   )
   const editor = useNotebookEditor(slug, notebookStore, initial, defaultTitle)
-  const snapshot = useMemo(() => editor.snapshot(), [editor.cells, editor.title])
+  const snapshot = useMemo(
+    () => editor.snapshot(),
+    [editor.cells, editor.title, editor.language]
+  )
+  // Non-Python languages need the kernel-server; Pyodide only runs Python.
+  const profile = profileForNotebook(editor.language, editor.meta.runtimeProfile)
   const adapter = useMemo(
     () =>
-      KERNEL_SERVER_URL && getToken
+      KERNEL_SERVER_URL && getToken && profile
         ? new JupyterSandboxAdapter(
             new SandboxSessionClient(KERNEL_SERVER_URL, getToken),
-            "data-science"
+            profile
           )
-        : createKernelWorker
+        : createKernelWorker && editor.language === "python"
           ? new PyodideKernelAdapter(createKernelWorker)
           : null,
-    [getToken, createKernelWorker]
+    [getToken, createKernelWorker, profile, editor.language]
   )
   const runtime = useNotebookRuntime(snapshot, adapter)
 
@@ -155,6 +161,8 @@ export function NotebookEditor({
 
       <EditorToolbar
         saveState={editor.saveState}
+        language={editor.language}
+        onLanguageChange={editor.setLanguage}
         onAddCode={() => editor.insert(editor.selectedId, "below", "code")}
         onAddMarkdown={() =>
           editor.insert(editor.selectedId, "below", "markdown")
@@ -197,6 +205,7 @@ export function NotebookEditor({
           <Fragment key={cell.id}>
             <EditableCell
               cell={cell}
+              language={editor.language}
               selected={editor.selectedId === cell.id}
               onSelect={() => editor.select(cell.id)}
               onDeselect={() => editor.select(null)}
