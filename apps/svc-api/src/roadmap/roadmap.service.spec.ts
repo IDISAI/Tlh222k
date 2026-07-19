@@ -36,6 +36,7 @@ function harness() {
       findMany: vi.fn(),
       count: vi.fn(async () => 0),
       update: vi.fn(),
+      updateMany: vi.fn(),
     },
     document: {
       updateMany: vi.fn(),
@@ -118,6 +119,53 @@ describe("RoadmapService tree integrity", () => {
       timeout: 10_000,
       isolationLevel: "Serializable",
     })
+  })
+
+  it("moves a node into another roadmap and detaches its children", async () => {
+    const { service, tx, events } = harness()
+    const moved = node("moved", "roadmap-b")
+    tx.node.findUnique.mockResolvedValue(moved)
+    tx.node.update.mockResolvedValue({
+      ...moved,
+      roadmapId: "roadmap-a",
+      parentId: null,
+      positionX: 10,
+      positionY: 20,
+    })
+
+    const result = await service.moveNode("moved", "roadmap-a", 10, 20, admin)
+
+    expect(tx.node.updateMany).toHaveBeenCalledWith({
+      where: { parentId: "moved" },
+      data: { parentId: null },
+    })
+    expect(tx.node.update).toHaveBeenCalledWith({
+      where: { id: "moved" },
+      data: {
+        roadmapId: "roadmap-a",
+        parentId: null,
+        positionX: 10,
+        positionY: 20,
+        order: 0,
+      },
+    })
+    expect(result.roadmapId).toBe("roadmap-a")
+    // Both the source and the target roadmap get an update event.
+    expect(events.emit).toHaveBeenCalledWith("roadmap-b")
+    expect(events.emit).toHaveBeenCalledWith("roadmap-a")
+  })
+
+  it("refuses to move a deleted node", async () => {
+    const { service, tx } = harness()
+    tx.node.findUnique.mockResolvedValue({
+      ...node("ghost", "roadmap-b"),
+      isDeleted: true,
+    })
+
+    await expect(
+      service.moveNode("ghost", "roadmap-a", 0, 0, admin)
+    ).rejects.toMatchObject({ extensions: { code: "NOT_FOUND" } })
+    expect(tx.node.update).not.toHaveBeenCalled()
   })
 
   it("maps Prisma interactive transaction timeout to domain timeout", async () => {

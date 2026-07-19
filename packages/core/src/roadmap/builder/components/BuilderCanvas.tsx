@@ -206,12 +206,19 @@ function BuilderCanvasInner({
     [canvas]
   )
 
-  /** Delete key / RF removal → canvas-only removal (Req 3.3). */
-  const onNodesDelete = useCallback(
-    (deleted: Node[]) => {
-      canvas.removeFromCanvas(deleted.map((n) => n.id))
-    },
-    [canvas]
+  /**
+   * Delete key: edges only. Node removal is vetoed — a node cannot leave the
+   * canvas while staying in the system (Node.roadmapId is required); permanent
+   * deletion lives exclusively in the sidebar.
+   */
+  const onBeforeDelete = useCallback(
+    async ({
+      edges,
+    }: {
+      nodes: BuilderFlowNode[]
+      edges: ChildCountEdge[]
+    }) => ({ nodes: [] as BuilderFlowNode[], edges }),
+    []
   )
 
   const onEdgesDelete = useCallback(
@@ -392,7 +399,7 @@ function BuilderCanvasInner({
           onConnect={onConnect}
           onNodeDragStart={onNodeDragStart}
           onNodeDragStop={onNodeDragStop}
-          onNodesDelete={onNodesDelete}
+          onBeforeDelete={onBeforeDelete}
           onEdgesDelete={onEdgesDelete}
           onPaneContextMenu={onPaneContextMenu}
           onNodeContextMenu={onNodeContextMenu}
@@ -427,7 +434,6 @@ function BuilderCanvasInner({
           onClose={() => setCtxMenu(null)}
           onEdit={setEditNode}
           onAddChild={handleAddChild}
-          onRemoveFromCanvas={(node) => canvas.removeFromCanvas([node.id])}
         />
       )}
 
@@ -436,7 +442,6 @@ function BuilderCanvasInner({
         nodes={canvas.nodes}
         onClose={() => setDetailNode(null)}
         onEdit={setEditNode}
-        onRemoveFromCanvas={(node) => canvas.removeFromCanvas([node.id])}
         builderBasePath="/roadmaps"
       />
 

@@ -66,6 +66,27 @@ export function CreateRoadmapDialog({
         },
         role
       )
+      // Seed the canvas with a root node named after the roadmap so the
+      // builder never opens empty. Best-effort: a failed seed must not block
+      // the redirect into the new roadmap.
+      await service
+        .createNode(
+          {
+            roadmapId: roadmap.id,
+            parentId: null,
+            title: roadmap.title,
+            nodeType: "role",
+            positionX: 0,
+            positionY: 0,
+          },
+          role
+        )
+        .catch((err) => {
+          console.error("[roadmap-builder] seed node failed", {
+            roadmapId: roadmap.id,
+            err,
+          })
+        })
       toast.success("Đã tạo roadmap mới")
       onCreated(roadmap)
     } catch (err) {

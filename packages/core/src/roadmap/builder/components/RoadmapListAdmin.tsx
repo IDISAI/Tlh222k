@@ -51,6 +51,13 @@ export function RoadmapListAdmin({
   const [showCreate, setShowCreate] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<Roadmap | null>(null)
 
+  // `builderBasePath` is computed at build time from NODE_ENV, which breaks
+  // navigation when the zone is reached through the other access mode (dev via
+  // the multi-zone host, prod via the direct admin domain). The list page IS
+  // the builder base, so derive the target from the current URL instead.
+  const builderHref = (id: string) =>
+    `${window.location.pathname.replace(/\/+$/, "")}/${id}`
+
   const load = useCallback(async () => {
     try {
       setRoadmaps(await service.listAdmin(role))
@@ -133,7 +140,7 @@ export function RoadmapListAdmin({
                   className="cursor-pointer"
                   // Row click opens the builder/detail page (item: click roadmap → detail).
                   onClick={() => {
-                    window.location.href = `${builderBasePath}/${roadmap.id}`
+                    window.location.href = builderHref(roadmap.id)
                   }}
                 >
                   <TableCell className="font-medium">
@@ -222,7 +229,7 @@ export function RoadmapListAdmin({
           onClose={() => setShowCreate(false)}
           onCreated={(roadmap) => {
             setShowCreate(false)
-            window.location.href = `${builderBasePath}/${roadmap.id}`
+            window.location.href = builderHref(roadmap.id)
           }}
         />
       )}

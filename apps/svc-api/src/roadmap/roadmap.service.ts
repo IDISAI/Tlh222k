@@ -218,7 +218,7 @@ export class RoadmapService {
     )
   }
 
-  /** Builder graph by id — includes soft-deleted ghost nodes (Req 4.4). */
+  /** Builder graph by id. Deleted nodes never render — no ghost nodes. */
   async roadmapGraphById(
     id: string,
     user: CurrentUser | null
@@ -232,7 +232,7 @@ export class RoadmapService {
     })
     if (!roadmap) return null
     const nodes = await this.prisma.node.findMany({
-      where: { roadmapId: id },
+      where: { roadmapId: id, isDeleted: false },
       orderBy: { order: "asc" },
     })
     return this.buildGraph(
@@ -509,6 +509,43 @@ export class RoadmapService {
     })
     await this.events.emit(node.roadmapId)
     return true
+  }
+
+  /**
+   * Move a node into another roadmap (sidebar drag-drop). No clone: the node
+   * keeps its identity, slug and linked resources — it just changes owner.
+   * Children left behind in the source roadmap are detached so no edge ever
+   * crosses roadmaps.
+   */
+  async moveNode(
+    nodeId: string,
+    roadmapId: string,
+    positionX: number,
+    positionY: number,
+    user: CurrentUser | null
+  ): Promise<NodeDto> {
+    assertCanWrite(user)
+    let sourceRoadmapId = ""
+    const moved = await this.prisma.$transaction(async (tx) => {
+      const node = await tx.node.findUnique({ where: { id: nodeId } })
+      if (!node || node.isDeleted) throw new RoadmapError("NOT_FOUND")
+      const target = await tx.roadmap.findUnique({ where: { id: roadmapId } })
+      if (!target) throw new RoadmapError("NOT_FOUND")
+      sourceRoadmapId = node.roadmapId
+
+      await tx.node.updateMany({
+        where: { parentId: nodeId },
+        data: { parentId: null },
+      })
+      const order = await tx.node.count({ where: { roadmapId } })
+      return tx.node.update({
+        where: { id: nodeId },
+        data: { roadmapId, parentId: null, positionX, positionY, order },
+      })
+    }, TREE_TRANSACTION_OPTIONS)
+    await this.events.emit(sourceRoadmapId)
+    if (sourceRoadmapId !== roadmapId) await this.events.emit(roadmapId)
+    return this.toNodeDto(moved, "locked", 0)
   }
 
   /** Batch replace the roadmap's active nodes (positions + parent links). */

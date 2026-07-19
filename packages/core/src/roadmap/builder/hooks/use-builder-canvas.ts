@@ -151,26 +151,6 @@ export function useBuilderCanvas(
   )
 
   /**
-   * Remove nodes from the canvas only — the system copy survives and shows up
-   * again in the sidebar (Req 3.3 Delete / Req 4.5 "Xóa khỏi Canvas").
-   */
-  const removeFromCanvas = useCallback(
-    (ids: string[]) => {
-      pushHistory()
-      const doomed = new Set(ids)
-      setNodes((prev) =>
-        prev
-          .filter((n) => !doomed.has(n.id))
-          .map((n) =>
-            n.parentId && doomed.has(n.parentId) ? { ...n, parentId: null } : n
-          )
-      )
-      setIsDirty(true)
-    },
-    [pushHistory]
-  )
-
-  /**
    * Create in the system and place on the canvas selected (Req 3.1/3.2).
    *
    * Post-create side effects (notion-article-node spec):
@@ -256,6 +236,27 @@ export function useBuilderCanvas(
             "Không thể tạo roadmap. Node đã được tạo nhưng chưa được liên kết với roadmap."
           )
         } else {
+          // Seed the linked roadmap with a root node mirroring the source
+          // node (same title, same type) so its builder never opens empty.
+          // Best-effort: the roadmap and the link matter more than the seed.
+          await service
+            .createNode(
+              {
+                roadmapId: roadmap.id,
+                parentId: null,
+                title: node.title,
+                nodeType: input.nodeType,
+                positionX: 0,
+                positionY: 0,
+              },
+              role
+            )
+            .catch((error) => {
+              console.error("[roadmap-builder] seed node failed", {
+                roadmapId: roadmap.id,
+                error,
+              })
+            })
           try {
             await service.updateNode(
               node.id,
@@ -292,27 +293,24 @@ export function useBuilderCanvas(
   /**
    * Drop an existing sidebar node onto the canvas (Req 3.4).
    *
-   * A node has a single `roadmapId`, so a node belonging to ANOTHER roadmap
-   * can't merely be referenced here — dropping it CLONES it into this roadmap
-   * (its source roadmap keeps the original). Without this, "saving" placed the
-   * foreign node's position but never associated it, so the roadmap stayed
-   * empty on the web viewer (the AI-Engineer "0 nodes" desync). Nodes that
-   * already belong to this roadmap are just re-attached locally.
+   * A node belonging to ANOTHER roadmap is MOVED into this one (single owner:
+   * `Node.roadmapId`). No clone, no side effects — the node keeps its
+   * identity, slug and linked resources; the source roadmap loses it and its
+   * children there are detached server-side. Nodes that already belong to
+   * this roadmap are just re-attached locally.
    */
   const addExistingToCanvas = useCallback(
     async (node: RoadmapNode, position: { x: number; y: number }) => {
       if (node.roadmapId !== roadmapId) {
-        await createNode({
-          nodeType: node.nodeType,
-          title: node.title,
-          description: node.description ?? undefined,
-          articleType: node.articleType ?? undefined,
-          notionPageId: node.notionPageId ?? undefined,
-          jupyterUrl: node.jupyterUrl ?? undefined,
-          parentId: null,
-          positionX: position.x,
-          positionY: position.y,
-        })
+        try {
+          const moved = await service.moveNode(node.id, roadmapId, position, role)
+          pushHistory()
+          setNodes((prev) => [...prev, moved])
+          void refreshAllNodes()
+          toast.success("Đã chuyển node vào roadmap này")
+        } catch (error) {
+          toast.error(serviceErrorMessage(error))
+        }
         return
       }
       pushHistory()
@@ -330,7 +328,7 @@ export function useBuilderCanvas(
       ])
       setIsDirty(true)
     },
-    [roadmapId, createNode, pushHistory]
+    [roadmapId, service, role, pushHistory, refreshAllNodes]
   )
 
   /**
@@ -397,12 +395,11 @@ export function useBuilderCanvas(
   )
 
   /**
-   * Permanent system delete (Req 4.3). The node and its descendants become
-   * Disabled_Node ghosts on the canvas unless `removeSelf` strips the root
-   * (NodeDetailDialog's "Xóa" — Req 7.2).
+   * Permanent system delete (Req 4.3). The node and its descendants disappear
+   * from the canvas immediately — deleted nodes are never rendered as ghosts.
    */
   const deleteNodePermanent = useCallback(
-    async (id: string, opts: { removeSelf?: boolean } = {}): Promise<boolean> => {
+    async (id: string): Promise<boolean> => {
       try {
         await service.deleteNode(id, role)
         // Cascade set computed over the whole system, not just this canvas.
@@ -417,11 +414,7 @@ export function useBuilderCanvas(
             }
           }
         }
-        setNodes((prev) =>
-          prev
-            .filter((n) => !(opts.removeSelf && n.id === id))
-            .map((n) => (doomed.has(n.id) ? { ...n, isDeleted: true } : n))
-        )
+        setNodes((prev) => prev.filter((n) => !doomed.has(n.id)))
         void refreshAllNodes()
         toast.success(TOAST_MESSAGES.DELETE_SUCCESS)
         return true
@@ -492,7 +485,6 @@ export function useBuilderCanvas(
     applyNodePatch,
     reparent,
     addExistingToCanvas,
-    removeFromCanvas,
     createNode,
     updateNodeMeta,
     deleteNodePermanent,

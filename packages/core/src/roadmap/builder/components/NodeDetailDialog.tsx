@@ -1,6 +1,6 @@
 "use client"
 
-import { AlertTriangle, Eraser, ExternalLink, PencilLine } from "lucide-react"
+import { AlertTriangle, ExternalLink, PencilLine } from "lucide-react"
 import { Badge } from "@workspace/ui/components/badge"
 import { Button } from "@workspace/ui/components/button"
 import { Label } from "@workspace/ui/components/label"
@@ -28,9 +28,7 @@ interface NodeDetailDialogProps {
   onClose: () => void
   /** Omitted / ignored in read-only (viewer) mode. */
   onEdit?: (node: RoadmapNode) => void
-  /** Canvas "delete" only takes the node off the canvas → back to Kho Node. */
-  onRemoveFromCanvas?: (node: RoadmapNode) => void
-  /** Viewer mode: hide the edit / remove actions, keep only "Điều hướng". */
+  /** Viewer mode: hide the edit action, keep only "Điều hướng". */
   readOnly?: boolean
   /**
    * Base path for INTERNAL Jupyter articles. Web (viewers) → "/learn"
@@ -63,7 +61,6 @@ export function NodeDetailDialog({
   nodes,
   onClose,
   onEdit,
-  onRemoveFromCanvas,
   readOnly = false,
   notebookBasePath = "/notebooks",
   notionBasePath = "/notion",
@@ -180,30 +177,16 @@ export function NodeDetailDialog({
             <ExternalLink className="size-4" /> Điều hướng
           </Button>
           {!readOnly && (
-            <>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => {
-                  onClose()
-                  onEdit?.(node)
-                }}
-              >
-                <PencilLine className="size-4" /> Chỉnh sửa
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => {
-                  // Canvas delete = remove from canvas (node returns to Kho
-                  // Node). Permanent deletion lives only in the sidebar.
-                  onClose()
-                  onRemoveFromCanvas?.(node)
-                }}
-              >
-                <Eraser className="size-4" /> Xóa khỏi Canvas
-              </Button>
-            </>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                onClose()
+                onEdit?.(node)
+              }}
+            >
+              <PencilLine className="size-4" /> Chỉnh sửa
+            </Button>
           )}
         </SheetFooter>
       </SheetContent>

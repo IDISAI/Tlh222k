@@ -160,6 +160,23 @@ export class RoadmapApi {
     return data.deleteNode
   }
 
+  async moveNode(
+    nodeId: string,
+    roadmapId: string,
+    position: { x: number; y: number },
+    _callerRole: CallerRole
+  ): Promise<RoadmapNode> {
+    const data = await gql<{ moveNode: RoadmapNode }>(
+      `mutation ($nodeId: ID!, $roadmapId: ID!, $positionX: Float!, $positionY: Float!) {
+         moveNode(nodeId: $nodeId, roadmapId: $roadmapId, positionX: $positionX, positionY: $positionY) {
+           ${NODE_FIELDS}
+         }
+       }`,
+      { nodeId, roadmapId, positionX: position.x, positionY: position.y }
+    )
+    return data.moveNode
+  }
+
   async saveRoadmap(
     roadmapId: string,
     nodes: RoadmapNode[],

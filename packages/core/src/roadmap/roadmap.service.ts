@@ -142,8 +142,8 @@ export class RoadmapService {
   }
 
   /**
-   * Builder graph by roadmap id — includes soft-deleted nodes so the canvas
-   * can render them as Disabled_Node (Req 4.4).
+   * Builder graph by roadmap id. Soft-deleted nodes are excluded — they never
+   * render on the canvas, not even as disabled ghosts.
    * ponytail: → `roadmapGraphById(id)` query
    */
   async graphById(
@@ -155,7 +155,7 @@ export class RoadmapService {
     const roadmap = getStore().roadmaps.find((r) => r.id === id)
     if (!roadmap) return null
     const nodes = getStore()
-      .nodes.filter((n) => n.roadmapId === id)
+      .nodes.filter((n) => n.roadmapId === id && !n.isDeleted)
       .map((n) => ({ ...n }))
     return { roadmap, nodes }
   }
@@ -313,6 +313,40 @@ export class RoadmapService {
 
     persistStore()
     emitRoadmapUpdate(node.roadmapId)
+    return { ...node }
+  }
+
+  /**
+   * Move a node into another roadmap (sidebar drag-drop). No clone: the node
+   * keeps its identity and slug — it just changes owner. Children left behind
+   * in the source roadmap are detached.
+   */
+  // ponytail: → `moveNode` mutation
+  async moveNode(
+    nodeId: string,
+    roadmapId: string,
+    position: { x: number; y: number },
+    callerRole: CallerRole
+  ): Promise<RoadmapNode> {
+    assertCanWrite(callerRole)
+    await delay()
+    const store = getStore()
+    const node = store.nodes.find((n) => n.id === nodeId)
+    if (!node || node.isDeleted) throw new RoadmapServiceError("NOT_FOUND")
+    const target = store.roadmaps.find((r) => r.id === roadmapId)
+    if (!target) throw new RoadmapServiceError("NOT_FOUND")
+    const sourceRoadmapId = node.roadmapId
+
+    for (const n of store.nodes) {
+      if (n.parentId === nodeId) n.parentId = null
+    }
+    node.roadmapId = roadmapId
+    node.parentId = null
+    node.positionX = position.x
+    node.positionY = position.y
+    persistStore()
+    emitRoadmapUpdate(sourceRoadmapId)
+    if (sourceRoadmapId !== roadmapId) emitRoadmapUpdate(roadmapId)
     return { ...node }
   }
 

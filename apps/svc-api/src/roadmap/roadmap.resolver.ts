@@ -107,6 +107,17 @@ export class RoadmapResolver {
     return this.service.deleteNode(id, user)
   }
 
+  @Mutation("moveNode")
+  moveNode(
+    @Args("nodeId") nodeId: string,
+    @Args("roadmapId") roadmapId: string,
+    @Args("positionX") positionX: number,
+    @Args("positionY") positionY: number,
+    @CurrentUser() user: CurrentUserType | null
+  ) {
+    return this.service.moveNode(nodeId, roadmapId, positionX, positionY, user)
+  }
+
   @Mutation("saveRoadmap")
   saveRoadmap(
     @Args("roadmapId") roadmapId: string,

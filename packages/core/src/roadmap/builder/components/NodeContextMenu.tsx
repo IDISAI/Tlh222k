@@ -1,6 +1,6 @@
 "use client"
 
-import { Eraser, PencilLine, Plus } from "lucide-react"
+import { PencilLine, Plus } from "lucide-react"
 
 import type { RoadmapNode } from "../../types"
 import { allowedChildTypes } from "../../utils/validate-hierarchy"
@@ -12,13 +12,12 @@ interface NodeContextMenuProps {
   onClose: () => void
   onEdit: (node: RoadmapNode) => void
   onAddChild: (node: RoadmapNode) => void
-  onRemoveFromCanvas: (node: RoadmapNode) => void
 }
 
 /**
- * Right-click menu on a canvas node. Removing a node here only takes it off the
- * canvas (it returns to the "Kho Node" sidebar) — permanent deletion lives
- * exclusively in the sidebar. Disabled_Node ghosts only offer "Xóa khỏi Canvas".
+ * Right-click menu on a canvas node. Permanent deletion lives exclusively in
+ * the sidebar — a node cannot be taken off the canvas while staying in the
+ * system (Node.roadmapId is required), so no "remove from canvas" item.
  */
 export function NodeContextMenu({
   node,
@@ -27,7 +26,6 @@ export function NodeContextMenu({
   onClose,
   onEdit,
   onAddChild,
-  onRemoveFromCanvas,
 }: NodeContextMenuProps) {
   const left = Math.max(8, Math.min(screenX, window.innerWidth - 228))
   const top = Math.max(8, Math.min(screenY, window.innerHeight - 180))
@@ -51,52 +49,27 @@ export function NodeContextMenu({
         className="fixed z-50 w-[220px] rounded-xl border bg-popover p-1.5 text-popover-foreground shadow-xl"
         style={{ left, top }}
       >
-        {node.isDeleted ? (
+        <button
+          type="button"
+          className={item}
+          onClick={() => {
+            onEdit(node)
+            onClose()
+          }}
+        >
+          <PencilLine className="size-4" /> Chỉnh sửa
+        </button>
+        {canHaveChildren && (
           <button
             type="button"
             className={item}
             onClick={() => {
-              onRemoveFromCanvas(node)
+              onAddChild(node)
               onClose()
             }}
           >
-            <Eraser className="size-4" /> Xóa khỏi Canvas
+            <Plus className="size-4" /> Thêm node con
           </button>
-        ) : (
-          <>
-            <button
-              type="button"
-              className={item}
-              onClick={() => {
-                onEdit(node)
-                onClose()
-              }}
-            >
-              <PencilLine className="size-4" /> Chỉnh sửa
-            </button>
-            {canHaveChildren && (
-              <button
-                type="button"
-                className={item}
-                onClick={() => {
-                  onAddChild(node)
-                  onClose()
-                }}
-              >
-                <Plus className="size-4" /> Thêm node con
-              </button>
-            )}
-            <button
-              type="button"
-              className={item}
-              onClick={() => {
-                onRemoveFromCanvas(node)
-                onClose()
-              }}
-            >
-              <Eraser className="size-4" /> Xóa khỏi Canvas
-            </button>
-          </>
         )}
       </div>
     </>
