@@ -296,7 +296,7 @@ export function BuilderPage({
               type="button"
               variant="ghost"
               size="icon-sm"
-              title="Mở Kho Node"
+              title="Mở Kho Roadmap"
               onClick={() => setSidebarOpen(true)}
             >
               <PanelLeftOpen className="size-4" />

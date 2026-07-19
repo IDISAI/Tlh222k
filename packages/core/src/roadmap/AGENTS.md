@@ -11,9 +11,9 @@ Feature `roadmap` của domain logic, sống **inline** trong monorepo `IDISAI/T
 
 **Node role/skill CHÍNH LÀ roadmap** — một record duy nhất. Đây là model hiện hành, **thay thế** các spec cũ trong `.kiro` (đặc biệt notion-article-node Req 11 và "Xóa khỏi Canvas"/Disabled_Node của roadmap-builder-admin). Chi tiết đầy đủ ở `CLAUDE.md` mục "Roadmap builder model". Tóm tắt:
 
-- Tạo node role/skill KHÔNG tự sinh Roadmap riêng, không seed node gốc.
+- **Kho Node sidebar = Kho Roadmap**: `NodeSidebar` và bảng `RoadmapListAdmin` liệt kê CÙNG tập = mọi role/skill node (mỗi cái là 1 roadmap). Sidebar chỉ hiện role/skill.
+- Tạo child node role/skill trên canvas KHÔNG tự sinh Roadmap riêng, không seed. Nhưng dialog "Tạo roadmap mới" (có ô chọn role/skill) tạo 1 Roadmap container + root node loại đó — root node đó CHÍNH LÀ roadmap trên canvas + trong kho.
 - Detail của node role/skill = rooted view cùng cây: `/roadmaps/{roadmapId}?node={nodeId}` (node + con cháu). `BuilderPage` nhận `rootNodeId`.
 - `nodeNavigationUrl` role/skill → `{base}/{roadmapId}?node={id}` (không bao giờ null). `linkedRoadmapId` còn trong schema/service nhưng không còn điều khiển navigation, không auto-set.
-- Bảng `RoadmapListAdmin` = roadmap gốc + mọi role/skill node (cột "Loại").
-- Xóa là vĩnh viễn (không "Xóa khỏi Canvas", không ghost). `roadmapGraphById` lọc `isDeleted` ở cả mock lẫn svc-api.
+- Xóa: root node (parentId null) → xóa cả container; child node → xóa subtree. Vĩnh viễn (không "Xóa khỏi Canvas", không ghost). `roadmapGraphById` lọc `isDeleted` ở cả mock lẫn svc-api.
 - Kéo node lạ từ sidebar = **move** (`moveNode`), không clone. `Node.roadmapId` một chủ sở hữu.

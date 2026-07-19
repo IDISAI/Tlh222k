@@ -15,6 +15,8 @@ import { Label } from "@workspace/ui/components/label"
 import { toast } from "@workspace/ui/components/sonner"
 import { Textarea } from "@workspace/ui/components/textarea"
 
+import { cn } from "@workspace/ui/lib/utils"
+
 import { RoadmapService } from "../../api"
 import {
   MAX_DESCRIPTION_LENGTH,
@@ -24,6 +26,12 @@ import {
 } from "../../types"
 import { slugify } from "../../utils/slugify"
 import { serviceErrorMessage } from "../utils/toast-messages"
+
+/** A roadmap is a role or a skill (a role/skill node IS a roadmap). */
+const ROADMAP_KINDS = [
+  { value: "role" as const, label: "Role" },
+  { value: "skill" as const, label: "Skill" },
+]
 
 interface CreateRoadmapDialogProps {
   role: CallerRole
@@ -42,6 +50,7 @@ export function CreateRoadmapDialog({
   const [slug, setSlug] = useState("")
   const [slugTouched, setSlugTouched] = useState(false)
   const [description, setDescription] = useState("")
+  const [nodeType, setNodeType] = useState<"role" | "skill">("role")
   const [error, setError] = useState("")
   const [busy, setBusy] = useState(false)
 
@@ -66,6 +75,24 @@ export function CreateRoadmapDialog({
         },
         role
       )
+      // A roadmap IS a role/skill node: create the root node that represents it
+      // on the canvas and in the Kho Roadmap sidebar (one record). Without it
+      // the roadmap would open to an empty canvas and never list as a node.
+      try {
+        await service.createNode(
+          {
+            roadmapId: roadmap.id,
+            parentId: null,
+            title: roadmap.title,
+            nodeType,
+            positionX: 0,
+            positionY: 0,
+          },
+          role
+        )
+      } catch (nodeErr) {
+        toast.error(serviceErrorMessage(nodeErr))
+      }
       toast.success("Đã tạo roadmap mới")
       onCreated(roadmap)
     } catch (err) {
@@ -103,6 +130,24 @@ export function CreateRoadmapDialog({
               onChange={(e) => handleTitle(e.target.value)}
             />
             {error && <p className="text-xs text-destructive">{error}</p>}
+          </div>
+
+          <div className="space-y-1.5">
+            <Label>Loại</Label>
+            <div className="flex gap-2">
+              {ROADMAP_KINDS.map((kind) => (
+                <Button
+                  key={kind.value}
+                  type="button"
+                  variant={nodeType === kind.value ? "default" : "outline"}
+                  size="sm"
+                  className={cn("flex-1")}
+                  onClick={() => setNodeType(kind.value)}
+                >
+                  {kind.label}
+                </Button>
+              ))}
+            </div>
           </div>
 
           <div className="space-y-1.5">

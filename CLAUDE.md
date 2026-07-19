@@ -86,10 +86,16 @@ roadmap-builder-admin "Xóa khỏi Canvas" / Disabled_Node behavior):
 - `nodeNavigationUrl` role/skill → `{base}/{roadmapId}?node={id}` (never null).
   `linkedRoadmapId` stays in the schema/service but no longer drives builder
   navigation and is not auto-set.
-- **Quản lý Roadmap** (`RoadmapListAdmin`) lists top-level roadmaps AND every
-  role/skill node in one flat table with a "Loại" column (roadmap/role/skill).
-  Node rows open the rooted view; delete routes to `deleteRoadmap` vs
-  `deleteNode`.
+- **Kho Node sidebar = Kho Roadmap.** The builder's left sidebar
+  (`NodeSidebar`) and the **Quản lý Roadmap** table (`RoadmapListAdmin`) list
+  the SAME set: every role/skill node (each IS a roadmap). The sidebar shows
+  role/skill only; the table has a "Loại" column (role/skill). Rows open the
+  node's rooted view (`?node=`).
+- **Creating a roadmap** ("Tạo roadmap mới" dialog) picks a type (role/skill)
+  and creates a Roadmap container + its root node of that type — that root node
+  IS the roadmap shown on the canvas and in the store. Deleting a root node
+  (parentId null) deletes its whole container; deleting a child role/skill node
+  deletes just its subtree.
 - **Delete is permanent-only.** There is no "Xóa khỏi Canvas" and no
   Disabled_Node ghost — `roadmapGraphById` filters `isDeleted` on both the mock
   and svc-api, so deleted nodes never render on any canvas.

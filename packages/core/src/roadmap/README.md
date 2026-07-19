@@ -27,4 +27,4 @@ roadmap/
 
 ## Mô hình builder
 
-**Node role/skill = roadmap** (một record). Detail của node = rooted view cùng cây (`?node={id}`), không tạo roadmap riêng, không seed, xóa vĩnh viễn, kéo = move. Chi tiết ở `CLAUDE.md` mục "Roadmap builder model" và `AGENTS.md` cạnh file này. Model này thay thế các spec cũ trong `.kiro` (Req 11, "Xóa khỏi Canvas").
+**Node role/skill = roadmap** (một record). Kho Node sidebar = Kho Roadmap = cùng danh sách với bảng Quản lý Roadmap (mọi role/skill node). Dialog "Tạo roadmap mới" chọn role/skill → tạo container + root node loại đó. Detail của node = rooted view cùng cây (`?node={id}`); không seed thừa, xóa vĩnh viễn, kéo = move. Chi tiết ở `CLAUDE.md` mục "Roadmap builder model" và `AGENTS.md` cạnh file này. Model này thay thế các spec cũ trong `.kiro` (Req 11, "Xóa khỏi Canvas").
