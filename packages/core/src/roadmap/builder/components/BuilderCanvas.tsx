@@ -110,12 +110,29 @@ function BuilderCanvasInner({
   const [editNode, setEditNode] = useState<RoadmapNode | null>(null)
   const [isDragging, setIsDragging] = useState(false)
 
+  // Base path for role/skill "Điều hướng" and chapter detail links. The
+  // builder page lives at `{base}/{roadmapId}`, so strip the last segment of
+  // the current path — works whether the admin zone is reached via the
+  // multi-zone host (/admin/roadmaps/...) or the direct domain (/roadmaps/...).
+  const builderBasePath = useMemo(() => {
+    if (typeof window === "undefined") return "/roadmaps"
+    return window.location.pathname.replace(/\/[^/]+\/?$/, "") || "/roadmaps"
+  }, [])
+
   // Domain → React Flow sync. Previous selection is preserved; nodes that are
   // new to the canvas come in selected with handles ready (Req 3.1/3.4).
   useEffect(() => {
+    // React Flow (and the MiniMap) crash on duplicate node ids. Dedup by id —
+    // last write wins — so a stray double-append can never reach the renderer.
+    const seen = new Set<string>()
+    const domainNodes = canvas.nodes.filter((n) => {
+      if (seen.has(n.id)) return false
+      seen.add(n.id)
+      return true
+    })
     setRfNodes((prev) => {
       const prevById = new Map(prev.map((n) => [n.id, n]))
-      const next = canvas.nodes.map<BuilderFlowNode>((dn) => {
+      const next = domainNodes.map<BuilderFlowNode>((dn) => {
         const existing = prevById.get(dn.id)
         return {
           id: dn.id,
@@ -134,7 +151,7 @@ function BuilderCanvasInner({
       initializedRef.current = true
       return next
     })
-    setRfEdges(buildBuilderEdges(canvas.nodes))
+    setRfEdges(buildBuilderEdges(domainNodes))
   }, [canvas.nodes, setRfNodes, setRfEdges])
 
   // Undo (Ctrl/Cmd+Z) / Redo (Ctrl/Cmd+Shift+Z or Ctrl+Y). Ignored while typing
@@ -442,7 +459,7 @@ function BuilderCanvasInner({
         nodes={canvas.nodes}
         onClose={() => setDetailNode(null)}
         onEdit={setEditNode}
-        builderBasePath="/roadmaps"
+        builderBasePath={builderBasePath}
       />
 
       {editNode && (

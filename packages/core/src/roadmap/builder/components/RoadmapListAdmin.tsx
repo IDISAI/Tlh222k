@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { Check, PencilLine, Plus, Trash2, X } from "lucide-react"
+import { Badge } from "@workspace/ui/components/badge"
 import { Button } from "@workspace/ui/components/button"
 import { Skeleton } from "@workspace/ui/components/skeleton"
 import { toast } from "@workspace/ui/components/sonner"
@@ -15,7 +16,7 @@ import {
 } from "@workspace/ui/components/table"
 
 import { RoadmapService } from "../../api"
-import type { CallerRole, Roadmap } from "../../types"
+import type { CallerRole, NodeType, Roadmap } from "../../types"
 import {
   formatDate,
   formatRelativeTime,
@@ -27,7 +28,11 @@ import { DeleteRoadmapDialog } from "./DeleteRoadmapDialog"
 
 interface RoadmapListAdminProps {
   role: CallerRole
-  /** Builder route prefix; rows link to `${builderBasePath}/${id}`. */
+  /**
+   * Accepted for API compatibility. Row/edit links are derived from the
+   * current URL at runtime (see `builderHref`) so they work regardless of how
+   * the admin zone is reached, so this prop is no longer used.
+   */
   builderBasePath?: string
   /**
    * Base path for author profile links (`${authorBasePath}/${authorId}`).
@@ -43,11 +48,16 @@ interface RoadmapListAdminProps {
  */
 export function RoadmapListAdmin({
   role,
-  builderBasePath = "/roadmaps",
   authorBasePath = "/super-admin/users",
 }: RoadmapListAdminProps) {
   const service = useMemo(() => new RoadmapService(), [])
   const [roadmaps, setRoadmaps] = useState<Roadmap[] | null>(null)
+  // roadmap id → the node type (role/skill) of the portal node that links to
+  // it. Top-level roadmaps (created from the dialog) have no external portal,
+  // so they stay absent and render "—".
+  const [typeByRoadmap, setTypeByRoadmap] = useState<Map<string, NodeType>>(
+    new Map()
+  )
   const [showCreate, setShowCreate] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<Roadmap | null>(null)
 
@@ -60,7 +70,25 @@ export function RoadmapListAdmin({
 
   const load = useCallback(async () => {
     try {
-      setRoadmaps(await service.listAdmin(role))
+      const [list, allNodes] = await Promise.all([
+        service.listAdmin(role),
+        service.listNodes(),
+      ])
+      // A roadmap's "kind" is the type of the node in ANOTHER roadmap that
+      // links to it (the portal). Self-linked seed nodes are excluded so
+      // top-level roadmaps stay untyped.
+      const map = new Map<string, NodeType>()
+      for (const n of allNodes) {
+        if (
+          n.linkedRoadmapId &&
+          n.linkedRoadmapId !== n.roadmapId &&
+          !n.isDeleted
+        ) {
+          map.set(n.linkedRoadmapId, n.nodeType)
+        }
+      }
+      setTypeByRoadmap(map)
+      setRoadmaps(list)
     } catch (error) {
       toast.error(serviceErrorMessage(error))
       setRoadmaps([])
@@ -101,7 +129,8 @@ export function RoadmapListAdmin({
           <Table className="min-w-[1180px] table-fixed">
             <colgroup>
               <col className="w-[180px]" />
-              <col className="w-[300px]" />
+              <col className="w-[92px]" />
+              <col className="w-[280px]" />
               <col className="w-[160px]" />
               <col className="w-[150px]" />
               <col className="w-[120px]" />
@@ -113,6 +142,7 @@ export function RoadmapListAdmin({
             <TableHeader>
               <TableRow>
                 <TableHead>Tên</TableHead>
+                <TableHead>Loại</TableHead>
                 <TableHead>Mô tả</TableHead>
                 <TableHead>Slug</TableHead>
                 <TableHead>Tác giả</TableHead>
@@ -127,7 +157,7 @@ export function RoadmapListAdmin({
               {roadmaps.length === 0 && (
                 <TableRow>
                   <TableCell
-                    colSpan={9}
+                    colSpan={10}
                     className="text-center text-muted-foreground"
                   >
                     Chưa có roadmap nào — hãy tạo roadmap đầu tiên.
@@ -147,6 +177,22 @@ export function RoadmapListAdmin({
                     <span className="block truncate" title={roadmap.title}>
                       {roadmap.title}
                     </span>
+                  </TableCell>
+                  <TableCell>
+                    {typeByRoadmap.has(roadmap.id) ? (
+                      <Badge
+                        variant="outline"
+                        className={
+                          typeByRoadmap.get(roadmap.id) === "role"
+                            ? "border-blue-500 text-blue-600 dark:text-blue-400"
+                            : "border-purple-500 text-purple-600 dark:text-purple-400"
+                        }
+                      >
+                        {typeByRoadmap.get(roadmap.id)}
+                      </Badge>
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
                   </TableCell>
                   <TableCell className="text-muted-foreground">
                     <span
@@ -200,9 +246,7 @@ export function RoadmapListAdmin({
                         size="sm"
                         variant="outline"
                         nativeButton={false}
-                        render={
-                          <a href={`${builderBasePath}/${roadmap.id}`} />
-                        }
+                        render={<a href={builderHref(roadmap.id)} />}
                       >
                         <PencilLine className="size-3.5" /> Sửa
                       </Button>
@@ -227,9 +271,11 @@ export function RoadmapListAdmin({
         <CreateRoadmapDialog
           role={role}
           onClose={() => setShowCreate(false)}
-          onCreated={(roadmap) => {
+          onCreated={() => {
+            // Stay on the list and refresh the table — no redirect into the
+            // new roadmap.
             setShowCreate(false)
-            window.location.href = builderHref(roadmap.id)
+            void load()
           }}
         />
       )}

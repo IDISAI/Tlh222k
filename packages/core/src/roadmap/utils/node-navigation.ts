@@ -52,10 +52,10 @@ export function nodeNavigationUrl(
   }
   if (node.nodeType === "role" || node.nodeType === "skill") {
     if (builderBasePath) {
-      // Req 11.5/11.6: builder navigates into the LINKED roadmap only.
-      return node.linkedRoadmapId
-        ? `${builderBasePath}/${node.linkedRoadmapId}`
-        : null
+      // Builder always navigates into a roadmap: the linked one for a portal
+      // node, or the node's own roadmap for a root/seed node. Never blocked —
+      // a role/skill node is always tied to a roadmap.
+      return `${builderBasePath}/${node.linkedRoadmapId ?? node.roadmapId}`
     }
     return `/roadmap/${node.slug}`
   }

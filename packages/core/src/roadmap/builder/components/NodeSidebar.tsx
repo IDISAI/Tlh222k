@@ -72,6 +72,10 @@ export function NodeSidebar({
     return allNodes
       // Permanently-deleted nodes disappear from the sidebar entirely.
       .filter((n) => !n.isDeleted)
+      // Self-linked seed nodes are a roadmap's own identity marker, not a
+      // reusable node — hide them so a linked roadmap's canvas seed doesn't
+      // show up as a duplicate of the portal node that created it.
+      .filter((n) => !(n.linkedRoadmapId && n.linkedRoadmapId === n.roadmapId))
       .filter((n) => !q || n.title.toLowerCase().includes(q))
   }, [allNodes, debouncedSearch])
 

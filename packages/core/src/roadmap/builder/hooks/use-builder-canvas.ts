@@ -170,7 +170,9 @@ export function useBuilderCanvas(
       try {
         node = await service.createNode({ ...input, roadmapId }, role)
         pushHistory()
-        setNodes((prev) => [...prev, node])
+        setNodes((prev) =>
+          prev.some((n) => n.id === node.id) ? prev : [...prev, node]
+        )
         setIsDirty(true)
         void refreshAllNodes()
         toast.success(TOAST_MESSAGES.CREATE_SUCCESS)
@@ -238,9 +240,12 @@ export function useBuilderCanvas(
         } else {
           // Seed the linked roadmap with a root node mirroring the source
           // node (same title, same type) so its builder never opens empty.
-          // Best-effort: the roadmap and the link matter more than the seed.
-          await service
-            .createNode(
+          // The seed self-links to its own roadmap so it navigates harmlessly
+          // to itself and is hidden from the Kho Node sidebar (a roadmap-
+          // identity marker, not a reusable node — avoids the sidebar showing
+          // both the portal node and its seed). Best-effort.
+          try {
+            const seed = await service.createNode(
               {
                 roadmapId: roadmap.id,
                 parentId: null,
@@ -251,12 +256,17 @@ export function useBuilderCanvas(
               },
               role
             )
-            .catch((error) => {
-              console.error("[roadmap-builder] seed node failed", {
-                roadmapId: roadmap.id,
-                error,
-              })
+            await service.updateNode(
+              seed.id,
+              { linkedRoadmapId: roadmap.id },
+              role
+            )
+          } catch (error) {
+            console.error("[roadmap-builder] seed node failed", {
+              roadmapId: roadmap.id,
+              error,
             })
+          }
           try {
             await service.updateNode(
               node.id,
@@ -305,7 +315,9 @@ export function useBuilderCanvas(
         try {
           const moved = await service.moveNode(node.id, roadmapId, position, role)
           pushHistory()
-          setNodes((prev) => [...prev, moved])
+          setNodes((prev) =>
+            prev.some((n) => n.id === moved.id) ? prev : [...prev, moved]
+          )
           void refreshAllNodes()
           toast.success("Đã chuyển node vào roadmap này")
         } catch (error) {
@@ -313,6 +325,7 @@ export function useBuilderCanvas(
         }
         return
       }
+      if (nodesRef.current.some((n) => n.id === node.id)) return
       pushHistory()
       setNodes((prev) => [
         ...prev,
