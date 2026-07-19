@@ -351,20 +351,22 @@ export class RoadmapService {
   }
 
   /**
-   * Permanent delete (Req 4.3): soft-flag the node and its whole subtree so
-   * open canvases can render them as Disabled_Node instead of crashing.
+   * Permanent delete of a SINGLE node. Direct children survive: they reparent
+   * up to the deleted node's parent so a sub-roadmap is never lost when its
+   * parent roadmap is deleted.
    */
-  // ponytail: → `deleteNode` mutation (cascade to children)
+  // ponytail: → `deleteNode` mutation (reparent children up)
   async deleteNode(id: string, callerRole: CallerRole): Promise<boolean> {
     assertCanWrite(callerRole)
     await delay()
     const store = getStore()
     const node = store.nodes.find((n) => n.id === id)
     if (!node) throw new RoadmapServiceError("NOT_FOUND")
-    const doomed = new Set([id, ...this.descendantsOf(id).map((n) => n.id)])
+    const newParent = node.parentId ?? null
     for (const n of store.nodes) {
-      if (doomed.has(n.id)) n.isDeleted = true
+      if (n.parentId === id) n.parentId = newParent
     }
+    node.isDeleted = true
     persistStore()
     emitRoadmapUpdate(node.roadmapId)
     return true

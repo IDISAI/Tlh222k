@@ -33,6 +33,7 @@ import { TOAST_MESSAGES } from "../utils/toast-messages"
 import { BuilderCanvasContext } from "./builder-context"
 import { BuilderNodeComponent } from "./BuilderNodeComponent"
 import { ChildCountEdgeComponent } from "./ChildCountEdge"
+import { DeleteNodeDialog } from "./DeleteNodeDialog"
 import { NodeContextMenu } from "./NodeContextMenu"
 import { NodeDetailDialog } from "./NodeDetailDialog"
 import { NodeEditPanel } from "./NodeEditPanel"
@@ -115,6 +116,7 @@ function BuilderCanvasInner({
   } | null>(null)
   const [detailNode, setDetailNode] = useState<RoadmapNode | null>(null)
   const [editNode, setEditNode] = useState<RoadmapNode | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<RoadmapNode | null>(null)
   const [isDragging, setIsDragging] = useState(false)
 
   // Base path for role/skill "Điều hướng" and chapter detail links. The
@@ -464,6 +466,23 @@ function BuilderCanvasInner({
           onClose={() => setCtxMenu(null)}
           onEdit={setEditNode}
           onAddChild={handleAddChild}
+          onDelete={setDeleteTarget}
+        />
+      )}
+
+      {deleteTarget && (
+        <DeleteNodeDialog
+          node={deleteTarget}
+          childCount={
+            canvas.nodesRef.current.filter(
+              (n) => n.parentId === deleteTarget.id && !n.isDeleted
+            ).length
+          }
+          onCancel={() => setDeleteTarget(null)}
+          onConfirm={async () => {
+            await canvas.deleteNodePermanent(deleteTarget.id)
+            setDeleteTarget(null)
+          }}
         />
       )}
 

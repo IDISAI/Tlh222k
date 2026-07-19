@@ -349,26 +349,21 @@ export function useBuilderCanvas(
   )
 
   /**
-   * Permanent system delete (Req 4.3). The node and its descendants disappear
-   * from the canvas immediately — deleted nodes are never rendered as ghosts.
+   * Permanent delete of a SINGLE node. Its direct children survive — they
+   * reparent up to the deleted node's parent (a sub-roadmap is never lost when
+   * its parent roadmap is deleted).
    */
   const deleteNodePermanent = useCallback(
     async (id: string): Promise<boolean> => {
       try {
         await service.deleteNode(id, role)
-        // Cascade set computed over the whole system, not just this canvas.
-        const doomed = new Set([id])
-        let grew = true
-        while (grew) {
-          grew = false
-          for (const n of allNodes) {
-            if (n.parentId && doomed.has(n.parentId) && !doomed.has(n.id)) {
-              doomed.add(n.id)
-              grew = true
-            }
-          }
-        }
-        setNodes((prev) => prev.filter((n) => !doomed.has(n.id)))
+        setNodes((prev) => {
+          const target = prev.find((n) => n.id === id)
+          const newParent = target?.parentId ?? null
+          return prev
+            .filter((n) => n.id !== id)
+            .map((n) => (n.parentId === id ? { ...n, parentId: newParent } : n))
+        })
         void refreshAllNodes()
         toast.success(TOAST_MESSAGES.DELETE_SUCCESS)
         return true
@@ -377,7 +372,7 @@ export function useBuilderCanvas(
         return false
       }
     },
-    [service, role, allNodes, refreshAllNodes]
+    [service, role, refreshAllNodes]
   )
 
   /** Batch-save the whole canvas (Req 3.10/3.11). */

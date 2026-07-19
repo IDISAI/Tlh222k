@@ -10,6 +10,7 @@ import { cn } from "@workspace/ui/lib/utils"
 import type { CallerRole } from "../../types"
 import { useBuilderCanvas } from "../hooks/use-builder-canvas"
 import { BuilderCanvas } from "./BuilderCanvas"
+import { DeleteNodeDialog } from "./DeleteNodeDialog"
 import { DeleteRoadmapDialog } from "./DeleteRoadmapDialog"
 import { NodeSidebar } from "./NodeSidebar"
 
@@ -64,6 +65,7 @@ export function BuilderPage({
     onCreateNotionDoc
   )
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [confirmDeleteNode, setConfirmDeleteNode] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(true)
 
   // Rooted view (role/skill node detail): the node + all its descendants.
@@ -101,22 +103,6 @@ export function BuilderPage({
 
   // Full-roadmap builder URL (drops the ?node= rooting).
   const fullBuilderHref = `${listHref.replace(/\/+$/, "")}/${roadmapId}`
-
-  // Breadcrumb is the NODE ancestor chain (a role/skill node IS a roadmap), not
-  // the container Roadmap — showing the container title confused it with a
-  // parent node. Each ancestor links to its own rooted view.
-  const ancestors = useMemo(() => {
-    if (!rootNode) return []
-    const byId = new Map(canvas.nodes.map((n) => [n.id, n]))
-    const chain: typeof canvas.nodes = []
-    let cur = rootNode.parentId ? byId.get(rootNode.parentId) : undefined
-    while (cur) {
-      chain.unshift(cur)
-      cur = cur.parentId ? byId.get(cur.parentId) : undefined
-    }
-    return chain
-  }, [rootNode, canvas.nodes])
-  const nodeHref = (nodeId: string) => `${fullBuilderHref}?node=${nodeId}`
 
   const canvasNodeIds = useMemo(
     () => new Set(viewNodes.map((n) => n.id)),
@@ -179,18 +165,7 @@ export function BuilderPage({
           <span className="text-muted-foreground">/</span>
           {rootNode ? (
             <>
-              {/* Breadcrumb = node ancestor chain (not the container roadmap). */}
-              {ancestors.map((anc) => (
-                <span key={anc.id} className="flex shrink-0 items-center gap-3">
-                  <a
-                    href={nodeHref(anc.id)}
-                    className="max-w-[160px] shrink-0 truncate text-sm text-muted-foreground hover:text-foreground"
-                  >
-                    {anc.title}
-                  </a>
-                  <span className="text-muted-foreground">/</span>
-                </span>
-              ))}
+              {/* A roadmap is opened directly — just its name, no parent chain. */}
               <h1 className="min-w-0 truncate text-lg font-extrabold uppercase italic">
                 {rootNode.title}
               </h1>
@@ -261,10 +236,7 @@ export function BuilderPage({
               type="button"
               size="sm"
               variant="destructive"
-              onClick={async () => {
-                const ok = await canvas.deleteNodePermanent(rootNode.id)
-                if (ok) window.location.href = fullBuilderHref
-              }}
+              onClick={() => setConfirmDeleteNode(true)}
             >
               <Trash2 className="size-4" /> Xóa node
             </Button>
@@ -339,6 +311,23 @@ export function BuilderPage({
             const ok = await canvas.deleteRoadmap()
             setConfirmDelete(false)
             if (ok) window.location.href = listHref
+          }}
+        />
+      )}
+
+      {confirmDeleteNode && rootNode && (
+        <DeleteNodeDialog
+          node={rootNode}
+          childCount={
+            canvas.nodes.filter(
+              (n) => n.parentId === rootNode.id && !n.isDeleted
+            ).length
+          }
+          onCancel={() => setConfirmDeleteNode(false)}
+          onConfirm={async () => {
+            const ok = await canvas.deleteNodePermanent(rootNode.id)
+            setConfirmDeleteNode(false)
+            if (ok) window.location.href = fullBuilderHref
           }}
         />
       )}

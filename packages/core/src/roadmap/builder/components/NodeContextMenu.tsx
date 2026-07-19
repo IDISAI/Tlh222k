@@ -1,6 +1,7 @@
 "use client"
 
-import { PencilLine, Plus } from "lucide-react"
+import { PencilLine, Plus, Trash2 } from "lucide-react"
+import { cn } from "@workspace/ui/lib/utils"
 
 import type { RoadmapNode } from "../../types"
 import { allowedChildTypes } from "../../utils/validate-hierarchy"
@@ -12,6 +13,8 @@ interface NodeContextMenuProps {
   onClose: () => void
   onEdit: (node: RoadmapNode) => void
   onAddChild: (node: RoadmapNode) => void
+  /** Permanent delete (confirmed by the parent). Children reparent up. */
+  onDelete: (node: RoadmapNode) => void
 }
 
 /**
@@ -26,6 +29,7 @@ export function NodeContextMenu({
   onClose,
   onEdit,
   onAddChild,
+  onDelete,
 }: NodeContextMenuProps) {
   const left = Math.max(8, Math.min(screenX, window.innerWidth - 228))
   const top = Math.max(8, Math.min(screenY, window.innerHeight - 180))
@@ -71,6 +75,16 @@ export function NodeContextMenu({
             <Plus className="size-4" /> Thêm node con
           </button>
         )}
+        <button
+          type="button"
+          className={cn(item, "text-destructive hover:text-destructive")}
+          onClick={() => {
+            onDelete(node)
+            onClose()
+          }}
+        >
+          <Trash2 className="size-4" /> Xóa
+        </button>
       </div>
     </>
   )

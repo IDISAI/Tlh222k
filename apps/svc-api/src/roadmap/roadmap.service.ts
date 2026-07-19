@@ -477,35 +477,30 @@ export class RoadmapService {
     return this.toNodeDto(updated, "locked", childrenCount)
   }
 
-  /** Permanent delete = soft-flag the node and its whole subtree (Req 4.3). */
+  /**
+   * Permanent delete of a SINGLE node. Direct children survive: they reparent
+   * up to the deleted node's parent so a sub-roadmap is never lost when its
+   * parent roadmap is deleted.
+   */
   async deleteNode(id: string, user: CurrentUser | null): Promise<boolean> {
     assertCanWrite(user)
     const node = await this.prisma.node.findUnique({ where: { id } })
     if (!node) throw new RoadmapError("NOT_FOUND")
-    const doomed = await this.collectSubtreeIds(id)
 
     await this.prisma.$transaction(async (tx) => {
-      // Archive the Documents linked to the doomed notion nodes in the same
-      // transaction as the soft-delete, so a node delete and its doc archive
-      // can't diverge.
-      const doomedNodes = await tx.node.findMany({
-        where: { id: { in: [...doomed] } },
-        select: { notionPageId: true },
-      })
-      const docIds = doomedNodes
-        .map((n) => n.notionPageId)
-        .filter((v): v is string => Boolean(v))
-
+      // Children reparent up to this node's parent (null → become roots).
       await tx.node.updateMany({
-        where: { id: { in: [...doomed] } },
-        data: { isDeleted: true },
+        where: { parentId: id },
+        data: { parentId: node.parentId ?? null },
       })
-      if (docIds.length > 0) {
+      // Archive only this node's own linked Document, in the same transaction.
+      if (node.notionPageId) {
         await tx.document.updateMany({
-          where: { id: { in: docIds } },
+          where: { id: node.notionPageId },
           data: { isArchived: true },
         })
       }
+      await tx.node.update({ where: { id }, data: { isDeleted: true } })
     })
     await this.events.emit(node.roadmapId)
     return true
@@ -727,24 +722,6 @@ export class RoadmapService {
       }
     }
     return result
-  }
-
-  private async collectSubtreeIds(rootId: string): Promise<Set<string>> {
-    const all = await this.prisma.node.findMany({
-      select: { id: true, parentId: true },
-    })
-    const doomed = new Set<string>([rootId])
-    let grew = true
-    while (grew) {
-      grew = false
-      for (const n of all) {
-        if (n.parentId && doomed.has(n.parentId) && !doomed.has(n.id)) {
-          doomed.add(n.id)
-          grew = true
-        }
-      }
-    }
-    return doomed
   }
 
   private async childrenCount(nodeId: string): Promise<number> {

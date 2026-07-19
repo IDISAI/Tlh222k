@@ -248,15 +248,10 @@ export function RoadmapListAdmin({ role }: RoadmapListAdminProps) {
           childCount={deleteTarget.descendants}
           onCancel={() => setDeleteTarget(null)}
           onConfirm={async () => {
-            const { node } = deleteTarget
             try {
-              // A top-level roadmap (root node) deletes its whole container;
-              // a sub-roadmap (child node) deletes just its own subtree.
-              if (node.parentId === null) {
-                await service.deleteRoadmap(node.roadmapId, role)
-              } else {
-                await service.deleteNode(node.id, role)
-              }
+              // Delete only this roadmap-node; its children survive (they
+              // reparent up — a child roadmap is never lost with its parent).
+              await service.deleteNode(deleteTarget.node.id, role)
               toast.success("Đã xóa roadmap")
               setDeleteTarget(null)
               await load()
