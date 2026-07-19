@@ -1,5 +1,7 @@
 # Hướng dẫn kiểm tra — Notion Article Node
 
+> ⚠️ **SUPERSEDED (2026-07-19).** Các mục dựa trên model cũ đã lỗi thời: mục 11 "Role/Skill Node → tạo Roadmap (Req 11)" (không còn auto-tạo roadmap), và mọi bước "Xóa khỏi Canvas" (tính năng đã gỡ; xóa nay là vĩnh viễn). Model hiện hành: node role/skill = roadmap, detail = rooted view `?node={id}`. Nguồn chuẩn: `CLAUDE.md` mục "Roadmap builder model".
+
 Checklist kiểm tra thủ công cho toàn bộ tính năng. Đánh ✅/❌ vào từng dòng.
 
 ## 0. Chuẩn bị (chạy 1 lần)

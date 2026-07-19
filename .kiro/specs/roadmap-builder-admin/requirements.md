@@ -1,5 +1,7 @@
 # Requirements Document
 
+> ⚠️ **SUPERSEDED một phần (2026-07-19, nhánh `hf/roadmap`).** Các phần đã đảo: **Disabled_Node** và **"Xóa khỏi Canvas"** đã gỡ hẳn — xóa node là vĩnh viễn, node đã xóa không render trên canvas (`roadmapGraphById` lọc `isDeleted`). Kéo node lạ từ sidebar = **move** (không clone). Node role/skill = roadmap (detail = rooted view `?node={id}`). Nguồn chuẩn: `CLAUDE.md` mục "Roadmap builder model". Doc dưới giữ làm lịch sử.
+
 ## Introduction
 
 Tính năng **Roadmap Builder Admin** cho phép admin và super-admin tạo, chỉnh sửa và quản lý roadmap trực tiếp trên canvas ReactFlow trong `apps/admin`. Roadmap được cấu trúc theo 4 cấp node phân cấp (role → skill → chapter → article), hỗ trợ kéo-thả từ sidebar, hover preview, điều hướng đến trang chi tiết, và yêu cầu tải lại trang để xem cập nhật mới nhất sau khi admin lưu.

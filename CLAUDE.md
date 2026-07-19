@@ -53,7 +53,9 @@ Current committed system:
     runtime, utils. All nbformat parsing lives here — not in Go.
   - `src/roadmap`: roadmap domain logic. `api/` holds the Apollo Client + React
     provider that talk GraphQL to `svc-api`; env-flag seam falls back to a
-    localStorage mock service when no backend URL is set.
+    localStorage mock service when no backend URL is set. `builder/` is the
+    admin roadmap-builder (canvas, sidebar, hooks). See "Roadmap builder model"
+    below.
   - `src/navigation`: navigation helpers (incl. `no-script-next-themes`).
 - `packages/db`: Prisma schema/client and seed data.
 - `packages/ui`: shared shadcn/ui + Tailwind v4 components.
@@ -67,6 +69,32 @@ packages/*  -> apps/*       never
 ```
 
 Package scope is `@workspace/*`, not `@vizteck/*`.
+
+## Roadmap builder model
+
+Current model (redesigned 2026-07-19, branch `hf/roadmap` — **supersedes** the
+older `.kiro` specs, notably notion-article-node Req 11 and the
+roadmap-builder-admin "Xóa khỏi Canvas" / Disabled_Node behavior):
+
+- **A role/skill node IS a roadmap** — one record, not a node plus a separate
+  `Roadmap` plus a seed. Creating a role/skill node does NOT auto-create a
+  linked roadmap, and nothing seeds a root node anywhere.
+- A role/skill node's "detail" is a **rooted view of its own roadmap tree**:
+  `/roadmaps/{roadmapId}?node={nodeId}` renders that node + its descendants.
+  `BuilderPage` takes an optional `rootNodeId` and narrows the rendered canvas
+  (the shared `nodesRef` stays full for lookups/guards).
+- `nodeNavigationUrl` role/skill → `{base}/{roadmapId}?node={id}` (never null).
+  `linkedRoadmapId` stays in the schema/service but no longer drives builder
+  navigation and is not auto-set.
+- **Quản lý Roadmap** (`RoadmapListAdmin`) lists top-level roadmaps AND every
+  role/skill node in one flat table with a "Loại" column (roadmap/role/skill).
+  Node rows open the rooted view; delete routes to `deleteRoadmap` vs
+  `deleteNode`.
+- **Delete is permanent-only.** There is no "Xóa khỏi Canvas" and no
+  Disabled_Node ghost — `roadmapGraphById` filters `isDeleted` on both the mock
+  and svc-api, so deleted nodes never render on any canvas.
+- **Dragging a foreign node from the sidebar MOVES it** (`moveNode` mutation,
+  svc-api + mock parity), it does not clone. `Node.roadmapId` is a single owner.
 
 ## Former Submodules
 
