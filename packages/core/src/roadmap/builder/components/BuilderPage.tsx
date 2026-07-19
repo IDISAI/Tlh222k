@@ -102,6 +102,22 @@ export function BuilderPage({
   // Full-roadmap builder URL (drops the ?node= rooting).
   const fullBuilderHref = `${listHref.replace(/\/+$/, "")}/${roadmapId}`
 
+  // Breadcrumb is the NODE ancestor chain (a role/skill node IS a roadmap), not
+  // the container Roadmap — showing the container title confused it with a
+  // parent node. Each ancestor links to its own rooted view.
+  const ancestors = useMemo(() => {
+    if (!rootNode) return []
+    const byId = new Map(canvas.nodes.map((n) => [n.id, n]))
+    const chain: typeof canvas.nodes = []
+    let cur = rootNode.parentId ? byId.get(rootNode.parentId) : undefined
+    while (cur) {
+      chain.unshift(cur)
+      cur = cur.parentId ? byId.get(cur.parentId) : undefined
+    }
+    return chain
+  }, [rootNode, canvas.nodes])
+  const nodeHref = (nodeId: string) => `${fullBuilderHref}?node=${nodeId}`
+
   const canvasNodeIds = useMemo(
     () => new Set(viewNodes.map((n) => n.id)),
     [viewNodes]
@@ -163,14 +179,18 @@ export function BuilderPage({
           <span className="text-muted-foreground">/</span>
           {rootNode ? (
             <>
-              {/* Breadcrumb back to the full roadmap, then the node title. */}
-              <a
-                href={fullBuilderHref}
-                className="shrink-0 truncate text-sm text-muted-foreground hover:text-foreground"
-              >
-                {canvas.roadmap.title}
-              </a>
-              <span className="text-muted-foreground">/</span>
+              {/* Breadcrumb = node ancestor chain (not the container roadmap). */}
+              {ancestors.map((anc) => (
+                <span key={anc.id} className="flex shrink-0 items-center gap-3">
+                  <a
+                    href={nodeHref(anc.id)}
+                    className="max-w-[160px] shrink-0 truncate text-sm text-muted-foreground hover:text-foreground"
+                  >
+                    {anc.title}
+                  </a>
+                  <span className="text-muted-foreground">/</span>
+                </span>
+              ))}
               <h1 className="min-w-0 truncate text-lg font-extrabold uppercase italic">
                 {rootNode.title}
               </h1>
@@ -305,6 +325,7 @@ export function BuilderPage({
         )}
         <BuilderCanvas
           canvas={viewCanvas}
+          rootNodeId={rootNodeId}
           className="h-full min-w-0 flex-1"
           onSyncPublish={onSyncPublish}
         />

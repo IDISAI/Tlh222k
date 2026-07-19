@@ -44,6 +44,12 @@ const edgeTypes = { childCount: ChildCountEdgeComponent }
 interface BuilderCanvasProps {
   canvas: BuilderCanvasApi
   className?: string
+  /**
+   * Rooted view: the canvas shows this node + its descendants. New nodes made
+   * on the empty pane attach to it (else a parentId=null node would fall
+   * outside the rooted subtree and vanish).
+   */
+  rootNodeId?: string
   /** Publish-state sync for notion articles (notion-article-node Req 7). */
   onSyncPublish?: (notionPageId: string, isPublished: boolean) => Promise<void>
 }
@@ -87,6 +93,7 @@ function minimapNodeColor(node: Node): string {
 function BuilderCanvasInner({
   canvas,
   className,
+  rootNodeId,
   onSyncPublish,
 }: BuilderCanvasProps) {
   const { resolvedTheme } = useTheme()
@@ -252,6 +259,12 @@ function BuilderCanvasInner({
       const { clientX, clientY } = event
       const flow = screenToFlowPosition({ x: clientX, y: clientY })
       setCtxMenu(null)
+      // In a rooted view, a node created on the empty pane must attach to the
+      // root node — otherwise a parentId=null node lands outside the rooted
+      // subtree and never shows up on this canvas.
+      const rooted = rootNodeId
+        ? (canvas.nodesRef.current.find((n) => n.id === rootNodeId) ?? null)
+        : null
       setSelector({
         position: {
           screenX: clientX,
@@ -259,10 +272,10 @@ function BuilderCanvasInner({
           flowX: flow.x,
           flowY: flow.y,
         },
-        parent: null,
+        parent: rooted,
       })
     },
-    [screenToFlowPosition]
+    [screenToFlowPosition, rootNodeId, canvas]
   )
 
   const onNodeContextMenu = useCallback(
