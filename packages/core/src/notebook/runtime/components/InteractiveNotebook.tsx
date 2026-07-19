@@ -1,8 +1,9 @@
 "use client"
 
-import { useMemo } from "react"
+import { useCallback, useMemo, useRef, useState } from "react"
 import { Play, RotateCcw, Square } from "lucide-react"
 import { Button } from "@workspace/ui/components/button"
+import { cn } from "@workspace/ui/lib/utils"
 
 import type { KernelAdapter } from "../../kernel"
 import type { Notebook } from "../../types"
@@ -11,10 +12,26 @@ import { MarkdownCell } from "../../viewer/components/MarkdownCell"
 import { StartExerciseCard } from "../../viewer/components/StartExerciseCard"
 import { TableOfContents } from "../../viewer/components/TableOfContents"
 import { useActiveHeading } from "../../viewer/hooks/useActiveHeading"
+import {
+  traceLanguage,
+  visualizeAvailability,
+  VisualizePanel,
+  type TraceFactory,
+  type TraceResult,
+} from "../../visualize"
 import { useNotebookRuntime } from "../use-notebook-runtime"
 import { InteractiveCodeCell } from "./InteractiveCodeCell"
 
 const service = new NotebookService()
+
+/** One visualization panel per notebook; owned here, not by cells. */
+interface ActiveVisualization {
+  cellId: string
+  /** Source snapshot that ran (panel keeps showing it during later edits). */
+  source: string
+  trace: TraceResult | null
+  loading: boolean
+}
 
 export function InteractiveNotebook({
   notebook,
@@ -24,6 +41,7 @@ export function InteractiveNotebook({
   runUnavailableReason,
   onStartExercise,
   exerciseTitle,
+  createTrace,
 }: {
   notebook: Notebook
   adapter: KernelAdapter | null
@@ -35,6 +53,11 @@ export function InteractiveNotebook({
   onStartExercise?: () => void
   /** Title of the companion exercise; triggers the floating card when set. */
   exerciseTitle?: string
+  /**
+   * Trace engine seam. Absent (production until C3/C4), the panel opens with
+   * an "engine not available yet" notice; tests inject fixture factories.
+   */
+  createTrace?: TraceFactory
 }) {
   const runtime = useNotebookRuntime(notebook, adapter)
   const busy = runtime.status === "busy"
@@ -43,8 +66,55 @@ export function InteractiveNotebook({
   const slugs = useMemo(() => toc.map((e) => e.slug), [toc])
   const activeSlug = useActiveHeading(slugs)
 
+  const [active, setActive] = useState<ActiveVisualization | null>(null)
+  // Monotonic token: a resolving trace only lands while it is still the
+  // latest request (open A, open B, A's engine resolves late).
+  const traceToken = useRef(0)
+
+  const openVisualization = useCallback(
+    (cellId: string) => {
+      const cell = runtime.cells[cellId]
+      if (!cell) return
+      const source = cell.lastExecutedSource ?? cell.source
+      const language = traceLanguage(notebook.language)
+      const token = ++traceToken.current
+      if (!createTrace || !language) {
+        setActive({ cellId, source, trace: null, loading: false })
+        return
+      }
+      setActive({ cellId, source, trace: null, loading: true })
+      createTrace({ language, source }).then(
+        (trace) => {
+          if (traceToken.current === token)
+            setActive({ cellId, source, trace, loading: false })
+        },
+        () => {
+          if (traceToken.current === token)
+            setActive({ cellId, source, trace: null, loading: false })
+        }
+      )
+    },
+    [createTrace, notebook.language, runtime.cells]
+  )
+  const closeVisualization = useCallback(() => {
+    traceToken.current++
+    setActive(null)
+  }, [])
+
   return (
-    <div className="mx-auto flex w-full max-w-6xl gap-10 px-4 py-6">
+    <div
+      className={cn(
+        "mx-auto flex w-full gap-8 px-4 py-6",
+        active ? "max-w-7xl" : "max-w-6xl"
+      )}
+    >
+      {/* TOC sidebar — left column, scroll-spy, sticky, hidden on small screens */}
+      {toc.length > 0 && (
+        <aside className="sticky top-24 hidden max-h-[calc(100svh-8rem)] w-56 shrink-0 self-start overflow-y-auto lg:block">
+          <TableOfContents entries={toc} activeSlug={activeSlug} />
+        </aside>
+      )}
+
       {/* Main content */}
       <div className="min-w-0 flex-1">
         {/* Kernel bar */}
@@ -108,8 +178,13 @@ export function InteractiveNotebook({
                   cell={runtime.cells[cell.id]!}
                   language={notebook.language}
                   disabled={!signedIn || busy || !adapter}
+                  visualize={visualizeAvailability(
+                    notebook.language,
+                    runtime.cells[cell.id]!
+                  )}
                   onChange={(source) => runtime.updateSource(cell.id, source)}
                   onRun={() => void runtime.runCell(cell.id)}
+                  onVisualize={() => openVisualization(cell.id)}
                 />
               )
             }
@@ -133,10 +208,15 @@ export function InteractiveNotebook({
         </div>
       </div>
 
-      {/* TOC sidebar — scroll-spy, sticky, hidden on small screens */}
-      {toc.length > 0 && (
-        <aside className="sticky top-24 hidden max-h-[calc(100svh-8rem)] w-56 shrink-0 self-start overflow-y-auto lg:block">
-          <TableOfContents entries={toc} activeSlug={activeSlug} />
+      {/* Visualization panel — right column at lg, full-screen overlay below */}
+      {active && (
+        <aside className="fixed inset-0 z-50 overflow-y-auto bg-background p-4 lg:sticky lg:top-24 lg:z-auto lg:max-h-[calc(100svh-8rem)] lg:w-96 lg:shrink-0 lg:self-start lg:overflow-visible lg:p-0">
+          <VisualizePanel
+            source={active.source}
+            trace={active.trace}
+            loading={active.loading}
+            onClose={closeVisualization}
+          />
         </aside>
       )}
 

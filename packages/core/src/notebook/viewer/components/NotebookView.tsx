@@ -44,6 +44,14 @@ export function NotebookView({
         className
       )}
     >
+      {/* TOC on the left — mirrors the interactive layout, frees the right
+          side for the visualization panel there. */}
+      {toc.length > 0 && (
+        <aside className="sticky top-24 hidden max-h-[calc(100svh-8rem)] w-60 shrink-0 self-start overflow-y-auto lg:block">
+          <TableOfContents entries={toc} activeSlug={activeSlug} />
+        </aside>
+      )}
+
       <article className="min-w-0 flex-1 space-y-8">
         {notebook.cells.map((cell) => (
           <CellRenderer
@@ -53,12 +61,6 @@ export function NotebookView({
           />
         ))}
       </article>
-
-      {toc.length > 0 && (
-        <aside className="sticky top-24 hidden max-h-[calc(100svh-8rem)] w-60 shrink-0 self-start overflow-y-auto lg:block">
-          <TableOfContents entries={toc} activeSlug={activeSlug} />
-        </aside>
-      )}
 
       {onStartExercise && exerciseTitle && (
         <StartExerciseCard

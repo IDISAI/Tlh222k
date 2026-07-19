@@ -5,6 +5,7 @@ export * from "./editor"
 export * from "./kernel"
 export * from "./exercise"
 export * from "./runtime"
+export * from "./visualize"
 
 // Named (not `export *`): the notebook's `slugify` would collide with the
 // roadmap's at the src/index.ts barrel and TS would silently drop both.
