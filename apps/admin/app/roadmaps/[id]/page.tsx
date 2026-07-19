@@ -14,10 +14,13 @@ export const metadata = { title: "Roadmap Builder" }
 
 export default async function BuilderCanvasPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>
+  searchParams: Promise<{ node?: string }>
 }) {
   const { id } = await params
+  const { node } = await searchParams
   const role = await getRole()
   if (role !== "admin" && role !== "super-admin") redirect(FORBIDDEN_PATH)
 
@@ -27,6 +30,7 @@ export default async function BuilderCanvasPage({
   return (
     <BuilderPage
       roadmapId={id}
+      rootNodeId={node}
       role={role}
       listHref={ROADMAPS_PATH}
       onNodeTitleSync={syncTitleBySlug}

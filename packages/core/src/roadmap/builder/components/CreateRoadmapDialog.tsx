@@ -66,33 +66,6 @@ export function CreateRoadmapDialog({
         },
         role
       )
-      // Seed the canvas with a root node named after the roadmap so the
-      // builder never opens empty. The seed self-links to its own roadmap: it
-      // navigates harmlessly to itself and is hidden from the Kho Node sidebar
-      // (a roadmap-identity marker, not a reusable node). Best-effort.
-      try {
-        const seed = await service.createNode(
-          {
-            roadmapId: roadmap.id,
-            parentId: null,
-            title: roadmap.title,
-            nodeType: "role",
-            positionX: 0,
-            positionY: 0,
-          },
-          role
-        )
-        await service.updateNode(
-          seed.id,
-          { linkedRoadmapId: roadmap.id },
-          role
-        )
-      } catch (err) {
-        console.error("[roadmap-builder] seed node failed", {
-          roadmapId: roadmap.id,
-          err,
-        })
-      }
       toast.success("Đã tạo roadmap mới")
       onCreated(roadmap)
     } catch (err) {

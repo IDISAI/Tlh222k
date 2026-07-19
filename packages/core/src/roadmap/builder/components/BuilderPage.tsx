@@ -16,6 +16,12 @@ import { NodeSidebar } from "./NodeSidebar"
 interface BuilderPageProps {
   roadmapId: string
   role: CallerRole
+  /**
+   * When set, render a rooted VIEW of the same roadmap tree: the node with
+   * this id plus its descendants only. A role/skill node IS a roadmap, so its
+   * "detail" is this rooted view — no separate Roadmap record exists.
+   */
+  rootNodeId?: string
   /** Back link target — the admin roadmap list. */
   listHref?: string
   /**
@@ -44,6 +50,7 @@ interface BuilderPageProps {
 export function BuilderPage({
   roadmapId,
   role,
+  rootNodeId,
   listHref = "/roadmaps",
   onNodeTitleSync,
   onCreateNotionDoc,
@@ -59,9 +66,45 @@ export function BuilderPage({
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(true)
 
+  // Rooted view (role/skill node detail): the node + all its descendants.
+  const rootNode = useMemo(
+    () =>
+      rootNodeId
+        ? (canvas.nodes.find((n) => n.id === rootNodeId && !n.isDeleted) ??
+          null)
+        : null,
+    [canvas.nodes, rootNodeId]
+  )
+
+  const viewNodes = useMemo(() => {
+    if (!rootNodeId) return canvas.nodes
+    const ids = new Set<string>([rootNodeId])
+    let grew = true
+    while (grew) {
+      grew = false
+      for (const n of canvas.nodes) {
+        if (n.parentId && ids.has(n.parentId) && !ids.has(n.id)) {
+          ids.add(n.id)
+          grew = true
+        }
+      }
+    }
+    return canvas.nodes.filter((n) => ids.has(n.id))
+  }, [canvas.nodes, rootNodeId])
+
+  // BuilderCanvas renders only `viewNodes`; lookups/guards still see the whole
+  // roadmap via the shared `nodesRef`.
+  const viewCanvas = useMemo(
+    () => (rootNodeId ? { ...canvas, nodes: viewNodes } : canvas),
+    [canvas, viewNodes, rootNodeId]
+  )
+
+  // Full-roadmap builder URL (drops the ?node= rooting).
+  const fullBuilderHref = `${listHref.replace(/\/+$/, "")}/${roadmapId}`
+
   const canvasNodeIds = useMemo(
-    () => new Set(canvas.nodes.map((n) => n.id)),
-    [canvas.nodes]
+    () => new Set(viewNodes.map((n) => n.id)),
+    [viewNodes]
   )
 
   // Defense in depth — the admin proxy + page gate should never let this hit.
@@ -95,6 +138,18 @@ export function BuilderPage({
     )
   }
 
+  // Rooted view requested but the node is gone (deleted / bad id).
+  if (rootNodeId && !rootNode) {
+    return (
+      <div className="flex min-h-[50vh] flex-col items-center justify-center gap-4">
+        <p className="text-lg font-semibold">Không tìm thấy node</p>
+        <Button nativeButton={false} render={<a href={fullBuilderHref} />}>
+          <ArrowLeft className="size-4" /> Về roadmap
+        </Button>
+      </div>
+    )
+  }
+
   return (
     <div className="flex h-[calc(100svh-57px)] flex-col">
       <div className="flex items-center justify-between gap-4 border-b px-4 py-3">
@@ -106,28 +161,49 @@ export function BuilderPage({
             <ArrowLeft className="size-4" /> Danh sách Roadmap
           </a>
           <span className="text-muted-foreground">/</span>
-          <h1 className="min-w-0 truncate text-lg font-extrabold uppercase italic">
-            {canvas.roadmap.title}
-          </h1>
-          <button
-            type="button"
-            onClick={() => void canvas.togglePublish()}
-            title="Bật/tắt xuất bản"
-            className={cn(
-              "flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs transition-colors hover:bg-muted",
-              canvas.roadmap.isPublished
-                ? "text-emerald-600 dark:text-emerald-400"
-                : "text-muted-foreground"
-            )}
-          >
-            <span
-              className={cn(
-                "size-2 rounded-full",
-                canvas.roadmap.isPublished ? "bg-emerald-500" : "bg-zinc-400"
-              )}
-            />
-            {canvas.roadmap.isPublished ? "đã xuất bản" : "chưa xuất bản"}
-          </button>
+          {rootNode ? (
+            <>
+              {/* Breadcrumb back to the full roadmap, then the node title. */}
+              <a
+                href={fullBuilderHref}
+                className="shrink-0 truncate text-sm text-muted-foreground hover:text-foreground"
+              >
+                {canvas.roadmap.title}
+              </a>
+              <span className="text-muted-foreground">/</span>
+              <h1 className="min-w-0 truncate text-lg font-extrabold uppercase italic">
+                {rootNode.title}
+              </h1>
+              <span className="shrink-0 rounded-full border px-2 py-0.5 text-xs text-muted-foreground">
+                {rootNode.nodeType}
+              </span>
+            </>
+          ) : (
+            <>
+              <h1 className="min-w-0 truncate text-lg font-extrabold uppercase italic">
+                {canvas.roadmap.title}
+              </h1>
+              <button
+                type="button"
+                onClick={() => void canvas.togglePublish()}
+                title="Bật/tắt xuất bản"
+                className={cn(
+                  "flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs transition-colors hover:bg-muted",
+                  canvas.roadmap.isPublished
+                    ? "text-emerald-600 dark:text-emerald-400"
+                    : "text-muted-foreground"
+                )}
+              >
+                <span
+                  className={cn(
+                    "size-2 rounded-full",
+                    canvas.roadmap.isPublished ? "bg-emerald-500" : "bg-zinc-400"
+                  )}
+                />
+                {canvas.roadmap.isPublished ? "đã xuất bản" : "chưa xuất bản"}
+              </button>
+            </>
+          )}
         </div>
 
         <div className="flex shrink-0 items-center gap-2">
@@ -160,14 +236,28 @@ export function BuilderPage({
             <Save className="size-4" />
             {canvas.isSaving ? "Đang lưu..." : "Lưu"}
           </Button>
-          <Button
-            type="button"
-            size="sm"
-            variant="destructive"
-            onClick={() => setConfirmDelete(true)}
-          >
-            <Trash2 className="size-4" /> Xóa roadmap
-          </Button>
+          {rootNode ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="destructive"
+              onClick={async () => {
+                const ok = await canvas.deleteNodePermanent(rootNode.id)
+                if (ok) window.location.href = fullBuilderHref
+              }}
+            >
+              <Trash2 className="size-4" /> Xóa node
+            </Button>
+          ) : (
+            <Button
+              type="button"
+              size="sm"
+              variant="destructive"
+              onClick={() => setConfirmDelete(true)}
+            >
+              <Trash2 className="size-4" /> Xóa roadmap
+            </Button>
+          )}
         </div>
       </div>
 
@@ -214,7 +304,7 @@ export function BuilderPage({
           </div>
         )}
         <BuilderCanvas
-          canvas={canvas}
+          canvas={viewCanvas}
           className="h-full min-w-0 flex-1"
           onSyncPublish={onSyncPublish}
         />

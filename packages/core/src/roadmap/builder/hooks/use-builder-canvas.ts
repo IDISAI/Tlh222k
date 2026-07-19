@@ -11,7 +11,6 @@ import type {
   RoadmapNode,
   UpdateNodeInput,
 } from "../../types"
-import { slugify } from "../../utils/slugify"
 import { TOAST_MESSAGES, serviceErrorMessage } from "../utils/toast-messages"
 
 /**
@@ -226,67 +225,9 @@ export function useBuilderCanvas(
         }
       }
 
-      // Req 11: role/skill node → linked Roadmap (isPublished=false by
-      // default). Client-side on purpose: the Clerk token authorizing the
-      // write lives in the browser, and the localStorage mock works too.
-      if (input.nodeType === "role" || input.nodeType === "skill") {
-        const roadmap = await service
-          .createRoadmap({ slug: slugify(node.title), title: node.title }, role)
-          .catch(() => null)
-        if (!roadmap) {
-          toast.error(
-            "Không thể tạo roadmap. Node đã được tạo nhưng chưa được liên kết với roadmap."
-          )
-        } else {
-          // Seed the linked roadmap with a root node mirroring the source
-          // node (same title, same type) so its builder never opens empty.
-          // The seed self-links to its own roadmap so it navigates harmlessly
-          // to itself and is hidden from the Kho Node sidebar (a roadmap-
-          // identity marker, not a reusable node — avoids the sidebar showing
-          // both the portal node and its seed). Best-effort.
-          try {
-            const seed = await service.createNode(
-              {
-                roadmapId: roadmap.id,
-                parentId: null,
-                title: node.title,
-                nodeType: input.nodeType,
-                positionX: 0,
-                positionY: 0,
-              },
-              role
-            )
-            await service.updateNode(
-              seed.id,
-              { linkedRoadmapId: roadmap.id },
-              role
-            )
-          } catch (error) {
-            console.error("[roadmap-builder] seed node failed", {
-              roadmapId: roadmap.id,
-              error,
-            })
-          }
-          try {
-            await service.updateNode(
-              node.id,
-              { linkedRoadmapId: roadmap.id },
-              role
-            )
-            applyNodePatch(
-              node.id,
-              { linkedRoadmapId: roadmap.id },
-              { dirty: false }
-            )
-          } catch (error) {
-            console.error(
-              "[notion-article-node] linkedRoadmapId update failed",
-              { nodeId: node.id, roadmapId: roadmap.id, error }
-            )
-          }
-        }
-      }
-
+      // A role/skill node IS a roadmap: its "detail" is a view of THIS same
+      // tree rooted at the node (node + its descendants). No separate Roadmap
+      // record is created and no seed node is added — one node, one record.
       return node
     },
     [

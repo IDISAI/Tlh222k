@@ -70,21 +70,19 @@ describe("nodeNavigationUrl (notion-article-node Req 1/10/11)", () => {
     ).toBe("/roadmap/nhap-mon-html")
   })
 
-  it("role/skill in builder → linked roadmap, else own roadmap (never null)", () => {
-    // Portal node → the linked roadmap.
+  it("role/skill in builder → rooted view of its own roadmap (never null)", () => {
     expect(
       nodeNavigationUrl(
-        node({ nodeType: "role", linkedRoadmapId: "rm-9" }),
+        node({ nodeType: "role", id: "nd-7", roadmapId: "rm-1" }),
         { builderBasePath: "/roadmaps" }
       )
-    ).toBe("/roadmaps/rm-9")
-    // Root/seed node with no link → its own roadmap (harmless, no error).
+    ).toBe("/roadmaps/rm-1?node=nd-7")
     expect(
       nodeNavigationUrl(
-        node({ nodeType: "skill", roadmapId: "rm-1", linkedRoadmapId: null }),
+        node({ nodeType: "skill", id: "nd-8", roadmapId: "rm-2" }),
         { builderBasePath: "/roadmaps" }
       )
-    ).toBe("/roadmaps/rm-1")
+    ).toBe("/roadmaps/rm-2?node=nd-8")
   })
 
   // Tag: Feature: notion-article-node, Property 9: chapter URL format

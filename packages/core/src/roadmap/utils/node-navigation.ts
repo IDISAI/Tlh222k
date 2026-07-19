@@ -52,10 +52,9 @@ export function nodeNavigationUrl(
   }
   if (node.nodeType === "role" || node.nodeType === "skill") {
     if (builderBasePath) {
-      // Builder always navigates into a roadmap: the linked one for a portal
-      // node, or the node's own roadmap for a root/seed node. Never blocked —
-      // a role/skill node is always tied to a roadmap.
-      return `${builderBasePath}/${node.linkedRoadmapId ?? node.roadmapId}`
+      // A role/skill node IS a roadmap: navigate to a view of its OWN roadmap
+      // tree rooted at this node (node + descendants). Same record, no clone.
+      return `${builderBasePath}/${node.roadmapId}?node=${node.id}`
     }
     return `/roadmap/${node.slug}`
   }
