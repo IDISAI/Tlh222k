@@ -44,8 +44,11 @@ function harness() {
   }
   const prisma = {
     ...tx,
-    $transaction: vi.fn(async (work: (client: typeof tx) => unknown) =>
-      work(tx)
+    $transaction: vi.fn(
+      async (
+        work: (client: typeof tx) => unknown,
+        _opts?: { timeout?: number; isolationLevel?: string }
+      ) => work(tx)
     ),
   }
   const events = { emit: vi.fn() }
@@ -114,6 +117,48 @@ describe("RoadmapService tree integrity", () => {
       [{ id: owned.id, parentId: null, positionX: 1, positionY: 2 }],
       admin
     )
+
+    expect(prisma.$transaction).toHaveBeenCalledWith(expect.any(Function), {
+      timeout: 10_000,
+      isolationLevel: "Serializable",
+    })
+  })
+
+  it("field-only updateNode skips Serializable (avoids create→link deadlocks)", async () => {
+    const { service, tx, prisma } = harness()
+    const article = node("article-1", "roadmap-a")
+    tx.node.findUnique.mockResolvedValue(article)
+    tx.node.update.mockResolvedValue({
+      ...article,
+      notionPageId: "doc-1",
+    })
+    tx.node.count = vi.fn(async () => 0)
+
+    await service.updateNode(
+      article.id,
+      { notionPageId: "doc-1" },
+      admin
+    )
+
+    expect(prisma.$transaction).toHaveBeenCalledWith(expect.any(Function), {
+      timeout: 10_000,
+    })
+    expect(prisma.$transaction.mock.calls[0]?.[1]).not.toHaveProperty(
+      "isolationLevel"
+    )
+  })
+
+  it("parent-change updateNode keeps Serializable isolation", async () => {
+    const { service, tx, prisma } = harness()
+    const child = node("child", "roadmap-a")
+    const parent = node("parent", "roadmap-a")
+    tx.node.findUnique.mockResolvedValue(child)
+    tx.node.findFirst.mockResolvedValue(parent)
+    tx.node.findMany.mockResolvedValue([child, parent])
+    tx.node.update.mockResolvedValue({ ...child, parentId: parent.id })
+    tx.node.count = vi.fn(async () => 0)
+
+    await service.updateNode(child.id, { parentId: parent.id }, admin)
 
     expect(prisma.$transaction).toHaveBeenCalledWith(expect.any(Function), {
       timeout: 10_000,

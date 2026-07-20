@@ -21,7 +21,7 @@ import "@xyflow/react/dist/style.css"
 
 import { toast } from "@workspace/ui/components/sonner"
 
-import { type ArticleType, type NodeType, type RoadmapNode } from "../../types"
+import { type ArticleType, type NodeType, type RoadmapEdge, type RoadmapNode } from "../../types"
 import type { BuilderCanvasApi } from "../hooks/use-builder-canvas"
 import type {
   BuilderFlowNode,
@@ -34,6 +34,7 @@ import { BuilderCanvasContext } from "./builder-context"
 import { BuilderNodeComponent } from "./BuilderNodeComponent"
 import { ChildCountEdgeComponent } from "./ChildCountEdge"
 import { DeleteNodeDialog } from "./DeleteNodeDialog"
+import { EdgeContextMenu } from "./EdgeContextMenu"
 import { NodeContextMenu } from "./NodeContextMenu"
 import { NodeDetailDialog } from "./NodeDetailDialog"
 import { NodeEditPanel } from "./NodeEditPanel"
@@ -118,6 +119,11 @@ function BuilderCanvasInner({
   const [editNode, setEditNode] = useState<RoadmapNode | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<RoadmapNode | null>(null)
   const [isDragging, setIsDragging] = useState(false)
+  const [edgeMenu, setEdgeMenu] = useState<{
+    edge: RoadmapEdge
+    x: number
+    y: number
+  } | null>(null)
 
   // Base path for role/skill "Điều hướng" and chapter detail links. The
   // builder page lives at `{base}/{roadmapId}`, so strip the last segment of
@@ -286,7 +292,27 @@ function BuilderCanvasInner({
       const domain = canvas.nodesRef.current.find((n) => n.id === rfNode.id)
       if (!domain) return
       setSelector(null)
+      setEdgeMenu(null)
       setCtxMenu({ node: domain, x: event.clientX, y: event.clientY })
+    },
+    [canvas]
+  )
+
+  const onEdgeContextMenu = useCallback(
+    (event: React.MouseEvent, rfEdge: Edge) => {
+      event.preventDefault()
+      const targetNode = canvas.nodesRef.current.find((n) => n.id === rfEdge.target)
+      if (!targetNode || !targetNode.parentId) return
+      
+      const edge: RoadmapEdge = {
+        id: rfEdge.id,
+        sourceId: targetNode.parentId,
+        targetId: targetNode.id,
+        kind: "solid"
+      }
+      setSelector(null)
+      setCtxMenu(null)
+      setEdgeMenu({ edge, x: event.clientX, y: event.clientY })
     },
     [canvas]
   )
@@ -435,6 +461,7 @@ function BuilderCanvasInner({
           onEdgesDelete={onEdgesDelete}
           onPaneContextMenu={onPaneContextMenu}
           onNodeContextMenu={onNodeContextMenu}
+          onEdgeContextMenu={onEdgeContextMenu}
           onNodeDoubleClick={onNodeDoubleClick}
           onDragOver={onDragOver}
           onDrop={onDrop}
@@ -500,6 +527,20 @@ function BuilderCanvasInner({
           onClose={() => setEditNode(null)}
           onSave={canvas.updateNodeMeta}
           onSyncPublish={onSyncPublish}
+        />
+      )}
+
+      {edgeMenu && (
+        <EdgeContextMenu
+          edge={edgeMenu.edge}
+          screenX={edgeMenu.x}
+          screenY={edgeMenu.y}
+          onClose={() => setEdgeMenu(null)}
+          onSetKind={() => {}}
+          onRemove={(edgeId) => {
+            const targetId = edgeId.split("->")[1]
+            if (targetId) canvas.reparent(targetId, null)
+          }}
         />
       )}
     </BuilderCanvasContext.Provider>

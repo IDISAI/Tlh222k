@@ -39,7 +39,9 @@ export function useBuilderCanvas(
     slug: string,
     title: string,
     parentChapterSlug?: string
-  ) => Promise<{ id: string } | null>
+  ) => Promise<{ id: string } | null>,
+  /** Publish sync hook (notion-article-node Req 7). */
+  onSyncPublish?: (notionPageId: string, isPublished: boolean) => Promise<void>
 ) {
   const service = useMemo(() => new RoadmapService(), [])
 
@@ -336,6 +338,15 @@ export function useBuilderCanvas(
             )
           })
         }
+        // Sync publish state to Notion document if available
+        if (input.isPublished !== undefined && onSyncPublish) {
+          const notionKey = previous.notionPageId || previous.slug
+          if (notionKey) {
+            Promise.resolve(
+              onSyncPublish(notionKey, input.isPublished)
+            ).catch(console.error)
+          }
+        }
         void refreshAllNodes()
         toast.success(TOAST_MESSAGES.UPDATE_SUCCESS)
         return true
@@ -345,7 +356,7 @@ export function useBuilderCanvas(
         return false
       }
     },
-    [nodes, applyNodePatch, service, role, refreshAllNodes, onTitleSync]
+    [nodes, applyNodePatch, service, role, refreshAllNodes, onTitleSync, onSyncPublish]
   )
 
   /**

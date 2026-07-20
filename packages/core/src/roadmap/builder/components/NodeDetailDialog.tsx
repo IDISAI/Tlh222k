@@ -1,9 +1,25 @@
 "use client"
 
-import { AlertTriangle, ExternalLink, PencilLine } from "lucide-react"
+import { useState } from "react"
+import {
+  AlertTriangle,
+  ExternalLink,
+  FileText,
+  PencilLine,
+  Plus,
+} from "lucide-react"
 import { Badge } from "@workspace/ui/components/badge"
 import { Button } from "@workspace/ui/components/button"
+import { Card, CardContent, CardHeader, CardTitle } from "@workspace/ui/components/card"
+import { Input } from "@workspace/ui/components/input"
 import { Label } from "@workspace/ui/components/label"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@workspace/ui/components/select"
 import {
   Sheet,
   SheetContent,
@@ -14,13 +30,91 @@ import {
 import { toast } from "@workspace/ui/components/sonner"
 import { cn } from "@workspace/ui/lib/utils"
 
-import type { RoadmapNode } from "../../types"
+import type { ArticleType, RoadmapNode } from "../../types"
 import {
   navigationBlockedMessage,
   nodeNavigationUrl,
 } from "../../utils/node-navigation"
 import { NODE_TYPE_ACCENT, NODE_TYPE_ICONS } from "../utils/node-type-styles"
 import { childrenOf } from "./builder-context"
+
+interface ArticleCreateFormProps {
+  chapterId: string
+  onCreateArticle: (input: {
+    chapterId: string
+    title: string
+    articleType: ArticleType
+  }) => Promise<RoadmapNode | null>
+  onDone: () => void
+}
+
+function ArticleCreateForm({ chapterId, onCreateArticle, onDone }: ArticleCreateFormProps) {
+  const [title, setTitle] = useState("")
+  const [articleType, setArticleType] = useState<ArticleType>("notion")
+  const [saving, setSaving] = useState(false)
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!title.trim()) return
+    setSaving(true)
+    const result = await onCreateArticle({
+      chapterId,
+      title: title.trim(),
+      articleType,
+    })
+    setSaving(false)
+    if (result) {
+      setTitle("")
+      onDone()
+    }
+  }
+
+  return (
+    <form onSubmit={(e) => void handleSubmit(e)} className="space-y-3 rounded-md border p-3">
+      <p className="text-xs font-medium">Bài viết mới</p>
+      <div className="space-y-1">
+        <Label className="text-xs">Tiêu đề *</Label>
+        <Input
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          placeholder="Tên bài viết"
+          className="h-7 text-xs"
+          autoFocus
+        />
+      </div>
+      <div className="space-y-1">
+        <Label className="text-xs">Loại</Label>
+        <Select value={articleType} onValueChange={(v) => setArticleType(v as ArticleType)}>
+          <SelectTrigger className="h-7 text-xs">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="notion">Notion</SelectItem>
+            <SelectItem value="jupyter">Jupyter Notebook</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      {articleType === "notion" ? (
+        <p className="text-xs text-muted-foreground">
+          Trang Notion sẽ được tạo tự động và mở ngay sau khi tạo bài viết.
+        </p>
+      ) : (
+        <p className="text-xs text-muted-foreground">
+          Notebook nội bộ — điều hướng tới <code className="text-[11px]">/notebooks/[slug]</code>{" "}
+          (slug sinh từ tiêu đề). Không cần Jupyter URL.
+        </p>
+      )}
+      <div className="flex gap-2">
+        <Button type="submit" size="sm" disabled={saving || !title.trim()} className="h-7 text-xs">
+          Tạo
+        </Button>
+        <Button type="button" variant="ghost" size="sm" className="h-7 text-xs" onClick={onDone}>
+          Hủy
+        </Button>
+      </div>
+    </form>
+  )
+}
 
 interface NodeDetailDialogProps {
   node: RoadmapNode | null
@@ -42,12 +136,22 @@ interface NodeDetailDialogProps {
    */
   notionBasePath?: string
   /**
-   * Admin-builder base ("/roadmaps"). When set, chapter navigates to its
-   * Roadmap_Detail_Page (`{base}/{roadmapId}/chapter/{slug}`, Req 10.1) and
-   * role/skill navigates to its LINKED roadmap's builder (`{base}/{id}`,
-   * Req 11.5). Omitted in viewer zones → `/roadmap/{slug}` as before.
+   * Admin-builder base ("/roadmaps"). When set, a role/skill/chapter block
+   * navigates to its OWN composition canvas (`{base}/{id}`); omitted in viewer
+   * zones → `/roadmap/{slug}` as before.
    */
   builderBasePath?: string
+  /**
+   * Hide "Điều hướng" when this node IS the roadmap whose detail page we're on
+   * (LEGO model: you can't drill into the canvas you're already looking at).
+   */
+  hideNavigate?: boolean
+  /** If provided, chapter nodes show a "+ Tạo bài viết" button. */
+  onCreateArticle?: (input: {
+    chapterId: string
+    title: string
+    articleType: ArticleType
+  }) => Promise<RoadmapNode | null>
 }
 
 /**
@@ -65,7 +169,10 @@ export function NodeDetailDialog({
   notebookBasePath = "/notebooks",
   notionBasePath = "/notion",
   builderBasePath,
+  hideNavigate = false,
+  onCreateArticle,
 }: NodeDetailDialogProps) {
+  const [showArticleForm, setShowArticleForm] = useState(false)
   if (!node) return null
 
   const Icon = NODE_TYPE_ICONS[node.nodeType]
@@ -80,6 +187,17 @@ export function NodeDetailDialog({
     builderBasePath,
   })
   const isArticle = node.nodeType === "article"
+  // LEGO: articles are never canvas blocks — a chapter shows its articles here
+  // in the right panel instead (canvas không chứa article).
+  const chapterArticles =
+    node.nodeType === "chapter"
+      ? nodes.filter(
+          (n) =>
+            n.parentId === node.id &&
+            n.nodeType === "article" &&
+            !n.isDeleted
+        )
+      : []
   const canNavigate = navUrl !== null
   // Same-origin routes (role/skill, internal notebook/notion) stay in this
   // zone; only absolute URLs (legacy external docs) open in a new tab.
@@ -150,6 +268,100 @@ export function NodeDetailDialog({
             </div>
           )}
 
+          {node.nodeType === "chapter" && (
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <Label>Bài viết ({chapterArticles.length})</Label>
+                {onCreateArticle && !showArticleForm && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 gap-1 px-2 text-xs"
+                    onClick={() => setShowArticleForm(true)}
+                  >
+                    <Plus className="size-3" /> Tạo
+                  </Button>
+                )}
+              </div>
+              {showArticleForm && onCreateArticle && (
+                <ArticleCreateForm
+                  chapterId={node.id}
+                  onCreateArticle={onCreateArticle}
+                  onDone={() => setShowArticleForm(false)}
+                />
+              )}
+              {chapterArticles.length === 0 && !showArticleForm ? (
+                <p className="text-xs italic text-muted-foreground">
+                  Chưa có bài viết nào trong chapter này
+                </p>
+              ) : (
+                <div className="grid grid-cols-1 gap-2.5">
+                  {chapterArticles.map((a) => {
+                    const url = nodeNavigationUrl(a, {
+                      notebookBasePath,
+                      notionBasePath,
+                      parentChapterSlug: node.slug,
+                    })
+                    const cardContent = (
+                      <Card size="sm" className="cursor-pointer transition-all hover:bg-muted hover:shadow-sm">
+                        <CardHeader className="flex flex-row items-center justify-between space-y-0 p-3 pb-1">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <FileText className="size-4 shrink-0 text-muted-foreground" />
+                            <CardTitle className="text-xs font-semibold truncate">{a.title}</CardTitle>
+                          </div>
+                          {a.isPublished ? (
+                            <Badge variant="secondary" className="h-5 bg-emerald-100 text-emerald-700 hover:bg-emerald-100 border-transparent text-[10px] px-1.5 py-0">
+                              Public
+                            </Badge>
+                          ) : (
+                            <Badge variant="outline" className="h-5 text-[10px] px-1.5 py-0 text-muted-foreground">
+                              Draft
+                            </Badge>
+                          )}
+                        </CardHeader>
+                        <CardContent className="flex items-center gap-2 p-3 pt-0">
+                          {a.articleType === "notion" ? (
+                            <Badge variant="outline" className="text-[10px] text-zinc-500 bg-zinc-50 border-zinc-200">
+                              Notion
+                            </Badge>
+                          ) : (
+                            <Badge variant="outline" className="text-[10px] text-orange-600 bg-orange-50 border-orange-200">
+                              Jupyter
+                            </Badge>
+                          )}
+                          {!url && (
+                            <Badge variant="outline" className="text-[10px] text-amber-600 bg-amber-50 border-amber-200 gap-1">
+                              <AlertTriangle className="size-3" /> Chưa liên kết
+                            </Badge>
+                          )}
+                        </CardContent>
+                      </Card>
+                    )
+
+                    return (
+                      <div key={a.id}>
+                        {url ? (
+                          <a href={url} className="block no-underline">
+                            {cardContent}
+                          </a>
+                        ) : (
+                          <div
+                            onClick={() => {
+                              toast.warning(navigationBlockedMessage(a))
+                            }}
+                          >
+                            {cardContent}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="grid grid-cols-2 gap-3 text-xs text-muted-foreground">
             <p>
               Node cha:{" "}
@@ -165,17 +377,19 @@ export function NodeDetailDialog({
         </div>
 
         <SheetFooter className="border-t dark:border-zinc-800">
-          <Button
-            type="button"
-            // Req 1.3/10.6/11.6: stays clickable so the toast can explain WHY
-            // navigation is blocked; the muted style signals "disabled".
-            className={cn(!canNavigate && "opacity-50")}
-            aria-disabled={!canNavigate}
-            title={!navUrl ? navigationBlockedMessage(node) : undefined}
-            onClick={handleNavigate}
-          >
-            <ExternalLink className="size-4" /> Điều hướng
-          </Button>
+          {!hideNavigate && (
+            <Button
+              type="button"
+              // Req 1.3/10.6/11.6: stays clickable so the toast can explain WHY
+              // navigation is blocked; the muted style signals "disabled".
+              className={cn(!canNavigate && "opacity-50")}
+              aria-disabled={!canNavigate}
+              title={!navUrl ? navigationBlockedMessage(node) : undefined}
+              onClick={handleNavigate}
+            >
+              <ExternalLink className="size-4" /> Điều hướng
+            </Button>
+          )}
           {!readOnly && (
             <Button
               type="button"

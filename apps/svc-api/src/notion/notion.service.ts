@@ -128,6 +128,29 @@ export class NotionService {
     return toDoc(doc)
   }
 
+  private async publishParentsUpward(parentId: string | null): Promise<void> {
+    if (!parentId) return
+    const parent = await this.prisma.document.findUnique({
+      where: { id: parentId },
+    })
+    if (parent && !parent.isPublished) {
+      await this.prisma.document.update({
+        where: { id: parentId },
+        data: { isPublished: true },
+      })
+      await this.prisma.node.updateMany({
+        where: {
+          OR: [
+            { notionPageId: parentId },
+            ...(parent.slug ? [{ slug: parent.slug }] : []),
+          ],
+        },
+        data: { isPublished: true },
+      })
+      await this.publishParentsUpward(parent.parentDocumentId)
+    }
+  }
+
   async update(
     user: CurrentUser | null,
     input: UpdateDocumentInput
@@ -149,6 +172,28 @@ export class NotionService {
             : {}),
         },
       })
+      
+      // Keep Node isPublished and title in sync with the backing Document
+      if (fields.isPublished != null || fields.title != null) {
+        const updateData: { isPublished?: boolean; title?: string } = {}
+        if (fields.isPublished != null) updateData.isPublished = fields.isPublished
+        if (fields.title != null) updateData.title = fields.title
+        
+        await this.prisma.node.updateMany({
+          where: {
+            OR: [
+              { notionPageId: id },
+              ...(doc.slug ? [{ slug: doc.slug }] : []),
+            ],
+          },
+          data: updateData,
+        })
+      }
+
+      if (fields.isPublished === true) {
+        await this.publishParentsUpward(doc.parentDocumentId)
+      }
+
       return toDoc(doc)
     } catch {
       throw new RoadmapError("NOT_FOUND")

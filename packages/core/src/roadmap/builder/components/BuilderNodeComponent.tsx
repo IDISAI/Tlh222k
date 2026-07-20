@@ -107,11 +107,13 @@ export const BuilderNodeComponent = memo(function BuilderNodeComponent({
   }, [cancelTimers])
 
   const Icon = NODE_TYPE_ICONS[node.nodeType]
+  // jupyter = always internal by slug (no jupyterUrl needed).
+  // notion = needs linked Document (auto-created on article create).
   const articleUnlinked =
     node.nodeType === "article" &&
     !(
-      (node.articleType === "notion" && node.notionPageId) ||
-      (node.articleType === "jupyter" && node.jupyterUrl)
+      node.articleType === "jupyter" ||
+      (node.articleType === "notion" && node.notionPageId)
     )
   // notion-article-node Req 6.2: in the viewer an UNLINKED notion article is
   // visually disabled and inert (its click handler also bails).

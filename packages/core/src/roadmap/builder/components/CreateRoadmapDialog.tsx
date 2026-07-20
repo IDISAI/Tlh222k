@@ -22,12 +22,11 @@ import {
   MAX_DESCRIPTION_LENGTH,
   MAX_TITLE_LENGTH,
   type CallerRole,
-  type Roadmap,
+  type RoadmapNode,
 } from "../../types"
-import { slugify } from "../../utils/slugify"
 import { serviceErrorMessage } from "../utils/toast-messages"
 
-/** A roadmap is a role or a skill (a role/skill node IS a roadmap). */
+/** A roadmap is a role or a skill (a role/skill node IS a roadmap block). */
 const ROADMAP_KINDS = [
   { value: "role" as const, label: "Role" },
   { value: "skill" as const, label: "Skill" },
@@ -36,7 +35,7 @@ const ROADMAP_KINDS = [
 interface CreateRoadmapDialogProps {
   role: CallerRole
   onClose: () => void
-  onCreated: (roadmap: Roadmap) => void
+  onCreated: (node: RoadmapNode) => void
 }
 
 /** "+ Tạo roadmap mới" (Req 1.1) — creates an unpublished draft. */
@@ -47,8 +46,6 @@ export function CreateRoadmapDialog({
 }: CreateRoadmapDialogProps) {
   const service = useMemo(() => new RoadmapService(), [])
   const [title, setTitle] = useState("")
-  const [slug, setSlug] = useState("")
-  const [slugTouched, setSlugTouched] = useState(false)
   const [description, setDescription] = useState("")
   const [nodeType, setNodeType] = useState<"role" | "skill">("role")
   const [error, setError] = useState("")
@@ -56,7 +53,6 @@ export function CreateRoadmapDialog({
 
   const handleTitle = (value: string) => {
     setTitle(value)
-    if (!slugTouched) setSlug(slugify(value))
     if (error) setError("")
   }
 
@@ -67,34 +63,21 @@ export function CreateRoadmapDialog({
     }
     setBusy(true)
     try {
-      const roadmap = await service.createRoadmap(
+      // A roadmap IS a role/skill block (LEGO): one standalone node that owns
+      // itself. No container roadmap, no separate root node — createBlock adds
+      // it to the store so it lists in both the table and the Kho sidebar.
+      const node = await service.createBlock(
         {
+          nodeType,
           title: title.trim(),
-          slug: slug.trim() || slugify(title),
           description: description.trim() || undefined,
+          positionX: 0,
+          positionY: 0,
         },
         role
       )
-      // A roadmap IS a role/skill node: create the root node that represents it
-      // on the canvas and in the Kho Roadmap sidebar (one record). Without it
-      // the roadmap would open to an empty canvas and never list as a node.
-      try {
-        await service.createNode(
-          {
-            roadmapId: roadmap.id,
-            parentId: null,
-            title: roadmap.title,
-            nodeType,
-            positionX: 0,
-            positionY: 0,
-          },
-          role
-        )
-      } catch (nodeErr) {
-        toast.error(serviceErrorMessage(nodeErr))
-      }
       toast.success("Đã tạo roadmap mới")
-      onCreated(roadmap)
+      onCreated(node)
     } catch (err) {
       toast.error(serviceErrorMessage(err))
     } finally {
@@ -148,19 +131,6 @@ export function CreateRoadmapDialog({
                 </Button>
               ))}
             </div>
-          </div>
-
-          <div className="space-y-1.5">
-            <Label htmlFor="rm-slug">Slug</Label>
-            <Input
-              id="rm-slug"
-              value={slug}
-              placeholder="lap-trinh-web"
-              onChange={(e) => {
-                setSlugTouched(true)
-                setSlug(e.target.value)
-              }}
-            />
           </div>
 
           <div className="space-y-1.5">

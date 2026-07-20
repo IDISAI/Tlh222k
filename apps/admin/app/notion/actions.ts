@@ -99,9 +99,13 @@ export async function syncPublishByNotionPageId(
   isPublished: boolean
 ): Promise<void> {
   const token = await getAuthToken()
-  const doc = await notionApi.getById(notionPageId, token)
+  let doc = await notionApi.getById(notionPageId, token)
+  if (!doc) {
+    // If not found by ID, try resolving by slug (chapters/sections use slug mapping)
+    doc = await notionApi.getBySlug(notionPageId, token)
+  }
   if (!doc) return
-  await notionApi.update({ id: notionPageId, isPublished }, token)
+  await notionApi.update({ id: doc.id, isPublished }, token)
 }
 
 /**

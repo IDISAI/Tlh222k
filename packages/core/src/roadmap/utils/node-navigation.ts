@@ -43,20 +43,16 @@ export function nodeNavigationUrl(
     builderBasePath,
   } = opts
 
-  if (node.nodeType === "chapter") {
-    if (builderBasePath) {
-      if (!node.slug) return null // Req 10.6
-      return `${builderBasePath}/${node.roadmapId}/chapter/${node.slug}`
-    }
+  if (
+    node.nodeType === "role" ||
+    node.nodeType === "skill" ||
+    node.nodeType === "chapter"
+  ) {
+    // A role/skill/chapter node IS a roadmap block: drilling opens its OWN
+    // composition canvas at `{base}/{id}` (LEGO model — no container roadmap,
+    // no `?node=` rooting). Viewer zones keep the slug-based public route.
+    if (builderBasePath) return `${builderBasePath}/${node.id}`
     return node.slug ? `/roadmap/${node.slug}` : null
-  }
-  if (node.nodeType === "role" || node.nodeType === "skill") {
-    if (builderBasePath) {
-      // A role/skill node IS a roadmap: navigate to a view of its OWN roadmap
-      // tree rooted at this node (node + descendants). Same record, no clone.
-      return `${builderBasePath}/${node.roadmapId}?node=${node.id}`
-    }
-    return `/roadmap/${node.slug}`
   }
   if (node.nodeType === "article") {
     const target = resolveArticleTarget(node)

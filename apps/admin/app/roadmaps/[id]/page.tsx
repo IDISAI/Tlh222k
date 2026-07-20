@@ -14,13 +14,10 @@ export const metadata = { title: "Roadmap Builder" }
 
 export default async function BuilderCanvasPage({
   params,
-  searchParams,
 }: {
   params: Promise<{ id: string }>
-  searchParams: Promise<{ node?: string }>
 }) {
   const { id } = await params
-  const { node } = await searchParams
   const role = await getRole()
   if (role !== "admin" && role !== "super-admin") redirect(FORBIDDEN_PATH)
 
@@ -29,14 +26,14 @@ export default async function BuilderCanvasPage({
   // a server-side GraphQL fetch + notFound() once svc-roadmap exists).
   return (
     <BuilderPage
-      roadmapId={id}
-      rootNodeId={node}
+      nodeId={id}
       role={role}
       listHref={ROADMAPS_PATH}
       onNodeTitleSync={syncTitleBySlug}
       onCreateNotionDoc={createDocumentForNode}
       onSyncPublish={syncPublishByNotionPageId}
       onArchiveDocument={archiveByNotionPageId}
+      publicOrigin={process.env.NEXT_PUBLIC_HOST_URL}
     />
   )
 }

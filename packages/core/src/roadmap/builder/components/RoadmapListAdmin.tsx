@@ -68,11 +68,10 @@ export function RoadmapListAdmin({ role }: RoadmapListAdminProps) {
   const [deleteTarget, setDeleteTarget] = useState<Row | null>(null)
 
   // The list page IS the builder base, so derive builder links from the current
-  // URL — works via the multi-zone host or the direct admin domain. A roadmap
-  // opens its builder rooted at the node (`?node=`): canvas shows the node + its
-  // descendants, sidebar shows it active.
+  // URL — works via the multi-zone host or the direct admin domain. A block IS a
+  // roadmap: its detail is its own composition canvas at `{base}/{node.id}`.
   const nodeHref = (node: RoadmapNode) =>
-    `${window.location.pathname.replace(/\/+$/, "")}/${node.roadmapId}?node=${node.id}`
+    `${window.location.pathname.replace(/\/+$/, "")}/${node.id}`
 
   const load = useCallback(async () => {
     try {
@@ -249,9 +248,10 @@ export function RoadmapListAdmin({ role }: RoadmapListAdminProps) {
           onCancel={() => setDeleteTarget(null)}
           onConfirm={async () => {
             try {
-              // Delete only this roadmap-node; its children survive (they
-              // reparent up — a child roadmap is never lost with its parent).
-              await service.deleteNode(deleteTarget.node.id, role)
+              // Permanent delete: purge the block from every canvas. Other
+              // independent blocks survive (LEGO) — only their link to this one
+              // is cut.
+              await service.deleteBlockPermanent(deleteTarget.node.id, role)
               toast.success("Đã xóa roadmap")
               setDeleteTarget(null)
               await load()

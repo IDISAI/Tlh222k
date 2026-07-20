@@ -25,7 +25,7 @@ const edgeTypes = { childCount: ChildCountEdgeComponent }
 
 /** Same colored, animated child-count edges the builder draws (Req 3.9). */
 function buildViewerEdges(nodes: RoadmapNode[]): ChildCountEdge[] {
-  const active = nodes.filter((n) => !n.isDeleted)
+  const active = nodes.filter((n) => !n.isDeleted && n.nodeType !== "article")
   const ids = new Set(active.map((n) => n.id))
   const counts = new Map<string, number>()
   for (const n of active) {
@@ -83,7 +83,7 @@ function ViewerCanvasInner({ nodes, onNodeClick, className }: ViewerCanvasProps)
   const rfNodes = useMemo<BuilderFlowNode[]>(
     () =>
       nodes
-        .filter((n) => !n.isDeleted)
+        .filter((n) => !n.isDeleted && n.nodeType !== "article")
         .map((n) => ({
           id: n.id,
           type: "builderNode" as const,

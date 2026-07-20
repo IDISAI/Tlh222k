@@ -72,35 +72,43 @@ Package scope is `@workspace/*`, not `@vizteck/*`.
 
 ## Roadmap builder model
 
-Current model (redesigned 2026-07-19, branch `hf/roadmap` — **supersedes** the
-older `.kiro` specs, notably notion-article-node Req 11 and the
-roadmap-builder-admin "Xóa khỏi Canvas" / Disabled_Node behavior):
+Current model (redesigned 2026-07-20, branch `hf/roadmap`, mock-first —
+**LEGO composition**, supersedes both the `.kiro` specs AND the earlier
+rooted-view `?node=` tree). Confirmed with the product owner via Q&A: "block
+đơn" + "composition thay cây" + "canvas lồng nhiều cấp" + "dây = entity mới".
 
-- **A role/skill node IS a roadmap** — one record, not a node plus a separate
-  `Roadmap` plus a seed. Creating a role/skill node does NOT auto-create a
-  linked roadmap, and nothing seeds a root node anywhere.
-- A role/skill node's "detail" is a **rooted view of its own roadmap tree**:
-  `/roadmaps/{roadmapId}?node={nodeId}` renders that node + its descendants.
-  `BuilderPage` takes an optional `rootNodeId` and narrows the rendered canvas
-  (the shared `nodesRef` stays full for lookups/guards).
-- `nodeNavigationUrl` role/skill → `{base}/{roadmapId}?node={id}` (never null).
-  `linkedRoadmapId` stays in the schema/service but no longer drives builder
-  navigation and is not auto-set.
-- **Kho Node sidebar = Kho Roadmap.** The builder's left sidebar
-  (`NodeSidebar`) and the **Quản lý Roadmap** table (`RoadmapListAdmin`) list
-  the SAME set: every role/skill node (each IS a roadmap). The sidebar shows
-  role/skill only; the table has a "Loại" column (role/skill). Rows open the
-  node's rooted view (`?node=`).
-- **Creating a roadmap** ("Tạo roadmap mới" dialog) picks a type (role/skill)
-  and creates a Roadmap container + its root node of that type — that root node
-  IS the roadmap shown on the canvas and in the store. Deleting a root node
-  (parentId null) deletes its whole container; deleting a child role/skill node
-  deletes just its subtree.
-- **Delete is permanent-only.** There is no "Xóa khỏi Canvas" and no
-  Disabled_Node ghost — `roadmapGraphById` filters `isDeleted` on both the mock
-  and svc-api, so deleted nodes never render on any canvas.
-- **Dragging a foreign node from the sidebar MOVES it** (`moveNode` mutation,
-  svc-api + mock parity), it does not clone. `Node.roadmapId` is a single owner.
+- **Every role/skill/chapter node is a BLOCK that owns a canvas.** A block's
+  canvas is its `Composition` (`packages/core/src/roadmap/types.ts`):
+  `{ ownerId, members: [{ nodeId, x, y }], edges: [{ id, source, target, kind }] }`.
+  The owner renders pinned on top; `members` are other blocks placed on it.
+  Membership REPLACES the parentId tree — a block can be a member of many
+  canvases (reusable LEGO). `article` is a leaf, never a block: it shows in the
+  right panel of its chapter (`NodeDetailDialog`), never on a canvas.
+- **Edges are a new entity** roadmap↔roadmap (`EdgeKind` = `solid | dashed`),
+  independent of parentId. Right-click a wire → change kind / cut (`removeEdge`).
+  `EdgeContextMenu`; draw by connecting handles (`addEdge`).
+- **parentId / roadmapId are kept as storage** so the public viewer keeps
+  working. `RoadmapService.getComposition` DERIVES a composition from a node's
+  parentId children when none is stored yet (no migration); new blocks
+  self-own (`roadmapId === id`). Composition ops persist immediately — there is
+  no batch "Lưu" step in the composition canvas.
+- **Detail page = one owner block's composition canvas** at `/roadmaps/{nodeId}`
+  (no `?node=`). `BuilderPage` takes `nodeId`; `useCompositionCanvas` +
+  `CompositionCanvas` render it. Drill into a member = its detail-panel
+  "Điều hướng" → `{base}/{node.id}` (`nodeNavigationUrl` builder branch); the
+  owner's own panel hides that button (`NodeDetailDialog hideNavigate`).
+- **Kho Roadmap sidebar = Quản lý Roadmap table.** `NodeSidebar` and
+  `RoadmapListAdmin` list the same set (role/skill blocks), same store
+  (`listNodes`). "Tạo roadmap mới" (table) and right-click-canvas both call
+  `createBlock` (role/skill/chapter) — no container `Roadmap`.
+- **Two deletes.** Canvas remove (`removeFromCanvas`, block context menu / right
+  panel) drops only membership + that block's own edges — every other edge and
+  the block itself survive. Sidebar/table delete (`deleteBlockPermanent`)
+  soft-deletes and purges the block from every composition.
+- **Verified mock-first**: `composition.service.test.ts` + `roadmap-e2e.test.ts`
+  (core/admin/web typecheck clean). TODO before enabling the backend: Apollo
+  `RoadmapApi` has no composition methods yet (the env selector casts over the
+  gap, so it only breaks when `NEXT_PUBLIC_SVC_API_URL` is set).
 
 ## Former Submodules
 

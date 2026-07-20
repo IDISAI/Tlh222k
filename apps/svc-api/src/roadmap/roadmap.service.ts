@@ -1,4 +1,4 @@
-import { Injectable } from "@nestjs/common"
+import { Injectable, type OnModuleInit } from "@nestjs/common"
 import type { Node as DbNode, Prisma } from "@prisma/client"
 
 import { PrismaService } from "../prisma/prisma.service"
@@ -22,6 +22,11 @@ const TREE_TRANSACTION_OPTIONS = {
   timeout: SAVE_TIMEOUT_MS,
   isolationLevel: "Serializable" as const,
 }
+/** Simple field writes (title, notionPageId, …) don't need Serializable. */
+const FIELD_TRANSACTION_OPTIONS = {
+  timeout: SAVE_TIMEOUT_MS,
+}
+const SERIALIZATION_RETRIES = 3
 
 type TreeClient = Pick<Prisma.TransactionClient, "node">
 
@@ -32,6 +37,39 @@ function hasPrismaCode(error: unknown, code: string): boolean {
     "code" in error &&
     error.code === code
   )
+}
+
+/** Prisma P2034 / Postgres write-conflict under Serializable — safe to retry. */
+function isSerializationFailure(error: unknown): boolean {
+  if (hasPrismaCode(error, "P2034")) return true
+  const message =
+    typeof error === "object" &&
+    error !== null &&
+    "message" in error &&
+    typeof error.message === "string"
+      ? error.message
+      : ""
+  return (
+    message.includes("write conflict") ||
+    message.includes("could not serialize") ||
+    message.includes("deadlock")
+  )
+}
+
+async function withSerializationRetry<T>(
+  run: () => Promise<T>,
+  attempts = SERIALIZATION_RETRIES
+): Promise<T> {
+  let lastError: unknown
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await run()
+    } catch (error) {
+      lastError = error
+      if (!isSerializationFailure(error) || i === attempts - 1) throw error
+    }
+  }
+  throw lastError
 }
 
 export interface RoadmapDto {
@@ -123,11 +161,66 @@ export interface SaveNodeInput {
 }
 
 @Injectable()
-export class RoadmapService {
+export class RoadmapService implements OnModuleInit {
   constructor(
     private readonly prisma: PrismaService,
     private readonly events: RoadmapEventsService
   ) {}
+
+  async onModuleInit() {
+    try {
+      const allDocs = await this.prisma.document.findMany({
+        select: { id: true, parentDocumentId: true, isPublished: true }
+      })
+      const docMap = new Map<string, { parentId: string | null; isPublished: boolean }>()
+      for (const d of allDocs) {
+        docMap.set(d.id, { parentId: d.parentDocumentId, isPublished: d.isPublished })
+      }
+
+      const toPublishIds = new Set<string>()
+      for (const d of allDocs) {
+        if (d.isPublished) {
+          let curr = docMap.get(d.id)
+          while (curr && curr.parentId) {
+            const parent = docMap.get(curr.parentId)
+            if (parent) {
+              if (!parent.isPublished) {
+                toPublishIds.add(curr.parentId)
+              }
+              curr = parent
+            } else {
+              break
+            }
+          }
+        }
+      }
+
+      if (toPublishIds.size > 0) {
+        await this.prisma.document.updateMany({
+          where: { id: { in: Array.from(toPublishIds) } },
+          data: { isPublished: true }
+        })
+      }
+
+      const docs = await this.prisma.document.findMany({
+        select: { id: true, slug: true, isPublished: true },
+      })
+      for (const doc of docs) {
+        await this.prisma.node.updateMany({
+          where: {
+            OR: [
+              { notionPageId: doc.id },
+              ...(doc.slug ? [{ slug: doc.slug }] : []),
+            ],
+            isPublished: !doc.isPublished,
+          },
+          data: { isPublished: doc.isPublished },
+        })
+      }
+    } catch (err) {
+      console.error("Failed to sync publish states on startup:", err)
+    }
+  }
 
   // ── Queries ────────────────────────────────────────────────────────────────
 
@@ -366,29 +459,31 @@ export class RoadmapService {
 
     const title = input.title.trim().slice(0, MAX_TITLE_LENGTH)
     const slug = await this.uniqueNodeSlug(input.slug?.trim() || slugify(title))
-    const created = await this.prisma.$transaction(async (tx) => {
-      await this.validateParent(tx, input.parentId ?? null, input.roadmapId)
-      const order =
-        input.order ??
-        (await tx.node.count({ where: { roadmapId: input.roadmapId } }))
+    const created = await withSerializationRetry(() =>
+      this.prisma.$transaction(async (tx) => {
+        await this.validateParent(tx, input.parentId ?? null, input.roadmapId)
+        const order =
+          input.order ??
+          (await tx.node.count({ where: { roadmapId: input.roadmapId } }))
 
-      return tx.node.create({
-        data: {
-          roadmapId: input.roadmapId,
-          parentId: input.parentId ?? null,
-          title,
-          slug,
-          nodeType: input.nodeType,
-          description: input.description?.trim() || null,
-          notionPageId: input.notionPageId ?? null,
-          articleType: input.articleType ?? null,
-          jupyterUrl: normalizeHttpUrl(input.jupyterUrl),
-          positionX: input.positionX,
-          positionY: input.positionY,
-          order,
-        },
-      })
-    }, TREE_TRANSACTION_OPTIONS)
+        return tx.node.create({
+          data: {
+            roadmapId: input.roadmapId,
+            parentId: input.parentId ?? null,
+            title,
+            slug,
+            nodeType: input.nodeType,
+            description: input.description?.trim() || null,
+            notionPageId: input.notionPageId ?? null,
+            articleType: input.articleType ?? null,
+            jupyterUrl: normalizeHttpUrl(input.jupyterUrl),
+            positionX: input.positionX,
+            positionY: input.positionY,
+            order,
+          },
+        })
+      }, TREE_TRANSACTION_OPTIONS)
+    )
     await this.events.emit(input.roadmapId)
     return this.toNodeDto(created, "locked", 0)
   }
@@ -399,79 +494,92 @@ export class RoadmapService {
     user: CurrentUser | null
   ): Promise<NodeDto> {
     assertCanWrite(user)
-    const updated = await this.prisma.$transaction(async (tx) => {
-      const node = await tx.node.findUnique({ where: { id } })
-      if (!node || node.isDeleted) throw new RoadmapError("NOT_FOUND")
+    // Tree reparent needs Serializable + cycle check. Field-only updates
+    // (notionPageId link after create, title, …) use ReadCommitted so concurrent
+    // create→link races don't fail with write-conflict / deadlock.
+    const needsTreeGuard = input.parentId !== undefined
 
-      if (input.parentId !== undefined && input.parentId !== node.parentId) {
-        const parentId = input.parentId ?? null
-        await this.validateParent(tx, parentId, node.roadmapId, id)
-        const forest = await tx.node.findMany({
-          where: { roadmapId: node.roadmapId, isDeleted: false },
-          select: { id: true, parentId: true },
-        })
-        assertAcyclicTree(
-          forest.map((candidate) =>
-            candidate.id === id ? { ...candidate, parentId } : candidate
-          )
-        )
-      }
+    const updated = await withSerializationRetry(() =>
+      this.prisma.$transaction(
+        async (tx) => {
+          const node = await tx.node.findUnique({ where: { id } })
+          if (!node || node.isDeleted) throw new RoadmapError("NOT_FOUND")
 
-      const u = await tx.node.update({
-        where: { id },
-        data: {
-          parentId:
-            input.parentId !== undefined ? (input.parentId ?? null) : undefined,
-          title:
-            input.title !== undefined && input.title !== null
-              ? input.title.trim().slice(0, MAX_TITLE_LENGTH)
-              : undefined,
-          description:
-            input.description !== undefined
-              ? input.description?.trim() || null
-              : undefined,
-          articleType:
-            input.articleType !== undefined
-              ? (input.articleType ?? null)
-              : undefined,
-          notionPageId:
-            input.notionPageId !== undefined
-              ? input.notionPageId?.trim() || null
-              : undefined,
-          jupyterUrl:
-            input.jupyterUrl !== undefined
-              ? normalizeHttpUrl(input.jupyterUrl)
-              : undefined,
-          positionX: input.positionX ?? undefined,
-          positionY: input.positionY ?? undefined,
-          order: input.order ?? undefined,
-          linkedRoadmapId:
-            input.linkedRoadmapId !== undefined
-              ? (input.linkedRoadmapId ?? null)
-              : undefined,
-          isPublished:
-            input.isPublished !== undefined && input.isPublished !== null
-              ? input.isPublished
-              : undefined,
-        },
-      })
+          if (needsTreeGuard && input.parentId !== node.parentId) {
+            const parentId = input.parentId ?? null
+            await this.validateParent(tx, parentId, node.roadmapId, id)
+            const forest = await tx.node.findMany({
+              where: { roadmapId: node.roadmapId, isDeleted: false },
+              select: { id: true, parentId: true },
+            })
+            assertAcyclicTree(
+              forest.map((candidate) =>
+                candidate.id === id ? { ...candidate, parentId } : candidate
+              )
+            )
+          }
 
-      // Atomic cross-link: a notion node's title/publish change must not drift
-      // from its linked Document. Same transaction as the node write, so both
-      // commit or neither does. updateMany is a no-op when no doc is linked.
-      if (node.notionPageId) {
-        const docData: { title?: string; isPublished?: boolean } = {}
-        if (input.title != null) docData.title = u.title
-        if (input.isPublished != null) docData.isPublished = input.isPublished
-        if (Object.keys(docData).length > 0) {
-          await tx.document.updateMany({
-            where: { id: node.notionPageId },
-            data: docData,
+          const u = await tx.node.update({
+            where: { id },
+            data: {
+              parentId:
+                input.parentId !== undefined
+                  ? (input.parentId ?? null)
+                  : undefined,
+              title:
+                input.title !== undefined && input.title !== null
+                  ? input.title.trim().slice(0, MAX_TITLE_LENGTH)
+                  : undefined,
+              description:
+                input.description !== undefined
+                  ? input.description?.trim() || null
+                  : undefined,
+              articleType:
+                input.articleType !== undefined
+                  ? (input.articleType ?? null)
+                  : undefined,
+              notionPageId:
+                input.notionPageId !== undefined
+                  ? input.notionPageId?.trim() || null
+                  : undefined,
+              jupyterUrl:
+                input.jupyterUrl !== undefined
+                  ? normalizeHttpUrl(input.jupyterUrl)
+                  : undefined,
+              positionX: input.positionX ?? undefined,
+              positionY: input.positionY ?? undefined,
+              order: input.order ?? undefined,
+              linkedRoadmapId:
+                input.linkedRoadmapId !== undefined
+                  ? (input.linkedRoadmapId ?? null)
+                  : undefined,
+              isPublished:
+                input.isPublished !== undefined && input.isPublished !== null
+                  ? input.isPublished
+                  : undefined,
+            },
           })
-        }
-      }
-      return u
-    }, TREE_TRANSACTION_OPTIONS)
+
+          // Title sync only — publish lives on the Document editor (same
+          // pattern as Jupyter notebook EditorToolbar), not on node edit.
+          // Keep isPublished dual-write for callers that still set it.
+          if (node.notionPageId) {
+            const docData: { title?: string; isPublished?: boolean } = {}
+            if (input.title != null) docData.title = u.title
+            if (input.isPublished != null)
+              docData.isPublished = input.isPublished
+            if (Object.keys(docData).length > 0) {
+              await tx.document.updateMany({
+                where: { id: node.notionPageId },
+                data: docData,
+              })
+            }
+          }
+          return u
+        },
+        needsTreeGuard ? TREE_TRANSACTION_OPTIONS : FIELD_TRANSACTION_OPTIONS
+      )
+    )
     await this.events.emit(updated.roadmapId)
     const childrenCount = await this.childrenCount(id)
     return this.toNodeDto(updated, "locked", childrenCount)

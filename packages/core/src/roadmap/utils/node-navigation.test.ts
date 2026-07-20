@@ -47,21 +47,21 @@ describe("nodeNavigationUrl (notion-article-node Req 1/10/11)", () => {
     ).toBe("/notebooks/html-co-ban")
   })
 
-  it("chapter in builder → chapter detail page (Req 10.1)", () => {
+  it("chapter in builder → its own composition canvas {base}/{id}", () => {
     expect(
       nodeNavigationUrl(
-        node({ nodeType: "chapter", slug: "nhap-mon-html" }),
+        node({ nodeType: "chapter", id: "nd-3", slug: "nhap-mon-html" }),
         { builderBasePath: "/roadmaps" }
       )
-    ).toBe("/roadmaps/rm-1/chapter/nhap-mon-html")
+    ).toBe("/roadmaps/nd-3")
   })
 
-  it("chapter with empty slug in builder → null (Req 10.6)", () => {
+  it("chapter in builder ignores slug (id-based, LEGO model)", () => {
     expect(
-      nodeNavigationUrl(node({ nodeType: "chapter", slug: "" }), {
+      nodeNavigationUrl(node({ nodeType: "chapter", id: "nd-4", slug: "" }), {
         builderBasePath: "/roadmaps",
       })
-    ).toBeNull()
+    ).toBe("/roadmaps/nd-4")
   })
 
   it("chapter in viewer → /roadmap/{slug}", () => {
@@ -70,33 +70,34 @@ describe("nodeNavigationUrl (notion-article-node Req 1/10/11)", () => {
     ).toBe("/roadmap/nhap-mon-html")
   })
 
-  it("role/skill in builder → rooted view of its own roadmap (never null)", () => {
+  it("role/skill in builder → its own composition canvas {base}/{id}", () => {
     expect(
       nodeNavigationUrl(
         node({ nodeType: "role", id: "nd-7", roadmapId: "rm-1" }),
         { builderBasePath: "/roadmaps" }
       )
-    ).toBe("/roadmaps/rm-1?node=nd-7")
+    ).toBe("/roadmaps/nd-7")
     expect(
       nodeNavigationUrl(
         node({ nodeType: "skill", id: "nd-8", roadmapId: "rm-2" }),
         { builderBasePath: "/roadmaps" }
       )
-    ).toBe("/roadmaps/rm-2?node=nd-8")
+    ).toBe("/roadmaps/nd-8")
   })
 
-  // Tag: Feature: notion-article-node, Property 9: chapter URL format
-  it("Property 9: builder chapter URLs always match /{base}/{roadmapId}/chapter/{slug}", () => {
+  // Property: every block's builder URL is {base}/{id}.
+  it("Property: builder block URLs always match /{base}/{id}", () => {
     fc.assert(
       fc.property(
+        fc.constantFrom("role", "skill", "chapter") as fc.Arbitrary<
+          RoadmapNode["nodeType"]
+        >,
         fc.string({ minLength: 1 }).map(slugify),
-        fc.string({ minLength: 1 }).map(slugify),
-        (chapterSlug, roadmapId) => {
-          const url = nodeNavigationUrl(
-            node({ nodeType: "chapter", slug: chapterSlug, roadmapId }),
-            { builderBasePath: "/roadmaps" }
-          )
-          expect(url).toBe(`/roadmaps/${roadmapId}/chapter/${chapterSlug}`)
+        (nodeType, id) => {
+          const url = nodeNavigationUrl(node({ nodeType, id }), {
+            builderBasePath: "/roadmaps",
+          })
+          expect(url).toBe(`/roadmaps/${id}`)
         }
       ),
       { numRuns: 500 }

@@ -86,3 +86,16 @@ export class NotionServiceError extends Error {
     this.code = code
   }
 }
+
+/**
+ * Network / infrastructure failure (svc-api unreachable, Neon cold start, DNS
+ * timeout). Distinguished from `NotionServiceError` so UI can show "connection
+ * error — retry" instead of "content not available".
+ */
+export class NotionConnectionError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = "NotionConnectionError"
+  }
+}
+

@@ -90,6 +90,48 @@ export interface RoadmapGraph {
   nodes: RoadmapNode[]
 }
 
+// ── Composition model (LEGO redesign, hf/roadmap) ───────────────────────────
+// A role/skill/chapter node is an independent BLOCK. Each block owns a canvas —
+// its "composition": which other blocks sit on it, where, and the edges between
+// them. Membership REPLACES the parentId tree — a block can be a member of many
+// compositions (reusable LEGO). `article` stays a leaf under its chapter, is
+// never a block/member, and shows in the right sidebar of that chapter.
+
+/** Node types that are canvas blocks (own a canvas + can be a member). */
+export const BLOCK_TYPES: readonly NodeType[] = ["role", "skill", "chapter"]
+
+/** Visual kind of a canvas edge — right-click a wire to change it or unlink. */
+export type EdgeKind = "solid" | "dashed"
+
+export const EDGE_KINDS: readonly EdgeKind[] = ["solid", "dashed"]
+
+/** A directed link between two blocks on one owner's canvas. */
+export interface RoadmapEdge {
+  id: string
+  sourceId: string
+  targetId: string
+  kind: EdgeKind
+}
+
+/** A block placed on an owner's canvas, with its position on THAT canvas. */
+export interface CompositionMember {
+  nodeId: string
+  x: number
+  y: number
+}
+
+/**
+ * One owner block's canvas. The owner renders at the top and is NOT in
+ * `members`; `members` are the other blocks dropped onto / created on it.
+ * Absent from the store until the first edit — `getComposition` derives one
+ * from the legacy parentId children so seed data appears without a migration.
+ */
+export interface Composition {
+  ownerId: string
+  members: CompositionMember[]
+  edges: RoadmapEdge[]
+}
+
 export interface RoadmapProgress {
   roadmapId: string
   roadmapTitle: string
