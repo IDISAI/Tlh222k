@@ -1,5 +1,7 @@
 # Design Document: Notion Article Node
 
+> ⚠️ **SUPERSEDED (2026-07-19, nhánh `hf/roadmap`).** Model hiện hành: **node role/skill = roadmap** (một record). KHÔNG còn auto-tạo roadmap riêng (Req 11 / `linkedRoadmapId` không còn điều khiển navigation), KHÔNG seed, KHÔNG "Xóa khỏi Canvas"/Disabled_Node. Detail role/skill = rooted view `?node={id}`; kéo = move; xóa vĩnh viễn. Nguồn chuẩn: `CLAUDE.md` mục "Roadmap builder model". Doc dưới giữ làm lịch sử.
+
 ## Overview
 
 Tính năng này kết nối hai hệ thống hiện có — **Roadmap Canvas** (`BuilderCanvas`, `ViewerCanvas`) và **Notion Workspace** (`NotionWorkspace`) — thành một luồng liền mạch. Mục tiêu cốt lõi:

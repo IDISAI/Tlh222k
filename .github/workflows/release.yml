@@ -7,20 +7,14 @@ on:
 permissions:
   contents: read
 
+# App deploys are handled by Vercel's native Git integration (push to main =>
+# production). This workflow only runs the Postgres schema sync and cuts the
+# GitHub release — it must NOT `vercel deploy`, or its CLI build (which lacks the
+# project's NEXT_PUBLIC_* env, e.g. the Clerk publishable key) overwrites the good
+# native production deployment with a broken one.
 jobs:
-  deploy:
+  migrate:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        include:
-          - { app: web, project: WEB }
-          - { app: admin, project: ADMIN }
-          - { app: super-admin, project: SUPER_ADMIN }
-          - { app: svc-api, project: SVC_API }
-    env:
-      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-      VERCEL_PROJECT_ID: ${{ secrets[format('VERCEL_PROJECT_ID_{0}', matrix.project)] }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -36,16 +30,24 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      - run: pnpm build
-
-      - run: pnpm dlx vercel@54.21.1 pull --yes --environment=production --token="$VERCEL_TOKEN"
-
-      - run: pnpm dlx vercel@54.21.1 build --prod --token="$VERCEL_TOKEN"
-
-      - run: pnpm dlx vercel@54.21.1 deploy --prebuilt --prod --token="$VERCEL_TOKEN"
+      # Keep the prod Postgres schema in sync with the deployed svc-api code
+      # (missing columns/tables => 500s). Additive push. DATABASE_URL comes from
+      # the PROD_DATABASE_URL secret (the Neon integration keeps the runtime URL
+      # out of `vercel pull`). Derives a direct (non-pooled) connection when
+      # PROD_DIRECT_URL is unset; skips when no DB secret is set.
+      - env:
+          DATABASE_URL: ${{ secrets.PROD_DATABASE_URL }}
+          DIRECT_URL: ${{ secrets.PROD_DIRECT_URL }}
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "PROD_DATABASE_URL secret not set — skipping schema sync"; exit 0
+          fi
+          : "${DIRECT_URL:=${DATABASE_URL/-pooler./.}}"
+          export DIRECT_URL
+          pnpm -F @workspace/db db:push
 
   github-release:
-    needs: [deploy] # waits for all frontend + svc-api matrix legs
+    needs: [migrate]
     runs-on: ubuntu-latest
     permissions:
       contents: write

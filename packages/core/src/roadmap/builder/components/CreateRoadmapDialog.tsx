@@ -15,20 +15,27 @@ import { Label } from "@workspace/ui/components/label"
 import { toast } from "@workspace/ui/components/sonner"
 import { Textarea } from "@workspace/ui/components/textarea"
 
+import { cn } from "@workspace/ui/lib/utils"
+
 import { RoadmapService } from "../../api"
 import {
   MAX_DESCRIPTION_LENGTH,
   MAX_TITLE_LENGTH,
   type CallerRole,
-  type Roadmap,
+  type RoadmapNode,
 } from "../../types"
-import { slugify } from "../../utils/slugify"
 import { serviceErrorMessage } from "../utils/toast-messages"
+
+/** A roadmap is a role or a skill (a role/skill node IS a roadmap block). */
+const ROADMAP_KINDS = [
+  { value: "role" as const, label: "Role" },
+  { value: "skill" as const, label: "Skill" },
+]
 
 interface CreateRoadmapDialogProps {
   role: CallerRole
   onClose: () => void
-  onCreated: (roadmap: Roadmap) => void
+  onCreated: (node: RoadmapNode) => void
 }
 
 /** "+ Tạo roadmap mới" (Req 1.1) — creates an unpublished draft. */
@@ -39,15 +46,13 @@ export function CreateRoadmapDialog({
 }: CreateRoadmapDialogProps) {
   const service = useMemo(() => new RoadmapService(), [])
   const [title, setTitle] = useState("")
-  const [slug, setSlug] = useState("")
-  const [slugTouched, setSlugTouched] = useState(false)
   const [description, setDescription] = useState("")
+  const [nodeType, setNodeType] = useState<"role" | "skill">("role")
   const [error, setError] = useState("")
   const [busy, setBusy] = useState(false)
 
   const handleTitle = (value: string) => {
     setTitle(value)
-    if (!slugTouched) setSlug(slugify(value))
     if (error) setError("")
   }
 
@@ -58,16 +63,21 @@ export function CreateRoadmapDialog({
     }
     setBusy(true)
     try {
-      const roadmap = await service.createRoadmap(
+      // A roadmap IS a role/skill block (LEGO): one standalone node that owns
+      // itself. No container roadmap, no separate root node — createBlock adds
+      // it to the store so it lists in both the table and the Kho sidebar.
+      const node = await service.createBlock(
         {
+          nodeType,
           title: title.trim(),
-          slug: slug.trim() || slugify(title),
           description: description.trim() || undefined,
+          positionX: 0,
+          positionY: 0,
         },
         role
       )
       toast.success("Đã tạo roadmap mới")
-      onCreated(roadmap)
+      onCreated(node)
     } catch (err) {
       toast.error(serviceErrorMessage(err))
     } finally {
@@ -106,16 +116,21 @@ export function CreateRoadmapDialog({
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="rm-slug">Slug</Label>
-            <Input
-              id="rm-slug"
-              value={slug}
-              placeholder="lap-trinh-web"
-              onChange={(e) => {
-                setSlugTouched(true)
-                setSlug(e.target.value)
-              }}
-            />
+            <Label>Loại</Label>
+            <div className="flex gap-2">
+              {ROADMAP_KINDS.map((kind) => (
+                <Button
+                  key={kind.value}
+                  type="button"
+                  variant={nodeType === kind.value ? "default" : "outline"}
+                  size="sm"
+                  className={cn("flex-1")}
+                  onClick={() => setNodeType(kind.value)}
+                >
+                  {kind.label}
+                </Button>
+              ))}
+            </div>
           </div>
 
           <div className="space-y-1.5">

@@ -33,10 +33,14 @@ const devAuthRoleVal = enableBypass
   ? (process.env.NEXT_PUBLIC_DEV_AUTH_ROLE || process.env.DEV_AUTH_ROLE || "super-admin")
   : ""
 
+// Forward any `--filter=<pkg>` args straight to `turbo dev` so callers can run
+// only the apps they need (e.g. admin + svc-api) instead of the whole stack.
+const turboFilters = process.argv.filter((a) => a.startsWith("--filter"))
+
 const commands = [
   {
     command: "pnpm",
-    args: ["turbo", "dev"],
+    args: ["turbo", "dev", ...turboFilters],
     env: {
       NEXT_PUBLIC_KERNEL_SERVER_URL: kernelServerUrl,
       NEXT_PUBLIC_DEV_AUTH_ROLE: devAuthRoleVal,

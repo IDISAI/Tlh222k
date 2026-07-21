@@ -47,7 +47,8 @@ export function ChapterDetailPage({
     roadmapId,
     role,
     onNodeTitleSync,
-    onCreateNotionDoc
+    onCreateNotionDoc,
+    onSyncPublish
   )
   const [selected, setSelected] = useState<RoadmapNode | null>(null)
 

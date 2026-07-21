@@ -4,6 +4,7 @@
 // CallerRole is deliberately not re-exported (it's `UserRole` re-badged and
 // ./roadmap already exports its own CallerRole).
 export {
+  NotionConnectionError,
   NotionServiceError,
   type CreateDocumentInput,
   type NotionActions,

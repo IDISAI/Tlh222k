@@ -339,7 +339,12 @@ export function NotionWorkspace({
     [actions, bump]
   )
 
-  const publicUrl = root.slug ? `${origin}/notion/${root.slug}` : null
+  const publicUrl =
+    root.slug && selectedDoc?.slug
+      ? selectedDoc.id === root.id
+        ? `${origin}/notion/${root.slug}`
+        : `${origin}/notion/${root.slug}?page=${encodeURIComponent(selectedDoc.slug)}`
+      : null
 
   return (
     <div className="relative flex h-[calc(100svh-57px)] overflow-hidden bg-background">

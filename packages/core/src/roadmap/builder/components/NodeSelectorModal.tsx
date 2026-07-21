@@ -24,6 +24,11 @@ interface NodeSelectorModalProps {
   position: CanvasMenuPosition | null
   /** When creating a child from a parent node, restricts NodeType (Req 2.3). */
   parent: RoadmapNode | null
+  /**
+   * Explicit NodeType allowlist — overrides the parent-derived one. The LEGO
+   * composition canvas passes block types only (`role`/`skill`/`chapter`).
+   */
+  allowedTypes?: NodeType[]
   onClose: () => void
   /** Resolves true on success → the modal closes. */
   onCreate: (input: {
@@ -44,10 +49,13 @@ interface NodeSelectorModalProps {
 export function NodeSelectorModal({
   position,
   parent,
+  allowedTypes,
   onClose,
   onCreate,
 }: NodeSelectorModalProps) {
-  const allowed = parent ? allowedChildTypes(parent.nodeType) : [...NODE_TYPES]
+  const allowed =
+    allowedTypes ??
+    (parent ? allowedChildTypes(parent.nodeType) : [...NODE_TYPES])
 
   const [nodeType, setNodeType] = useState<NodeType>(allowed[0] ?? "role")
   const [articleType, setArticleType] = useState<ArticleType>("notion")

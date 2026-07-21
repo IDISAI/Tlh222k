@@ -38,6 +38,7 @@ export function GraphPreview({ root, nodes }: GraphPreviewProps) {
     const pos = new Map<string, { x: number; y: number }>()
     const ordered: RoadmapNode[] = []
 
+    // Layout children (y=0) and grandchildren (y=ROW_H), tracking total width.
     let cursor = 0
     for (const parent of level1) {
       const kids = childrenOf(nodes, parent.id)
@@ -61,6 +62,12 @@ export function GraphPreview({ root, nodes }: GraphPreviewProps) {
       }
     }
 
+    // Place root at center-top above all children so the preview reads
+    // root → child → grandchild (top-down), not child-first.
+    const totalWidth = Math.max(cursor - 1, 0) * COL_W
+    pos.set(root.id, { x: totalWidth / 2, y: -ROW_H })
+    ordered.push(root)
+
     const nodesOut: Node[] = ordered.map((n) => ({
       id: n.id,
       position: pos.get(n.id) ?? { x: 0, y: 0 },
@@ -72,17 +79,38 @@ export function GraphPreview({ root, nodes }: GraphPreviewProps) {
         padding: 4,
         width: 128,
         textAlign: "center" as const,
+        ...(n.id === root.id
+          ? { fontWeight: 600, borderWidth: 2 }
+          : {}),
       },
     }))
 
     const ids = new Set(ordered.map((n) => n.id))
     const edgesOut: Edge[] = ordered
-      .filter((n) => n.parentId && ids.has(n.parentId))
+      .filter((n) => {
+        // Root has no parentId, but children point back to root via parentId.
+        // For children of root, draw edge root→child explicitly.
+        if (n.id === root.id) return false
+        const effectiveParent = n.parentId && ids.has(n.parentId) ? n.parentId : null
+        return effectiveParent !== null
+      })
       .map((n) => ({
         id: `preview-${n.parentId}->${n.id}`,
         source: n.parentId as string,
         target: n.id,
       }))
+
+    // Children of root may not have parentId === root.id (LEGO composition
+    // model uses membership, not parentId). Add explicit root→child edges.
+    for (const child of level1) {
+      if (!edgesOut.some((e) => e.source === root.id && e.target === child.id)) {
+        edgesOut.push({
+          id: `preview-${root.id}->${child.id}`,
+          source: root.id,
+          target: child.id,
+        })
+      }
+    }
 
     return { flowNodes: nodesOut, flowEdges: edgesOut }
   }, [root.id, nodes])

@@ -1,4 +1,4 @@
-import { Injectable } from "@nestjs/common"
+import { Injectable, type OnModuleInit } from "@nestjs/common"
 import type { Node as DbNode, Prisma } from "@prisma/client"
 
 import { PrismaService } from "../prisma/prisma.service"
@@ -22,6 +22,11 @@ const TREE_TRANSACTION_OPTIONS = {
   timeout: SAVE_TIMEOUT_MS,
   isolationLevel: "Serializable" as const,
 }
+/** Simple field writes (title, notionPageId, …) don't need Serializable. */
+const FIELD_TRANSACTION_OPTIONS = {
+  timeout: SAVE_TIMEOUT_MS,
+}
+const SERIALIZATION_RETRIES = 3
 
 type TreeClient = Pick<Prisma.TransactionClient, "node">
 
@@ -32,6 +37,39 @@ function hasPrismaCode(error: unknown, code: string): boolean {
     "code" in error &&
     error.code === code
   )
+}
+
+/** Prisma P2034 / Postgres write-conflict under Serializable — safe to retry. */
+function isSerializationFailure(error: unknown): boolean {
+  if (hasPrismaCode(error, "P2034")) return true
+  const message =
+    typeof error === "object" &&
+    error !== null &&
+    "message" in error &&
+    typeof error.message === "string"
+      ? error.message
+      : ""
+  return (
+    message.includes("write conflict") ||
+    message.includes("could not serialize") ||
+    message.includes("deadlock")
+  )
+}
+
+async function withSerializationRetry<T>(
+  run: () => Promise<T>,
+  attempts = SERIALIZATION_RETRIES
+): Promise<T> {
+  let lastError: unknown
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await run()
+    } catch (error) {
+      lastError = error
+      if (!isSerializationFailure(error) || i === attempts - 1) throw error
+    }
+  }
+  throw lastError
 }
 
 export interface RoadmapDto {
@@ -123,11 +161,66 @@ export interface SaveNodeInput {
 }
 
 @Injectable()
-export class RoadmapService {
+export class RoadmapService implements OnModuleInit {
   constructor(
     private readonly prisma: PrismaService,
     private readonly events: RoadmapEventsService
   ) {}
+
+  async onModuleInit() {
+    try {
+      const allDocs = await this.prisma.document.findMany({
+        select: { id: true, parentDocumentId: true, isPublished: true }
+      })
+      const docMap = new Map<string, { parentId: string | null; isPublished: boolean }>()
+      for (const d of allDocs) {
+        docMap.set(d.id, { parentId: d.parentDocumentId, isPublished: d.isPublished })
+      }
+
+      const toPublishIds = new Set<string>()
+      for (const d of allDocs) {
+        if (d.isPublished) {
+          let curr = docMap.get(d.id)
+          while (curr && curr.parentId) {
+            const parent = docMap.get(curr.parentId)
+            if (parent) {
+              if (!parent.isPublished) {
+                toPublishIds.add(curr.parentId)
+              }
+              curr = parent
+            } else {
+              break
+            }
+          }
+        }
+      }
+
+      if (toPublishIds.size > 0) {
+        await this.prisma.document.updateMany({
+          where: { id: { in: Array.from(toPublishIds) } },
+          data: { isPublished: true }
+        })
+      }
+
+      const docs = await this.prisma.document.findMany({
+        select: { id: true, slug: true, isPublished: true },
+      })
+      for (const doc of docs) {
+        await this.prisma.node.updateMany({
+          where: {
+            OR: [
+              { notionPageId: doc.id },
+              ...(doc.slug ? [{ slug: doc.slug }] : []),
+            ],
+            isPublished: !doc.isPublished,
+          },
+          data: { isPublished: doc.isPublished },
+        })
+      }
+    } catch (err) {
+      console.error("Failed to sync publish states on startup:", err)
+    }
+  }
 
   // ── Queries ────────────────────────────────────────────────────────────────
 
@@ -166,23 +259,26 @@ export class RoadmapService {
     slug: string,
     user: CurrentUser | null
   ): Promise<GraphDto | null> {
+    const isAdmin = user?.role === "admin" || user?.role === "super-admin"
     const roadmap = await this.prisma.roadmap.findUnique({ where: { slug } })
 
-    if (roadmap) {
-      // Non-admin users (viewers/guests) must not see unpublished roadmaps.
-      const isAdmin = user?.role === "admin" || user?.role === "super-admin"
-      if (!roadmap.isPublished && !isAdmin) return null
-
+    // Use the container Roadmap only when it is visible AND still has nodes. An
+    // orphaned/unpublished record (e.g. a block spun out of the table then
+    // dragged into another canvas, leaving an empty same-slug roadmap) must NOT
+    // shadow the real block node — fall through to the node lookup below.
+    if (roadmap && (roadmap.isPublished || isAdmin)) {
       const nodes = await this.activeNodesOf(roadmap.id)
-      return this.buildGraph(
-        this.toRoadmapDto(roadmap, nodes.length),
-        nodes,
-        await this.progressMap(user, nodes)
-      )
+      if (nodes.length > 0) {
+        return this.buildGraph(
+          this.toRoadmapDto(roadmap, nodes.length),
+          nodes,
+          await this.progressMap(user, nodes)
+        )
+      }
     }
 
     // Node-slug navigation: role/skill/chapter slug → node + its subtree
-    // (chapter → its article children).
+    // (chapter → its article children). A block IS a roadmap (LEGO).
     const node = await this.prisma.node.findFirst({
       where: {
         slug,
@@ -192,13 +288,12 @@ export class RoadmapService {
     })
     if (!node) return null
 
-    // The parent roadmap must be published for non-admin viewers.
-    const isAdmin = user?.role === "admin" || user?.role === "super-admin"
+    // The block (or its parent roadmap) must be published for non-admin viewers.
     if (!isAdmin) {
       const parentRoadmap = await this.prisma.roadmap.findUnique({
         where: { id: node.roadmapId },
       })
-      if (!parentRoadmap?.isPublished) return null
+      if (!node.isPublished && !parentRoadmap?.isPublished) return null
     }
 
     const subtree = await this.subtreeOf(node)
@@ -218,7 +313,7 @@ export class RoadmapService {
     )
   }
 
-  /** Builder graph by id — includes soft-deleted ghost nodes (Req 4.4). */
+  /** Builder graph by id. Deleted nodes never render — no ghost nodes. */
   async roadmapGraphById(
     id: string,
     user: CurrentUser | null
@@ -232,7 +327,7 @@ export class RoadmapService {
     })
     if (!roadmap) return null
     const nodes = await this.prisma.node.findMany({
-      where: { roadmapId: id },
+      where: { roadmapId: id, isDeleted: false },
       orderBy: { order: "asc" },
     })
     return this.buildGraph(
@@ -248,6 +343,66 @@ export class RoadmapService {
     assertCanWrite(user)
     const nodes = await this.prisma.node.findMany({ orderBy: { order: "asc" } })
     return this.attachComputed(nodes, {})
+  }
+
+  /**
+   * PUBLIC LEGO inventory: every published role/skill block. A block IS a
+   * roadmap (LEGO — independent + reusable), so the web home lists all of them,
+   * not just top-level ones. No auth; only published, non-deleted blocks leak.
+   * childrenCount is the direct-child count across the whole tree (card "N chủ đề").
+   */
+  async publicBlocks(): Promise<NodeDto[]> {
+    const all = await this.prisma.node.findMany({
+      where: { isDeleted: false },
+      orderBy: { order: "asc" },
+    })
+    const childCount = new Map<string, number>()
+    for (const n of all) {
+      if (n.parentId) {
+        childCount.set(n.parentId, (childCount.get(n.parentId) ?? 0) + 1)
+      }
+    }
+    return all
+      .filter(
+        (n) =>
+          n.isPublished && (n.nodeType === "role" || n.nodeType === "skill")
+      )
+      .map((n) => this.toNodeDto(n, "locked", childCount.get(n.id) ?? 0))
+  }
+
+  /**
+   * PUBLIC per-block composition (viewer ⇄ builder sync). Returns ONE block
+   * (by node id) plus its DIRECT children — the same single-level canvas the
+   * admin builder shows: block blocks render on the canvas, article children
+   * feed the detail panel. Drilling into a member fetches ITS block graph.
+   * No auth; the block (or its container roadmap) must be published.
+   */
+  async publicBlockGraph(id: string): Promise<GraphDto | null> {
+    const node = await this.prisma.node.findUnique({ where: { id } })
+    if (!node || node.isDeleted || node.nodeType === "article") return null
+    if (!node.isPublished) {
+      const parent = await this.prisma.roadmap.findUnique({
+        where: { id: node.roadmapId },
+      })
+      if (!parent?.isPublished) return null
+    }
+    // Return the WHOLE roadmap's nodes so the web viewer derives the exact same
+    // composition (deriveCompositionFromNodes) the admin builder renders — one
+    // shared derive keeps viewer ⇄ builder in sync.
+    const roadmapNodes = await this.prisma.node.findMany({
+      where: { roadmapId: node.roadmapId, isDeleted: false },
+      orderBy: { order: "asc" },
+    })
+    const synthetic: RoadmapDto = {
+      id: node.id,
+      slug: node.slug,
+      title: node.title,
+      description: node.description,
+      thumbnailUrl: null,
+      isPublished: true,
+      nodeCount: roadmapNodes.length,
+    }
+    return this.buildGraph(synthetic, roadmapNodes, {})
   }
 
   async myProgress(user: CurrentUser | null): Promise<
@@ -366,29 +521,31 @@ export class RoadmapService {
 
     const title = input.title.trim().slice(0, MAX_TITLE_LENGTH)
     const slug = await this.uniqueNodeSlug(input.slug?.trim() || slugify(title))
-    const created = await this.prisma.$transaction(async (tx) => {
-      await this.validateParent(tx, input.parentId ?? null, input.roadmapId)
-      const order =
-        input.order ??
-        (await tx.node.count({ where: { roadmapId: input.roadmapId } }))
+    const created = await withSerializationRetry(() =>
+      this.prisma.$transaction(async (tx) => {
+        await this.validateParent(tx, input.parentId ?? null, input.roadmapId)
+        const order =
+          input.order ??
+          (await tx.node.count({ where: { roadmapId: input.roadmapId } }))
 
-      return tx.node.create({
-        data: {
-          roadmapId: input.roadmapId,
-          parentId: input.parentId ?? null,
-          title,
-          slug,
-          nodeType: input.nodeType,
-          description: input.description?.trim() || null,
-          notionPageId: input.notionPageId ?? null,
-          articleType: input.articleType ?? null,
-          jupyterUrl: normalizeHttpUrl(input.jupyterUrl),
-          positionX: input.positionX,
-          positionY: input.positionY,
-          order,
-        },
-      })
-    }, TREE_TRANSACTION_OPTIONS)
+        return tx.node.create({
+          data: {
+            roadmapId: input.roadmapId,
+            parentId: input.parentId ?? null,
+            title,
+            slug,
+            nodeType: input.nodeType,
+            description: input.description?.trim() || null,
+            notionPageId: input.notionPageId ?? null,
+            articleType: input.articleType ?? null,
+            jupyterUrl: normalizeHttpUrl(input.jupyterUrl),
+            positionX: input.positionX,
+            positionY: input.positionY,
+            order,
+          },
+        })
+      }, TREE_TRANSACTION_OPTIONS)
+    )
     await this.events.emit(input.roadmapId)
     return this.toNodeDto(created, "locked", 0)
   }
@@ -399,116 +556,161 @@ export class RoadmapService {
     user: CurrentUser | null
   ): Promise<NodeDto> {
     assertCanWrite(user)
-    const updated = await this.prisma.$transaction(async (tx) => {
-      const node = await tx.node.findUnique({ where: { id } })
-      if (!node || node.isDeleted) throw new RoadmapError("NOT_FOUND")
+    // Tree reparent needs Serializable + cycle check. Field-only updates
+    // (notionPageId link after create, title, …) use ReadCommitted so concurrent
+    // create→link races don't fail with write-conflict / deadlock.
+    const needsTreeGuard = input.parentId !== undefined
 
-      if (input.parentId !== undefined && input.parentId !== node.parentId) {
-        const parentId = input.parentId ?? null
-        await this.validateParent(tx, parentId, node.roadmapId, id)
-        const forest = await tx.node.findMany({
-          where: { roadmapId: node.roadmapId, isDeleted: false },
-          select: { id: true, parentId: true },
-        })
-        assertAcyclicTree(
-          forest.map((candidate) =>
-            candidate.id === id ? { ...candidate, parentId } : candidate
-          )
-        )
-      }
+    const updated = await withSerializationRetry(() =>
+      this.prisma.$transaction(
+        async (tx) => {
+          const node = await tx.node.findUnique({ where: { id } })
+          if (!node || node.isDeleted) throw new RoadmapError("NOT_FOUND")
 
-      const u = await tx.node.update({
-        where: { id },
-        data: {
-          parentId:
-            input.parentId !== undefined ? (input.parentId ?? null) : undefined,
-          title:
-            input.title !== undefined && input.title !== null
-              ? input.title.trim().slice(0, MAX_TITLE_LENGTH)
-              : undefined,
-          description:
-            input.description !== undefined
-              ? input.description?.trim() || null
-              : undefined,
-          articleType:
-            input.articleType !== undefined
-              ? (input.articleType ?? null)
-              : undefined,
-          notionPageId:
-            input.notionPageId !== undefined
-              ? input.notionPageId?.trim() || null
-              : undefined,
-          jupyterUrl:
-            input.jupyterUrl !== undefined
-              ? normalizeHttpUrl(input.jupyterUrl)
-              : undefined,
-          positionX: input.positionX ?? undefined,
-          positionY: input.positionY ?? undefined,
-          order: input.order ?? undefined,
-          linkedRoadmapId:
-            input.linkedRoadmapId !== undefined
-              ? (input.linkedRoadmapId ?? null)
-              : undefined,
-          isPublished:
-            input.isPublished !== undefined && input.isPublished !== null
-              ? input.isPublished
-              : undefined,
-        },
-      })
+          if (needsTreeGuard && input.parentId !== node.parentId) {
+            const parentId = input.parentId ?? null
+            await this.validateParent(tx, parentId, node.roadmapId, id)
+            const forest = await tx.node.findMany({
+              where: { roadmapId: node.roadmapId, isDeleted: false },
+              select: { id: true, parentId: true },
+            })
+            assertAcyclicTree(
+              forest.map((candidate) =>
+                candidate.id === id ? { ...candidate, parentId } : candidate
+              )
+            )
+          }
 
-      // Atomic cross-link: a notion node's title/publish change must not drift
-      // from its linked Document. Same transaction as the node write, so both
-      // commit or neither does. updateMany is a no-op when no doc is linked.
-      if (node.notionPageId) {
-        const docData: { title?: string; isPublished?: boolean } = {}
-        if (input.title != null) docData.title = u.title
-        if (input.isPublished != null) docData.isPublished = input.isPublished
-        if (Object.keys(docData).length > 0) {
-          await tx.document.updateMany({
-            where: { id: node.notionPageId },
-            data: docData,
+          const u = await tx.node.update({
+            where: { id },
+            data: {
+              parentId:
+                input.parentId !== undefined
+                  ? (input.parentId ?? null)
+                  : undefined,
+              title:
+                input.title !== undefined && input.title !== null
+                  ? input.title.trim().slice(0, MAX_TITLE_LENGTH)
+                  : undefined,
+              description:
+                input.description !== undefined
+                  ? input.description?.trim() || null
+                  : undefined,
+              articleType:
+                input.articleType !== undefined
+                  ? (input.articleType ?? null)
+                  : undefined,
+              notionPageId:
+                input.notionPageId !== undefined
+                  ? input.notionPageId?.trim() || null
+                  : undefined,
+              jupyterUrl:
+                input.jupyterUrl !== undefined
+                  ? normalizeHttpUrl(input.jupyterUrl)
+                  : undefined,
+              positionX: input.positionX ?? undefined,
+              positionY: input.positionY ?? undefined,
+              order: input.order ?? undefined,
+              linkedRoadmapId:
+                input.linkedRoadmapId !== undefined
+                  ? (input.linkedRoadmapId ?? null)
+                  : undefined,
+              isPublished:
+                input.isPublished !== undefined && input.isPublished !== null
+                  ? input.isPublished
+                  : undefined,
+            },
           })
-        }
-      }
-      return u
-    }, TREE_TRANSACTION_OPTIONS)
+
+          // Title sync only — publish lives on the Document editor (same
+          // pattern as Jupyter notebook EditorToolbar), not on node edit.
+          // Keep isPublished dual-write for callers that still set it.
+          if (node.notionPageId) {
+            const docData: { title?: string; isPublished?: boolean } = {}
+            if (input.title != null) docData.title = u.title
+            if (input.isPublished != null)
+              docData.isPublished = input.isPublished
+            if (Object.keys(docData).length > 0) {
+              await tx.document.updateMany({
+                where: { id: node.notionPageId },
+                data: docData,
+              })
+            }
+          }
+          return u
+        },
+        needsTreeGuard ? TREE_TRANSACTION_OPTIONS : FIELD_TRANSACTION_OPTIONS
+      )
+    )
     await this.events.emit(updated.roadmapId)
     const childrenCount = await this.childrenCount(id)
     return this.toNodeDto(updated, "locked", childrenCount)
   }
 
-  /** Permanent delete = soft-flag the node and its whole subtree (Req 4.3). */
+  /**
+   * Permanent delete of a SINGLE node. Direct children survive: they reparent
+   * up to the deleted node's parent so a sub-roadmap is never lost when its
+   * parent roadmap is deleted.
+   */
   async deleteNode(id: string, user: CurrentUser | null): Promise<boolean> {
     assertCanWrite(user)
     const node = await this.prisma.node.findUnique({ where: { id } })
     if (!node) throw new RoadmapError("NOT_FOUND")
-    const doomed = await this.collectSubtreeIds(id)
 
     await this.prisma.$transaction(async (tx) => {
-      // Archive the Documents linked to the doomed notion nodes in the same
-      // transaction as the soft-delete, so a node delete and its doc archive
-      // can't diverge.
-      const doomedNodes = await tx.node.findMany({
-        where: { id: { in: [...doomed] } },
-        select: { notionPageId: true },
-      })
-      const docIds = doomedNodes
-        .map((n) => n.notionPageId)
-        .filter((v): v is string => Boolean(v))
-
+      // Children reparent up to this node's parent (null → become roots).
       await tx.node.updateMany({
-        where: { id: { in: [...doomed] } },
-        data: { isDeleted: true },
+        where: { parentId: id },
+        data: { parentId: node.parentId ?? null },
       })
-      if (docIds.length > 0) {
+      // Archive only this node's own linked Document, in the same transaction.
+      if (node.notionPageId) {
         await tx.document.updateMany({
-          where: { id: { in: docIds } },
+          where: { id: node.notionPageId },
           data: { isArchived: true },
         })
       }
+      await tx.node.update({ where: { id }, data: { isDeleted: true } })
     })
     await this.events.emit(node.roadmapId)
     return true
+  }
+
+  /**
+   * Move a node into another roadmap (sidebar drag-drop). No clone: the node
+   * keeps its identity, slug and linked resources — it just changes owner.
+   * Children left behind in the source roadmap are detached so no edge ever
+   * crosses roadmaps.
+   */
+  async moveNode(
+    nodeId: string,
+    roadmapId: string,
+    positionX: number,
+    positionY: number,
+    user: CurrentUser | null
+  ): Promise<NodeDto> {
+    assertCanWrite(user)
+    let sourceRoadmapId = ""
+    const moved = await this.prisma.$transaction(async (tx) => {
+      const node = await tx.node.findUnique({ where: { id: nodeId } })
+      if (!node || node.isDeleted) throw new RoadmapError("NOT_FOUND")
+      const target = await tx.roadmap.findUnique({ where: { id: roadmapId } })
+      if (!target) throw new RoadmapError("NOT_FOUND")
+      sourceRoadmapId = node.roadmapId
+
+      await tx.node.updateMany({
+        where: { parentId: nodeId },
+        data: { parentId: null },
+      })
+      const order = await tx.node.count({ where: { roadmapId } })
+      return tx.node.update({
+        where: { id: nodeId },
+        data: { roadmapId, parentId: null, positionX, positionY, order },
+      })
+    }, TREE_TRANSACTION_OPTIONS)
+    await this.events.emit(sourceRoadmapId)
+    if (sourceRoadmapId !== roadmapId) await this.events.emit(roadmapId)
+    return this.toNodeDto(moved, "locked", 0)
   }
 
   /** Batch replace the roadmap's active nodes (positions + parent links). */
@@ -690,24 +892,6 @@ export class RoadmapService {
       }
     }
     return result
-  }
-
-  private async collectSubtreeIds(rootId: string): Promise<Set<string>> {
-    const all = await this.prisma.node.findMany({
-      select: { id: true, parentId: true },
-    })
-    const doomed = new Set<string>([rootId])
-    let grew = true
-    while (grew) {
-      grew = false
-      for (const n of all) {
-        if (n.parentId && doomed.has(n.parentId) && !doomed.has(n.id)) {
-          doomed.add(n.id)
-          grew = true
-        }
-      }
-    }
-    return doomed
   }
 
   private async childrenCount(nodeId: string): Promise<number> {
