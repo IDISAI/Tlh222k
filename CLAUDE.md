@@ -53,7 +53,9 @@ Current committed system:
     runtime, utils. All nbformat parsing lives here — not in Go.
   - `src/roadmap`: roadmap domain logic. `api/` holds the Apollo Client + React
     provider that talk GraphQL to `svc-api`; env-flag seam falls back to a
-    localStorage mock service when no backend URL is set.
+    localStorage mock service when no backend URL is set. `builder/` is the
+    admin roadmap-builder (canvas, sidebar, hooks). See "Roadmap builder model"
+    below.
   - `src/navigation`: navigation helpers (incl. `no-script-next-themes`).
 - `packages/db`: Prisma schema/client and seed data.
 - `packages/ui`: shared shadcn/ui + Tailwind v4 components.
@@ -67,6 +69,46 @@ packages/*  -> apps/*       never
 ```
 
 Package scope is `@workspace/*`, not `@vizteck/*`.
+
+## Roadmap builder model
+
+Current model (redesigned 2026-07-20, branch `hf/roadmap`, mock-first —
+**LEGO composition**, supersedes both the `.kiro` specs AND the earlier
+rooted-view `?node=` tree). Confirmed with the product owner via Q&A: "block
+đơn" + "composition thay cây" + "canvas lồng nhiều cấp" + "dây = entity mới".
+
+- **Every role/skill/chapter node is a BLOCK that owns a canvas.** A block's
+  canvas is its `Composition` (`packages/core/src/roadmap/types.ts`):
+  `{ ownerId, members: [{ nodeId, x, y }], edges: [{ id, source, target, kind }] }`.
+  The owner renders pinned on top; `members` are other blocks placed on it.
+  Membership REPLACES the parentId tree — a block can be a member of many
+  canvases (reusable LEGO). `article` is a leaf, never a block: it shows in the
+  right panel of its chapter (`NodeDetailDialog`), never on a canvas.
+- **Edges are a new entity** roadmap↔roadmap (`EdgeKind` = `solid | dashed`),
+  independent of parentId. Right-click a wire → change kind / cut (`removeEdge`).
+  `EdgeContextMenu`; draw by connecting handles (`addEdge`).
+- **parentId / roadmapId are kept as storage** so the public viewer keeps
+  working. `RoadmapService.getComposition` DERIVES a composition from a node's
+  parentId children when none is stored yet (no migration); new blocks
+  self-own (`roadmapId === id`). Composition ops persist immediately — there is
+  no batch "Lưu" step in the composition canvas.
+- **Detail page = one owner block's composition canvas** at `/roadmaps/{nodeId}`
+  (no `?node=`). `BuilderPage` takes `nodeId`; `useCompositionCanvas` +
+  `CompositionCanvas` render it. Drill into a member = its detail-panel
+  "Điều hướng" → `{base}/{node.id}` (`nodeNavigationUrl` builder branch); the
+  owner's own panel hides that button (`NodeDetailDialog hideNavigate`).
+- **Kho Roadmap sidebar = Quản lý Roadmap table.** `NodeSidebar` and
+  `RoadmapListAdmin` list the same set (role/skill blocks), same store
+  (`listNodes`). "Tạo roadmap mới" (table) and right-click-canvas both call
+  `createBlock` (role/skill/chapter) — no container `Roadmap`.
+- **Two deletes.** Canvas remove (`removeFromCanvas`, block context menu / right
+  panel) drops only membership + that block's own edges — every other edge and
+  the block itself survive. Sidebar/table delete (`deleteBlockPermanent`)
+  soft-deletes and purges the block from every composition.
+- **Verified mock-first**: `composition.service.test.ts` + `roadmap-e2e.test.ts`
+  (core/admin/web typecheck clean). TODO before enabling the backend: Apollo
+  `RoadmapApi` has no composition methods yet (the env selector casts over the
+  gap, so it only breaks when `NEXT_PUBLIC_SVC_API_URL` is set).
 
 ## Former Submodules
 

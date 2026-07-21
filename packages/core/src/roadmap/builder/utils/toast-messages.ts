@@ -32,6 +32,23 @@ export const TOAST_MESSAGES: Record<RoadmapErrorCode, string> & {
   NODE_ALREADY_ON_CANVAS: "Node đã có trên Canvas — đã di chuyển đến vị trí của node",
 }
 
+/** Toast messages with dynamic title inclusion */
+export function createSuccessMessage(title: string): string {
+  return `Đã tạo "${title}" thành công`
+}
+
+export function updateSuccessMessage(title: string): string {
+  return `Đã lưu thay đổi cho "${title}"`
+}
+
+export function deleteSuccessMessage(title: string): string {
+  return `Đã xóa "${title}" thành công`
+}
+
+export function saveSuccessMessage(title: string): string {
+  return `Đã lưu "${title}" thành công`
+}
+
 /** Req 2.4/3.8: name the offending pair explicitly. */
 export function invalidHierarchyMessage(
   source: NodeType,

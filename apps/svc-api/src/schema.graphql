@@ -82,6 +82,8 @@ type Query {
   roadmapGraph(slug: String!): RoadmapGraph
   roadmapGraphById(id: ID!): RoadmapGraph
   allNodes: [RoadmapNode!]!
+  publicBlocks: [RoadmapNode!]!
+  publicBlockGraph(id: ID!): RoadmapGraph
   myProgress: [RoadmapProgress!]!
   notionDoc(id: ID!): NotionDoc
   notionDocBySlug(slug: String!): NotionDoc
@@ -97,6 +99,7 @@ type Mutation {
   createNode(input: CreateNodeInput!): RoadmapNode!
   updateNode(id: ID!, input: UpdateNodeInput!): RoadmapNode!
   deleteNode(id: ID!): Boolean!
+  moveNode(nodeId: ID!, roadmapId: ID!, positionX: Float!, positionY: Float!): RoadmapNode!
   saveRoadmap(roadmapId: ID!, nodes: [NodeInput!]!): Boolean!
   setNodeStatus(nodeId: ID!, status: NodeStatus!): Boolean!
   createNotionDoc(input: CreateNotionDocInput!): NotionDoc!

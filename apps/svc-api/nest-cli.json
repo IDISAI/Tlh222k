@@ -5,6 +5,8 @@
   "compilerOptions": {
     "deleteOutDir": true,
     "assets": ["**/*.graphql"],
-    "watchAssets": true
+    "watchAssets": true,
+    "builder": "swc",
+    "typeCheck": false
   }
 }

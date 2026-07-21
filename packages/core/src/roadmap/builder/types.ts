@@ -11,6 +11,8 @@ export type BuilderFlowNode = Node<
      * (notion-article-node Req 6.2).
      */
     viewerMode?: boolean
+    /** Optional double-click handler to bypass React Flow event swallowing. */
+    onDoubleClick?: () => void
   },
   "builderNode"
 >

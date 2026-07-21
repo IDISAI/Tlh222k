@@ -1,6 +1,6 @@
-import { FileText } from "lucide-react"
+import { AlertTriangle, FileText } from "lucide-react"
 
-import { NotionWorkspace } from "@workspace/core"
+import { NotionWorkspace, NotionConnectionError } from "@workspace/core"
 import { notionApi } from "@workspace/core/notion/api/notion.api"
 
 import { getById, getChildren } from "../actions"
@@ -14,8 +14,15 @@ export async function generateMetadata({
   params: Promise<{ slug: string }>
 }) {
   const { slug } = await params
-  const doc = await notionApi.getBySlug(slug, null)
-  return { title: doc?.title ?? "Tài liệu" }
+  try {
+    const doc = await notionApi.getBySlug(slug, null)
+    return { title: doc?.title ?? "Tài liệu" }
+  } catch (err) {
+    if (err instanceof NotionConnectionError) {
+      return { title: "Lỗi kết nối — Tài liệu" }
+    }
+    return { title: "Tài liệu" }
+  }
 }
 
 /**
@@ -33,30 +40,38 @@ export default async function NotionPage({
 }) {
   const { slug } = await params
   const { page } = await searchParams
-  // No token on purpose: the web zone is published-only for every role.
-  const doc = await notionApi.getBySlug(slug, null)
+  
+  try {
+    // No token on purpose: the web zone is published-only for every role.
+    const doc = await notionApi.getBySlug(slug, null)
 
-  if (!doc) return <NotionNotReady slug={slug} />
+    if (!doc) return <NotionNotReady slug={slug} />
 
-  // Deep-link to a published article page under this chapter (read-only).
-  // A ?page= that resolves to nothing published shows the "không khả dụng"
-  // screen instead of silently falling back to other content
-  // (notion-article-node Req 6.5).
-  let initialSelectedId: string | undefined
-  if (page && page !== slug) {
-    const pageDoc = await notionApi.getBySlug(page, null)
-    if (!pageDoc) return <NotionNotReady slug={page} />
-    initialSelectedId = pageDoc.id
+    // Deep-link to a published article page under this chapter (read-only).
+    // A ?page= that resolves to nothing published shows the "không khả dụng"
+    // screen instead of silently falling back to other content
+    // (notion-article-node Req 6.5).
+    let initialSelectedId: string | undefined
+    if (page && page !== slug) {
+      const pageDoc = await notionApi.getBySlug(page, null)
+      if (!pageDoc) return <NotionNotReady slug={page} />
+      initialSelectedId = pageDoc.id
+    }
+
+    return (
+      <NotionWorkspace
+        root={doc}
+        canEdit={false}
+        initialSelectedId={initialSelectedId}
+        actions={{ getById, getChildren }}
+      />
+    )
+  } catch (err) {
+    if (err instanceof NotionConnectionError) {
+      return <NotionConnectionErrorPage slug={slug} error={err.message} />
+    }
+    throw err
   }
-
-  return (
-    <NotionWorkspace
-      root={doc}
-      canEdit={false}
-      initialSelectedId={initialSelectedId}
-      actions={{ getById, getChildren }}
-    />
-  )
 }
 
 function NotionNotReady({ slug }: { slug: string }) {
@@ -75,6 +90,29 @@ function NotionNotReady({ slug }: { slug: string }) {
         className="text-sm font-medium text-primary underline underline-offset-2"
       >
         ← Quay lại danh sách roadmap
+      </a>
+    </div>
+  )
+}
+
+function NotionConnectionErrorPage({ slug, error }: { slug: string; error: string }) {
+  return (
+    <div className="mx-auto flex min-h-[60svh] w-full max-w-lg flex-col items-center justify-center gap-3 px-4 text-center">
+      <AlertTriangle className="size-9 text-destructive" />
+      <h1 className="text-xl font-semibold">Lỗi kết nối cơ sở dữ liệu</h1>
+      <p className="text-sm text-muted-foreground">
+        Không thể kết nối đến máy chủ cơ sở dữ liệu (Neon). Vui lòng thử lại sau.
+      </p>
+      {error && (
+        <code className="rounded bg-muted px-1.5 py-0.5 text-xs text-destructive max-w-full overflow-x-auto">
+          {error}
+        </code>
+      )}
+      <a
+        href={`/notion/${slug}`}
+        className="text-sm font-medium text-primary underline underline-offset-2"
+      >
+        Thử lại
       </a>
     </div>
   )

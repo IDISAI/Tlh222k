@@ -13,7 +13,7 @@ import { Button } from "@workspace/ui/components/button"
 import { Input } from "@workspace/ui/components/input"
 import { cn } from "@workspace/ui/lib/utils"
 
-import { NODE_TYPES, type NodeType, type RoadmapNode } from "../../types"
+import { type NodeType, type RoadmapNode } from "../../types"
 import { useDebouncedValue } from "../hooks/use-debounced-value"
 import {
   NODE_TYPE_ACCENT,
@@ -22,6 +22,9 @@ import {
 } from "../utils/node-type-styles"
 import { NODE_DND_MIME } from "../types"
 import { DeleteNodeDialog } from "./DeleteNodeDialog"
+
+/** A roadmap IS a role/skill node, so the store lists only those two types. */
+const ROADMAP_TYPES: readonly NodeType[] = ["role", "skill"]
 
 interface NodeSidebarProps {
   /** Every node in the system (Req 3.6). Permanently-deleted ones are filtered out. */
@@ -77,7 +80,7 @@ export function NodeSidebar({
 
   const grouped = useMemo(() => {
     const groups = {} as Record<NodeType, RoadmapNode[]>
-    for (const type of NODE_TYPES) {
+    for (const type of ROADMAP_TYPES) {
       groups[type] = visible.filter((n) => n.nodeType === type)
     }
     return groups
@@ -87,13 +90,13 @@ export function NodeSidebar({
     <aside className="flex w-80 shrink-0 flex-col border-r bg-background">
       <div className="border-b p-3">
         <div className="mb-2 flex items-center justify-between">
-          <h2 className="text-sm font-semibold">📋 Kho Node</h2>
+          <h2 className="text-sm font-semibold">📋 Kho Roadmap</h2>
           {onCollapse && (
             <Button
               type="button"
               variant="ghost"
               size="icon-sm"
-              title="Thu gọn Kho Node"
+              title="Thu gọn Kho Roadmap"
               onClick={onCollapse}
             >
               <PanelLeftClose className="size-4" />
@@ -104,7 +107,7 @@ export function NodeSidebar({
           <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             value={search}
-            placeholder="Tìm kiếm node..."
+            placeholder="Tìm kiếm roadmap..."
             className="pl-8"
             onChange={(e) => setSearch(e.target.value)}
           />
@@ -112,7 +115,7 @@ export function NodeSidebar({
       </div>
 
       <div className="flex-1 space-y-4 overflow-y-auto p-3">
-        {NODE_TYPES.map((type) => {
+        {ROADMAP_TYPES.map((type) => {
           const Icon = NODE_TYPE_ICONS[type]
           const items = grouped[type]
           const isCollapsed = collapsed[type] ?? false
@@ -141,7 +144,7 @@ export function NodeSidebar({
                 <div className="mt-1.5 space-y-1.5">
                   {items.length === 0 && (
                     <p className="px-1 text-xs italic text-muted-foreground">
-                      Không có node
+                      Không có roadmap
                     </p>
                   )}
                   {items.map((node) => {

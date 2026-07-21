@@ -1,4 +1,4 @@
-import type { Roadmap, RoadmapNode } from "../types"
+import type { Composition, Roadmap, RoadmapNode } from "../types"
 import { MOCK_NODES } from "./nodes.mock"
 import { MOCK_ROADMAPS } from "./roadmaps.mock"
 
@@ -16,6 +16,11 @@ export interface BuilderStore {
   roadmaps: Roadmap[]
   /** Flat list across all roadmaps; soft-deleted nodes stay with isDeleted=true. */
   nodes: RoadmapNode[]
+  /**
+   * Per-owner canvas compositions (LEGO model). Empty until the first edit —
+   * `RoadmapService.getComposition` derives from the parentId tree meanwhile.
+   */
+  compositions: Composition[]
 }
 
 function seed(): BuilderStore {
@@ -23,7 +28,7 @@ function seed(): BuilderStore {
   const nodes = Object.values(MOCK_NODES).flatMap((list) =>
     list.map((n) => ({ ...n }))
   )
-  return { roadmaps, nodes }
+  return { roadmaps, nodes, compositions: [] }
 }
 
 let store: BuilderStore | null = null
@@ -32,6 +37,7 @@ let hydrated = false
 function isStoreShape(value: unknown): value is BuilderStore {
   if (typeof value !== "object" || value === null) return false
   const v = value as Record<string, unknown>
+  // `compositions` is intentionally not required — older payloads predate it.
   return Array.isArray(v.roadmaps) && Array.isArray(v.nodes)
 }
 
@@ -50,6 +56,8 @@ export function getStore(): BuilderStore {
       // Corrupt / legacy payload — keep the seed and overwrite on next persist.
     }
   }
+  // Backfill for payloads persisted before the composition model existed.
+  if (!Array.isArray(store.compositions)) store.compositions = []
   return store
 }
 

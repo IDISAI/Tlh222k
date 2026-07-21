@@ -55,8 +55,12 @@ export function RoadmapViewer({
   const [loading, setLoading] = useState(initialGraph === null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
 
+  // LEGO per-block viewer: `slug` is the block NODE id from the home card.
+  // Resolve its single-level composition; fall back to the legacy slug graph.
   const refetch = useCallback(
-    () => service.graphBySlug(slug, { authenticated: false }),
+    async () =>
+      (await service.publicBlockGraph(slug)) ??
+      (await service.graphBySlug(slug, { authenticated: false })),
     [slug]
   )
 
@@ -94,27 +98,15 @@ export function RoadmapViewer({
 
   const nodes = useMemo<RoadmapNode[]>(() => graph?.nodes ?? [], [graph])
   const selectedNode = nodes.find((n) => n.id === selectedId) ?? null
+  const ownerId = graph?.roadmap.id
 
-  const handleNodeClick = useCallback(
-    (node: RoadmapNode) => {
-      // notion-article-node Req 6.1/6.2: a LINKED notion article navigates
-      // straight into the read-only workspace; an unlinked one is inert.
-      if (node.nodeType === "article" && node.articleType === "notion") {
-        if (!node.notionPageId) return
-        const parent = nodes.find((n) => n.id === node.parentId)
-        const chapterSlug =
-          parent?.nodeType === "chapter" ? parent.slug : undefined
-        if (chapterSlug) {
-          window.location.assign(
-            `${notionBasePath}/${chapterSlug}?page=${encodeURIComponent(node.slug)}`
-          )
-          return
-        }
-      }
-      setSelectedId(node.id)
-    },
-    [nodes, notionBasePath]
-  )
+  // Double-click any node → open the right detail sidebar, exactly like the
+  // admin builder (CompositionCanvas `onNodeDoubleClick`). Drilling into a
+  // member block now happens from that sidebar's "Điều hướng" button, so the
+  // viewer and the CMS share one interaction model.
+  const handleNodeOpen = useCallback((node: RoadmapNode) => {
+    setSelectedId(node.id)
+  }, [])
 
   return (
     <div className="flex h-[calc(100svh-57px)] flex-col">
@@ -149,7 +141,8 @@ export function RoadmapViewer({
         ) : graph ? (
           <ViewerCanvas
             nodes={nodes}
-            onNodeClick={handleNodeClick}
+            ownerId={ownerId}
+            onNodeDoubleClick={handleNodeOpen}
             className="h-full w-full"
           />
         ) : (
@@ -164,6 +157,7 @@ export function RoadmapViewer({
         nodes={nodes}
         onClose={() => setSelectedId(null)}
         readOnly
+        hideNavigate={selectedNode?.id === ownerId}
         notebookBasePath={notebookBasePath}
         notionBasePath={notionBasePath}
       />

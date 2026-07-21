@@ -11,8 +11,14 @@ import type {
   RoadmapNode,
   UpdateNodeInput,
 } from "../../types"
-import { slugify } from "../../utils/slugify"
-import { TOAST_MESSAGES, serviceErrorMessage } from "../utils/toast-messages"
+import {
+  TOAST_MESSAGES,
+  serviceErrorMessage,
+  createSuccessMessage,
+  updateSuccessMessage,
+  deleteSuccessMessage,
+  saveSuccessMessage,
+} from "../utils/toast-messages"
 
 /**
  * Domain state for one builder session. The canvas is the working copy:
@@ -40,7 +46,9 @@ export function useBuilderCanvas(
     slug: string,
     title: string,
     parentChapterSlug?: string
-  ) => Promise<{ id: string } | null>
+  ) => Promise<{ id: string } | null>,
+  /** Publish sync hook (notion-article-node Req 7). */
+  onSyncPublish?: (notionPageId: string, isPublished: boolean) => Promise<void>
 ) {
   const service = useMemo(() => new RoadmapService(), [])
 
@@ -151,26 +159,6 @@ export function useBuilderCanvas(
   )
 
   /**
-   * Remove nodes from the canvas only — the system copy survives and shows up
-   * again in the sidebar (Req 3.3 Delete / Req 4.5 "Xóa khỏi Canvas").
-   */
-  const removeFromCanvas = useCallback(
-    (ids: string[]) => {
-      pushHistory()
-      const doomed = new Set(ids)
-      setNodes((prev) =>
-        prev
-          .filter((n) => !doomed.has(n.id))
-          .map((n) =>
-            n.parentId && doomed.has(n.parentId) ? { ...n, parentId: null } : n
-          )
-      )
-      setIsDirty(true)
-    },
-    [pushHistory]
-  )
-
-  /**
    * Create in the system and place on the canvas selected (Req 3.1/3.2).
    *
    * Post-create side effects (notion-article-node spec):
@@ -190,10 +178,12 @@ export function useBuilderCanvas(
       try {
         node = await service.createNode({ ...input, roadmapId }, role)
         pushHistory()
-        setNodes((prev) => [...prev, node])
+        setNodes((prev) =>
+          prev.some((n) => n.id === node.id) ? prev : [...prev, node]
+        )
         setIsDirty(true)
         void refreshAllNodes()
-        toast.success(TOAST_MESSAGES.CREATE_SUCCESS)
+        toast.success(createSuccessMessage(input.title))
       } catch (error) {
         toast.error(serviceErrorMessage(error))
         return null
@@ -244,38 +234,9 @@ export function useBuilderCanvas(
         }
       }
 
-      // Req 11: role/skill node → linked Roadmap (isPublished=false by
-      // default). Client-side on purpose: the Clerk token authorizing the
-      // write lives in the browser, and the localStorage mock works too.
-      if (input.nodeType === "role" || input.nodeType === "skill") {
-        const roadmap = await service
-          .createRoadmap({ slug: slugify(node.title), title: node.title }, role)
-          .catch(() => null)
-        if (!roadmap) {
-          toast.error(
-            "Không thể tạo roadmap. Node đã được tạo nhưng chưa được liên kết với roadmap."
-          )
-        } else {
-          try {
-            await service.updateNode(
-              node.id,
-              { linkedRoadmapId: roadmap.id },
-              role
-            )
-            applyNodePatch(
-              node.id,
-              { linkedRoadmapId: roadmap.id },
-              { dirty: false }
-            )
-          } catch (error) {
-            console.error(
-              "[notion-article-node] linkedRoadmapId update failed",
-              { nodeId: node.id, roadmapId: roadmap.id, error }
-            )
-          }
-        }
-      }
-
+      // A role/skill node IS a roadmap: its "detail" is a view of THIS same
+      // tree rooted at the node (node + its descendants). No separate Roadmap
+      // record is created and no seed node is added — one node, one record.
       return node
     },
     [
@@ -292,29 +253,29 @@ export function useBuilderCanvas(
   /**
    * Drop an existing sidebar node onto the canvas (Req 3.4).
    *
-   * A node has a single `roadmapId`, so a node belonging to ANOTHER roadmap
-   * can't merely be referenced here — dropping it CLONES it into this roadmap
-   * (its source roadmap keeps the original). Without this, "saving" placed the
-   * foreign node's position but never associated it, so the roadmap stayed
-   * empty on the web viewer (the AI-Engineer "0 nodes" desync). Nodes that
-   * already belong to this roadmap are just re-attached locally.
+   * A node belonging to ANOTHER roadmap is MOVED into this one (single owner:
+   * `Node.roadmapId`). No clone, no side effects — the node keeps its
+   * identity, slug and linked resources; the source roadmap loses it and its
+   * children there are detached server-side. Nodes that already belong to
+   * this roadmap are just re-attached locally.
    */
   const addExistingToCanvas = useCallback(
     async (node: RoadmapNode, position: { x: number; y: number }) => {
       if (node.roadmapId !== roadmapId) {
-        await createNode({
-          nodeType: node.nodeType,
-          title: node.title,
-          description: node.description ?? undefined,
-          articleType: node.articleType ?? undefined,
-          notionPageId: node.notionPageId ?? undefined,
-          jupyterUrl: node.jupyterUrl ?? undefined,
-          parentId: null,
-          positionX: position.x,
-          positionY: position.y,
-        })
+        try {
+          const moved = await service.moveNode(node.id, roadmapId, position, role)
+          pushHistory()
+          setNodes((prev) =>
+            prev.some((n) => n.id === moved.id) ? prev : [...prev, moved]
+          )
+          void refreshAllNodes()
+          toast.success("Đã chuyển node vào roadmap này")
+        } catch (error) {
+          toast.error(serviceErrorMessage(error))
+        }
         return
       }
+      if (nodesRef.current.some((n) => n.id === node.id)) return
       pushHistory()
       setNodes((prev) => [
         ...prev,
@@ -330,7 +291,7 @@ export function useBuilderCanvas(
       ])
       setIsDirty(true)
     },
-    [roadmapId, createNode, pushHistory]
+    [roadmapId, service, role, pushHistory, refreshAllNodes]
   )
 
   /**
@@ -384,8 +345,18 @@ export function useBuilderCanvas(
             )
           })
         }
+        // Sync publish state to Notion document if available
+        if (input.isPublished !== undefined && onSyncPublish) {
+          const notionKey = previous.notionPageId || previous.slug
+          if (notionKey) {
+            Promise.resolve(
+              onSyncPublish(notionKey, input.isPublished)
+            ).catch(console.error)
+          }
+        }
         void refreshAllNodes()
-        toast.success(TOAST_MESSAGES.UPDATE_SUCCESS)
+        const title = input.title || previous.title
+        toast.success(updateSuccessMessage(title))
         return true
       } catch (error) {
         applyNodePatch(id, previous, { dirty: false }) // rollback
@@ -393,44 +364,35 @@ export function useBuilderCanvas(
         return false
       }
     },
-    [nodes, applyNodePatch, service, role, refreshAllNodes, onTitleSync]
+    [nodes, applyNodePatch, service, role, refreshAllNodes, onTitleSync, onSyncPublish]
   )
 
   /**
-   * Permanent system delete (Req 4.3). The node and its descendants become
-   * Disabled_Node ghosts on the canvas unless `removeSelf` strips the root
-   * (NodeDetailDialog's "Xóa" — Req 7.2).
+   * Permanent delete of a SINGLE node. Its direct children survive — they
+   * reparent up to the deleted node's parent (a sub-roadmap is never lost when
+   * its parent roadmap is deleted).
    */
   const deleteNodePermanent = useCallback(
-    async (id: string, opts: { removeSelf?: boolean } = {}): Promise<boolean> => {
+    async (id: string): Promise<boolean> => {
       try {
+        const target = nodes.find((n) => n.id === id)
+        const title = target?.title || "node"
         await service.deleteNode(id, role)
-        // Cascade set computed over the whole system, not just this canvas.
-        const doomed = new Set([id])
-        let grew = true
-        while (grew) {
-          grew = false
-          for (const n of allNodes) {
-            if (n.parentId && doomed.has(n.parentId) && !doomed.has(n.id)) {
-              doomed.add(n.id)
-              grew = true
-            }
-          }
-        }
-        setNodes((prev) =>
-          prev
-            .filter((n) => !(opts.removeSelf && n.id === id))
-            .map((n) => (doomed.has(n.id) ? { ...n, isDeleted: true } : n))
-        )
+        setNodes((prev) => {
+          const newParent = target?.parentId ?? null
+          return prev
+            .filter((n) => n.id !== id)
+            .map((n) => (n.parentId === id ? { ...n, parentId: newParent } : n))
+        })
         void refreshAllNodes()
-        toast.success(TOAST_MESSAGES.DELETE_SUCCESS)
+        toast.success(deleteSuccessMessage(title))
         return true
       } catch (error) {
         toast.error(serviceErrorMessage(error))
         return false
       }
     },
-    [service, role, allNodes, refreshAllNodes]
+    [service, role, refreshAllNodes, nodes]
   )
 
   /** Batch-save the whole canvas (Req 3.10/3.11). */
@@ -441,25 +403,27 @@ export function useBuilderCanvas(
       await service.saveRoadmap(roadmapId, nodes, role)
       setIsDirty(false)
       void refreshAllNodes()
-      toast.success(TOAST_MESSAGES.SAVE_SUCCESS)
+      const title = roadmap?.title || "roadmap"
+      toast.success(saveSuccessMessage(title))
     } catch (error) {
       // Canvas state is intentionally left untouched (Req 3.11).
       toast.error(serviceErrorMessage(error))
     } finally {
       setIsSaving(false)
     }
-  }, [isSaving, service, roadmapId, nodes, role, refreshAllNodes])
+  }, [isSaving, service, roadmapId, nodes, role, refreshAllNodes, roadmap])
 
   const deleteRoadmap = useCallback(async (): Promise<boolean> => {
     try {
+      const title = roadmap?.title || "roadmap"
       await service.deleteRoadmap(roadmapId, role)
-      toast.success(TOAST_MESSAGES.DELETE_SUCCESS)
+      toast.success(deleteSuccessMessage(title))
       return true
     } catch (error) {
       toast.error(serviceErrorMessage(error))
       return false
     }
-  }, [service, roadmapId, role])
+  }, [service, roadmapId, role, roadmap])
 
   const togglePublish = useCallback(async () => {
     if (!roadmap) return
@@ -492,7 +456,6 @@ export function useBuilderCanvas(
     applyNodePatch,
     reparent,
     addExistingToCanvas,
-    removeFromCanvas,
     createNode,
     updateNodeMeta,
     deleteNodePermanent,

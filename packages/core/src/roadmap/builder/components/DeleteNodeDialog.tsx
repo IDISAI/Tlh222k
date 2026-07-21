@@ -66,9 +66,12 @@ export function DeleteNodeDialog({
           ⚠ Hành động này sẽ xóa vĩnh viễn node khỏi hệ thống và không thể hoàn
           tác.
           {childCount > 0 && (
-            <> {childCount} node con cũng sẽ bị xóa theo.</>
-          )}{" "}
-          Node sẽ hiển thị dạng mờ trên tất cả các Canvas đang sử dụng nó.
+            <>
+              {" "}
+              Các node con được giữ lại và chuyển lên cấp trên (không bị xóa
+              theo).
+            </>
+          )}
         </p>
 
         <DialogFooter>

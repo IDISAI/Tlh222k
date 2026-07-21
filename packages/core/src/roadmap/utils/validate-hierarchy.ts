@@ -15,15 +15,18 @@ export function validateHierarchy(
 }
 
 /**
- * NodeTypes allowed as direct children of `parentType`. Always includes
- * `article` (attachable anywhere); plus the natural level + 1 type. An
- * `article` parent therefore allows only `article` children.
+ * NodeTypes allowed as direct children of `parentType`. A roadmap is a LEGO
+ * piece: role/skill roadmaps combine freely, so they are allowed under ANY
+ * node (Fullstack → FE/BE, both role/skill). `article` (content) is also
+ * attachable anywhere, plus the natural level + 1 type.
  */
 export function allowedChildTypes(parentType: NodeType): NodeType[] {
   const childLevel = NODE_TYPE_LEVEL[parentType] + 1
   const allowed = new Set<NodeType>(
     NODE_TYPES.filter((t) => NODE_TYPE_LEVEL[t] === childLevel)
   )
+  allowed.add("role")
+  allowed.add("skill")
   allowed.add("article")
   return NODE_TYPES.filter((t) => allowed.has(t))
 }

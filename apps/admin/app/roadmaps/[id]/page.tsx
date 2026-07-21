@@ -26,13 +26,14 @@ export default async function BuilderCanvasPage({
   // a server-side GraphQL fetch + notFound() once svc-roadmap exists).
   return (
     <BuilderPage
-      roadmapId={id}
+      nodeId={id}
       role={role}
       listHref={ROADMAPS_PATH}
       onNodeTitleSync={syncTitleBySlug}
       onCreateNotionDoc={createDocumentForNode}
       onSyncPublish={syncPublishByNotionPageId}
       onArchiveDocument={archiveByNotionPageId}
+      publicOrigin={process.env.NEXT_PUBLIC_HOST_URL}
     />
   )
 }
