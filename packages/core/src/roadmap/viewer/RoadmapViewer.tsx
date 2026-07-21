@@ -100,39 +100,13 @@ export function RoadmapViewer({
   const selectedNode = nodes.find((n) => n.id === selectedId) ?? null
   const ownerId = graph?.roadmap.id
 
-  const handleNodeClick = useCallback(
-    (node: RoadmapNode) => {
-      // LEGO drill: clicking a MEMBER block (not the owner) opens ITS per-block
-      // viewer — the same drill the admin builder does, keeping viewer ⇄ builder
-      // in sync. The owner and articles fall through to the detail panel.
-      if (
-        node.id !== ownerId &&
-        (node.nodeType === "role" ||
-          node.nodeType === "skill" ||
-          node.nodeType === "chapter")
-      ) {
-        const base = window.location.pathname.replace(/\/[^/]+\/?$/, "")
-        window.location.assign(`${base}/${node.id}`)
-        return
-      }
-      // notion-article-node Req 6.1/6.2: a LINKED notion article navigates
-      // straight into the read-only workspace; an unlinked one is inert.
-      if (node.nodeType === "article" && node.articleType === "notion") {
-        if (!node.notionPageId) return
-        const parent = nodes.find((n) => n.id === node.parentId)
-        const chapterSlug =
-          parent?.nodeType === "chapter" ? parent.slug : undefined
-        if (chapterSlug) {
-          window.location.assign(
-            `${notionBasePath}/${chapterSlug}?page=${encodeURIComponent(node.slug)}`
-          )
-          return
-        }
-      }
-      setSelectedId(node.id)
-    },
-    [nodes, notionBasePath, ownerId]
-  )
+  // Double-click any node → open the right detail sidebar, exactly like the
+  // admin builder (CompositionCanvas `onNodeDoubleClick`). Drilling into a
+  // member block now happens from that sidebar's "Điều hướng" button, so the
+  // viewer and the CMS share one interaction model.
+  const handleNodeOpen = useCallback((node: RoadmapNode) => {
+    setSelectedId(node.id)
+  }, [])
 
   return (
     <div className="flex h-[calc(100svh-57px)] flex-col">
@@ -167,7 +141,8 @@ export function RoadmapViewer({
         ) : graph ? (
           <ViewerCanvas
             nodes={nodes}
-            onNodeClick={handleNodeClick}
+            ownerId={ownerId}
+            onNodeDoubleClick={handleNodeOpen}
             className="h-full w-full"
           />
         ) : (
@@ -182,6 +157,7 @@ export function RoadmapViewer({
         nodes={nodes}
         onClose={() => setSelectedId(null)}
         readOnly
+        hideNavigate={selectedNode?.id === ownerId}
         notebookBasePath={notebookBasePath}
         notionBasePath={notionBasePath}
       />

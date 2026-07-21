@@ -45,6 +45,10 @@ export function deriveCompositionFromNodes(
   if (!owner) {
     return { ownerId, members: [], edges: [] }
   }
+  // Seed the owner's own-canvas position from its node coords (LEGO: from here
+  // on it lives in the composition, independent of the parent-canvas position).
+  const ownerX = owner.positionX
+  const ownerY = owner.positionY
 
   const roadmapId = owner.roadmapId
 
@@ -93,7 +97,7 @@ export function deriveCompositionFromNodes(
     }
   }
 
-  return { ownerId, members, edges }
+  return { ownerId, ownerX, ownerY, members, edges }
 }
 
 export function parseDerivedEdge(edgeId: string): { sourceId: string; targetId: string } | null {

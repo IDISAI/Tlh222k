@@ -560,6 +560,14 @@ export class RoadmapService {
     assertCanWrite(callerRole)
     await delay()
     const comp = this.mutableComposition(ownerId)
+    if (nodeId === ownerId) {
+      // Owner dragged on its OWN canvas → its own-canvas position (LEGO), NOT
+      // the shared RoadmapNode.positionX/Y used on parent canvases.
+      comp.ownerX = position.x
+      comp.ownerY = position.y
+      persistStore()
+      return
+    }
     const member = comp.members.find((m) => m.nodeId === nodeId)
     if (member) {
       member.x = position.x

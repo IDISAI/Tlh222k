@@ -128,6 +128,14 @@ export interface CompositionMember {
  */
 export interface Composition {
   ownerId: string
+  /**
+   * Owner's position on ITS OWN canvas (LEGO independence). Kept here, separate
+   * from `RoadmapNode.positionX/Y` which is the owner's position as a MEMBER on
+   * parent canvases — the two must not share storage. Absent on a freshly
+   * derived composition; seeded from `positionX/Y` by the derive.
+   */
+  ownerX?: number
+  ownerY?: number
   members: CompositionMember[]
   edges: RoadmapEdge[]
 }

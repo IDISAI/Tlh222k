@@ -121,7 +121,13 @@ function CompositionCanvasInner({
       next.push({
         id: owner.id,
         type: "builderNode",
-        position: prevById.get(owner.id)?.position ?? { x: owner.positionX, y: owner.positionY },
+        // Owner's own-canvas position lives in the composition (LEGO), falling
+        // back to the node coords only until the derive seeds ownerX/ownerY.
+        position:
+          prevById.get(owner.id)?.position ?? {
+            x: canvas.composition?.ownerX ?? owner.positionX,
+            y: canvas.composition?.ownerY ?? owner.positionY,
+          },
         data: { node: owner },
         draggable: true,
         selectable: true,
@@ -141,7 +147,14 @@ function CompositionCanvasInner({
     })
     const ids = new Set<string>([owner.id, ...canvas.memberNodes.map((m) => m.node.id)])
     setRfEdges(toFlowEdges(canvas.edges, ids))
-  }, [canvas.ownerNode, canvas.memberNodes, canvas.edges, setRfNodes, setRfEdges])
+  }, [
+    canvas.ownerNode,
+    canvas.memberNodes,
+    canvas.edges,
+    canvas.composition,
+    setRfNodes,
+    setRfEdges,
+  ])
 
   const onConnect = useCallback(
     (connection: Connection) => {
@@ -159,16 +172,12 @@ function CompositionCanvasInner({
       setIsDragging(false)
       const moved = dragged.length > 0 ? dragged : [node]
       for (const n of moved) {
-        if (n.id === ownerId) {
-          // Owner movement: update the owner node's position
-          void canvas.updateNodeMeta(ownerId, {
-            positionX: n.position.x,
-            positionY: n.position.y,
-          })
-        } else {
-          // Member movement: update composition member position
-          canvas.moveMember(n.id, n.position)
-        }
+        // Owner and members both persist to the composition (LEGO: each canvas
+        // is independent). moveMember writes the owner's own-canvas coords
+        // (comp.ownerX/ownerY) when n.id === ownerId, and the member coords
+        // otherwise — neither touches the shared RoadmapNode.positionX/Y used on
+        // parent canvases.
+        canvas.moveMember(n.id, n.position)
       }
     },
     [canvas, ownerId]

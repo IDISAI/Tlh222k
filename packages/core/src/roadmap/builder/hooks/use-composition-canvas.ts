@@ -193,12 +193,14 @@ export function useCompositionCanvas(
     (nodeId: string, position: { x: number; y: number }) => {
       setComposition((prev) =>
         prev
-          ? {
-              ...prev,
-              members: prev.members.map((m) =>
-                m.nodeId === nodeId ? { ...m, x: position.x, y: position.y } : m
-              ),
-            }
+          ? nodeId === ownerId
+            ? { ...prev, ownerX: position.x, ownerY: position.y }
+            : {
+                ...prev,
+                members: prev.members.map((m) =>
+                  m.nodeId === nodeId ? { ...m, x: position.x, y: position.y } : m
+                ),
+              }
           : prev
       )
       void service

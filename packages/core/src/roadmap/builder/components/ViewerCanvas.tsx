@@ -8,6 +8,7 @@ import {
   ReactFlow,
   ReactFlowProvider,
   type ColorMode,
+  type Edge,
   type Node,
 } from "@xyflow/react"
 import { useTheme } from "next-themes"
@@ -16,6 +17,7 @@ import "@xyflow/react/dist/style.css"
 
 import type { NodeType, RoadmapNode } from "../../types"
 import type { BuilderFlowNode, ChildCountEdge } from "../types"
+import { deriveCompositionFromNodes } from "../../utils/derive-composition"
 import { BuilderCanvasContext } from "./builder-context"
 import { BuilderNodeComponent } from "./BuilderNodeComponent"
 import { ChildCountEdgeComponent } from "./ChildCountEdge"
@@ -59,18 +61,27 @@ function minimapNodeColor(node: Node): string {
 
 interface ViewerCanvasProps {
   nodes: RoadmapNode[]
+  ownerId?: string | null
   onNodeClick?: (node: RoadmapNode) => void
+  /** Double-click a node → open the right detail sidebar (matches the builder). */
+  onNodeDoubleClick?: (node: RoadmapNode) => void
   className?: string
 }
 
 /**
- * Read-only twin of `BuilderCanvas`: it renders the EXACT same colored
- * neo-brutalist nodes (`BuilderNodeComponent`), animated child-count edges and
- * minimap the admin builder uses, so the web viewer and the CMS canvas can't
- * look different. All editing is stripped — no drag, connect, context menu or
- * drop — leaving just pan/zoom + a click that opens the node detail sidebar.
+ * Read-only twin of `BuilderCanvas`/`CompositionCanvas`: it renders the EXACT same
+ * colored neo-brutalist nodes (`BuilderNodeComponent`), animated edges and minimap,
+ * so the web viewer and the CMS canvas can't look different. If `ownerId` matches
+ * a node, it renders only the composition (owner + members at their per-canvas coordinates).
+ * Otherwise it falls back to rendering all nodes at their global coordinates.
  */
-function ViewerCanvasInner({ nodes, onNodeClick, className }: ViewerCanvasProps) {
+function ViewerCanvasInner({
+  nodes,
+  ownerId,
+  onNodeClick,
+  onNodeDoubleClick,
+  className,
+}: ViewerCanvasProps) {
   const { resolvedTheme } = useTheme()
   // Skip SSR entirely to avoid the ReactFlow colorMode hydration mismatch.
   // Server sends a plain div; client mounts the real canvas with the correct
@@ -80,22 +91,78 @@ function ViewerCanvasInner({ nodes, onNodeClick, className }: ViewerCanvasProps)
 
   const colorMode: ColorMode = resolvedTheme === "dark" ? "dark" : "light"
 
-  const rfNodes = useMemo<BuilderFlowNode[]>(
-    () =>
-      nodes
-        .filter((n) => !n.isDeleted && n.nodeType !== "article")
-        .map((n) => ({
-          id: n.id,
-          type: "builderNode" as const,
-          position: { x: n.positionX, y: n.positionY },
-          data: { node: n, viewerMode: true },
-          draggable: false,
-          connectable: false,
-        })),
-    [nodes]
-  )
+  // Derive composition if ownerId is provided and exists in nodes
+  const composition = useMemo(() => {
+    if (!ownerId) return null
+    const ownerExists = nodes.some((n) => n.id === ownerId)
+    if (!ownerExists) return null
+    return deriveCompositionFromNodes(ownerId, nodes)
+  }, [ownerId, nodes])
 
-  const rfEdges = useMemo(() => buildViewerEdges(nodes), [nodes])
+  const rfNodes = useMemo<BuilderFlowNode[]>(() => {
+    if (composition) {
+      const owner = nodes.find((n) => n.id === ownerId)
+      if (!owner) return []
+
+      const next: BuilderFlowNode[] = []
+      // 1. Add owner node at its global position
+      next.push({
+        id: owner.id,
+        type: "builderNode" as const,
+        position: { x: owner.positionX, y: owner.positionY },
+        data: { node: owner, viewerMode: true },
+        draggable: false,
+        connectable: false,
+      })
+      // 2. Add member nodes at their composition positions
+      const nodeById = new Map(nodes.map((n) => [n.id, n]))
+      for (const m of composition.members) {
+        const node = nodeById.get(m.nodeId)
+        if (node && !node.isDeleted) {
+          next.push({
+            id: node.id,
+            type: "builderNode" as const,
+            position: { x: m.x, y: m.y },
+            data: { node, viewerMode: true },
+            draggable: false,
+            connectable: false,
+          })
+        }
+      }
+      return next
+    }
+
+    // Fallback: render all nodes at their global positions
+    return nodes
+      .filter((n) => !n.isDeleted && n.nodeType !== "article")
+      .map((n) => ({
+        id: n.id,
+        type: "builderNode" as const,
+        position: { x: n.positionX, y: n.positionY },
+        data: { node: n, viewerMode: true },
+        draggable: false,
+        connectable: false,
+      }))
+  }, [nodes, ownerId, composition])
+
+  const rfEdges = useMemo<Edge[]>(() => {
+    if (composition) {
+      const nodeIds = new Set(rfNodes.map((n) => n.id))
+      return composition.edges
+        .filter((e) => nodeIds.has(e.sourceId) && nodeIds.has(e.targetId))
+        .map((e) => ({
+          id: e.id,
+          source: e.sourceId,
+          target: e.targetId,
+          type: "default",
+          animated: e.kind === "solid",
+          style: e.kind === "dashed" ? { strokeDasharray: "6 4" } : undefined,
+          data: { kind: e.kind },
+        }))
+    }
+    return buildViewerEdges(nodes)
+  }, [nodes, rfNodes, composition])
+
   const contextValue = useMemo(() => ({ nodes, isDragging: false }), [nodes])
 
   if (!mounted) return <div className={className ?? "h-full w-full"} />
@@ -117,6 +184,9 @@ function ViewerCanvasInner({ nodes, onNodeClick, className }: ViewerCanvasProps)
           elementsSelectable
           onNodeClick={(_, rfNode) =>
             onNodeClick?.((rfNode.data as { node: RoadmapNode }).node)
+          }
+          onNodeDoubleClick={(_, rfNode) =>
+            onNodeDoubleClick?.((rfNode.data as { node: RoadmapNode }).node)
           }
         >
           <Background />
