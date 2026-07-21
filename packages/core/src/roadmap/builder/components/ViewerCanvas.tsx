@@ -112,7 +112,11 @@ function ViewerCanvasInner({
         id: owner.id,
         type: "builderNode" as const,
         position: { x: owner.positionX, y: owner.positionY },
-        data: { node: owner, viewerMode: true },
+        data: {
+          node: owner,
+          viewerMode: true,
+          onDoubleClick: () => onNodeDoubleClick?.(owner),
+        },
         draggable: false,
         connectable: false,
       })
@@ -125,7 +129,11 @@ function ViewerCanvasInner({
             id: node.id,
             type: "builderNode" as const,
             position: { x: m.x, y: m.y },
-            data: { node, viewerMode: true },
+            data: {
+              node,
+              viewerMode: true,
+              onDoubleClick: () => onNodeDoubleClick?.(node),
+            },
             draggable: false,
             connectable: false,
           })
@@ -141,11 +149,15 @@ function ViewerCanvasInner({
         id: n.id,
         type: "builderNode" as const,
         position: { x: n.positionX, y: n.positionY },
-        data: { node: n, viewerMode: true },
+        data: {
+          node: n,
+          viewerMode: true,
+          onDoubleClick: () => onNodeDoubleClick?.(n),
+        },
         draggable: false,
         connectable: false,
       }))
-  }, [nodes, ownerId, composition])
+  }, [nodes, ownerId, composition, onNodeDoubleClick])
 
   const computedEdges = useMemo<Edge[]>(() => {
     if (composition) {
@@ -190,7 +202,7 @@ function ViewerCanvasInner({
           minZoom={0.25}
           maxZoom={2}
           fitView
-          nodesDraggable={false}
+          zoomOnDoubleClick={false}
           nodesConnectable={false}
           elementsSelectable
           onNodesChange={onNodesChange}

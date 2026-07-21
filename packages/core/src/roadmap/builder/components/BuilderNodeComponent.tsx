@@ -136,6 +136,7 @@ export const BuilderNodeComponent = memo(function BuilderNodeComponent({
         )}
         onMouseEnter={handleEnter}
         onMouseLeave={handleLeave}
+        onDoubleClick={data.onDoubleClick}
         title={
           node.isDeleted
             ? "Node đã bị xóa khỏi hệ thống"
