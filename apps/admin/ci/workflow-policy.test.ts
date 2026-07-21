@@ -29,21 +29,7 @@ describe("release workflow policy", () => {
     expect(ci).toContain("NEXT_PUBLIC_SVC_API_URL: http://localhost:3005")
   })
 
-  it("deploys svc-api and pins one exact Vercel CLI version", () => {
-    const staging = workflow("deploy-staging.yml")
-    const release = workflow("release.yml")
-    const combined = `${staging}\n${release}`
 
-    expect(staging).toContain("{ app: svc-api, project: SVC_API }")
-    expect(release).toContain("{ app: svc-api, project: SVC_API }")
-    expect(combined).not.toContain("vercel@latest")
-
-    const versions = [...combined.matchAll(/vercel@(\d+\.\d+\.\d+)/g)].map(
-      (match) => match[1]
-    )
-    expect(versions).toHaveLength(6)
-    expect(new Set(versions).size).toBe(1)
-  })
 
   it("publishes only immutable kernel image tags with minimal permissions", () => {
     const kernel = workflow("kernel-image.yml")

@@ -1,70 +1,70 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { ArrowLeft, PanelLeftOpen, Redo2, Save, Trash2, Undo2 } from "lucide-react"
+import { ArrowLeft, Check, Copy, Globe, PanelLeftOpen, Redo2, Trash2, Undo2 } from "lucide-react"
 import { Button } from "@workspace/ui/components/button"
 import { Skeleton } from "@workspace/ui/components/skeleton"
-import { toast } from "@workspace/ui/components/sonner"
+import { Popover, PopoverContent, PopoverTrigger } from "@workspace/ui/components/popover"
 import { cn } from "@workspace/ui/lib/utils"
 
 import type { CallerRole } from "../../types"
-import { useBuilderCanvas } from "../hooks/use-builder-canvas"
-import { BuilderCanvas } from "./BuilderCanvas"
-import { DeleteRoadmapDialog } from "./DeleteRoadmapDialog"
+import { useCompositionCanvas } from "../hooks/use-composition-canvas"
+import { CompositionCanvas } from "./CompositionCanvas"
+import { DeleteNodeDialog } from "./DeleteNodeDialog"
 import { NodeSidebar } from "./NodeSidebar"
 
 interface BuilderPageProps {
-  roadmapId: string
+  /** The owner block whose composition canvas this page shows (a block IS a roadmap). */
+  nodeId: string
   role: CallerRole
   /** Back link target — the admin roadmap list. */
   listHref?: string
-  /**
-   * Cross-service title sync (QĐ-2): renaming a node backing a notion doc
-   * pushes the new title to that Document by slug. Injected as a Server Action
-   * by the admin page (web omits it — read-only).
-   */
+  /** Public origin to generate copy link (e.g. http://localhost:3000) */
+  publicOrigin?: string
+  /** Rename → linked Notion doc title sync (reserved; wired for articles later). */
   onNodeTitleSync?: (slug: string, title: string) => void | Promise<void>
-  /** Auto-create the Document for a new notion article node (Req 2). */
   onCreateNotionDoc?: (
     slug: string,
     title: string,
     parentChapterSlug?: string
   ) => Promise<{ id: string } | null>
-  /** Publish-state sync with the linked Document (Req 7). */
   onSyncPublish?: (notionPageId: string, isPublished: boolean) => Promise<void>
-  /** Archive the linked Document on permanent node delete (Req 8.2). */
   onArchiveDocument?: (notionPageId: string) => Promise<void>
 }
 
 /**
- * Builder screen (Req 1.1): toolbar (Lưu / Xóa roadmap / xuất bản), editable
- * canvas on the left, node sidebar on the right. All data is fetched
- * client-side so the localStorage-backed mock store stays authoritative.
+ * Roadmap detail (LEGO model): one owner block's composition canvas. Left =
+ * Kho Roadmap sidebar (role/skill blocks, drag onto the canvas), center =
+ * composition canvas (owner pinned on top + member blocks + edges), right =
+ * node detail / edit slide-ins (rendered inside the canvas).
  */
 export function BuilderPage({
-  roadmapId,
+  nodeId,
   role,
   listHref = "/roadmaps",
-  onNodeTitleSync,
+  publicOrigin,
   onCreateNotionDoc,
   onSyncPublish,
-  onArchiveDocument,
 }: BuilderPageProps) {
-  const canvas = useBuilderCanvas(
-    roadmapId,
-    role,
-    onNodeTitleSync,
-    onCreateNotionDoc
-  )
-  const [confirmDelete, setConfirmDelete] = useState(false)
+  const canvas = useCompositionCanvas(nodeId, role, { onCreateNotionDoc, onSyncPublish })
   const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [copied, setCopied] = useState(false)
 
+  // Blocks already on this canvas (owner + members) get an active border in the
+  // sidebar instead of being hidden.
   const canvasNodeIds = useMemo(
-    () => new Set(canvas.nodes.map((n) => n.id)),
-    [canvas.nodes]
+    () => new Set<string>([nodeId, ...canvas.memberNodes.map((m) => m.node.id)]),
+    [nodeId, canvas.memberNodes]
   )
 
-  // Defense in depth — the admin proxy + page gate should never let this hit.
+  // Drill base for the detail panel — strip the current id segment so drilling
+  // works via the multi-zone host (/admin/roadmaps/...) or the direct domain.
+  const builderBasePath = useMemo(() => {
+    if (typeof window === "undefined") return listHref
+    return window.location.pathname.replace(/\/[^/]+\/?$/, "") || listHref
+  }, [listHref])
+
   if (role !== "admin" && role !== "super-admin") {
     return (
       <div className="flex min-h-[50vh] items-center justify-center">
@@ -84,7 +84,7 @@ export function BuilderPage({
     )
   }
 
-  if (canvas.notFound || !canvas.roadmap) {
+  if (canvas.notFound || !canvas.ownerNode) {
     return (
       <div className="flex min-h-[50vh] flex-col items-center justify-center gap-4">
         <p className="text-lg font-semibold">Không tìm thấy roadmap</p>
@@ -93,6 +93,16 @@ export function BuilderPage({
         </Button>
       </div>
     )
+  }
+
+  const owner = canvas.ownerNode
+  const publicUrl = publicOrigin && owner ? `${publicOrigin}/roadmap/${owner.slug}` : null
+
+  const copyPublicUrl = () => {
+    if (!publicUrl) return
+    navigator.clipboard.writeText(publicUrl)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
   }
 
   return (
@@ -107,59 +117,116 @@ export function BuilderPage({
           </a>
           <span className="text-muted-foreground">/</span>
           <h1 className="min-w-0 truncate text-lg font-extrabold uppercase italic">
-            {canvas.roadmap.title}
+            {owner.title}
           </h1>
-          <button
-            type="button"
-            onClick={() => void canvas.togglePublish()}
-            title="Bật/tắt xuất bản"
-            className={cn(
-              "flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs transition-colors hover:bg-muted",
-              canvas.roadmap.isPublished
-                ? "text-emerald-600 dark:text-emerald-400"
-                : "text-muted-foreground"
-            )}
-          >
-            <span
-              className={cn(
-                "size-2 rounded-full",
-                canvas.roadmap.isPublished ? "bg-emerald-500" : "bg-zinc-400"
-              )}
-            />
-            {canvas.roadmap.isPublished ? "đã xuất bản" : "chưa xuất bản"}
-          </button>
+          <span className="shrink-0 rounded-full border px-2 py-0.5 text-xs text-muted-foreground">
+            {owner.nodeType}
+          </span>
         </div>
 
         <div className="flex shrink-0 items-center gap-2">
           <Button
             type="button"
             size="icon-sm"
-            variant="outline"
-            title="Hoàn tác (Ctrl+Z)"
+            variant="ghost"
+            title="Undo (Ctrl+Z)"
             disabled={!canvas.canUndo}
-            onClick={() => canvas.undo()}
+            onClick={() => void canvas.undo()}
           >
             <Undo2 className="size-4" />
           </Button>
           <Button
             type="button"
             size="icon-sm"
-            variant="outline"
-            title="Làm lại (Ctrl+Shift+Z)"
+            variant="ghost"
+            title="Redo (Ctrl+Y)"
             disabled={!canvas.canRedo}
-            onClick={() => canvas.redo()}
+            onClick={() => void canvas.redo()}
           >
             <Redo2 className="size-4" />
           </Button>
-          <Button
-            type="button"
-            size="sm"
-            disabled={!canvas.isDirty || canvas.isSaving}
-            onClick={() => void canvas.save()}
-          >
-            <Save className="size-4" />
-            {canvas.isSaving ? "Đang lưu..." : "Lưu"}
-          </Button>
+          <div className="mx-1 h-5 w-px bg-border" />
+          <Popover>
+            <PopoverTrigger
+              render={
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={owner.isPublished ? "secondary" : "outline"}
+                >
+                  {owner.isPublished ? (
+                    <>
+                      <Globe className="size-4 text-sky-500" />
+                      <span className="text-sky-500">Đã xuất bản</span>
+                    </>
+                  ) : (
+                    <>
+                      <Globe className="size-4" />
+                      <span>Chưa xuất bản</span>
+                    </>
+                  )}
+                </Button>
+              }
+            />
+            <PopoverContent className="w-80" align="end">
+              {owner.isPublished ? (
+                <div className="space-y-3">
+                  <p className="flex items-center gap-1.5 text-xs font-medium text-sky-500">
+                    <Globe className="size-3.5" />
+                    Trang này đang công khai trên web.
+                  </p>
+                  {publicUrl && (
+                    <div className="flex items-center">
+                      <input
+                        readOnly
+                        value={publicUrl}
+                        className="h-8 flex-1 truncate rounded-l-md border bg-muted px-2 text-xs outline-none"
+                      />
+                      <Button
+                        size="icon-sm"
+                        variant="outline"
+                        className="rounded-l-none"
+                        onClick={copyPublicUrl}
+                      >
+                        {copied ? <Check className="size-4" /> : <Copy className="size-4" />}
+                      </Button>
+                    </div>
+                  )}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full"
+                    onClick={() =>
+                      void canvas.updateNodeMeta(owner.id, {
+                        isPublished: false,
+                      })
+                    }
+                  >
+                    Hủy xuất bản
+                  </Button>
+                </div>
+              ) : (
+                <div className="space-y-3 text-center">
+                  <Globe className="mx-auto size-8 text-muted-foreground" />
+                  <p className="text-sm font-medium">Xuất bản trang này</p>
+                  <p className="text-xs text-muted-foreground">
+                    Khách truy cập web sẽ xem được nội dung (chỉ đọc).
+                  </p>
+                  <Button
+                    size="sm"
+                    className="w-full"
+                    onClick={() =>
+                      void canvas.updateNodeMeta(owner.id, {
+                        isPublished: true,
+                      })
+                    }
+                  >
+                    Xuất bản
+                  </Button>
+                </div>
+              )}
+            </PopoverContent>
+          </Popover>
           <Button
             type="button"
             size="sm"
@@ -172,31 +239,12 @@ export function BuilderPage({
       </div>
 
       <div className="flex min-h-0 flex-1">
-        {/* Sidebar on the LEFT with collapse toggle (item: nút toggle). */}
         {sidebarOpen ? (
           <NodeSidebar
             allNodes={canvas.allNodes}
             canvasNodeIds={canvasNodeIds}
             onDeletePermanent={async (node) => {
-              const ok = await canvas.deleteNodePermanent(node.id)
-              // Req 8.2-8.4: node deleted FIRST, then the linked Document is
-              // archived; an archive failure never undoes the delete.
-              if (
-                ok &&
-                node.articleType === "notion" &&
-                node.notionPageId &&
-                onArchiveDocument
-              ) {
-                await onArchiveDocument(node.notionPageId).catch((error) => {
-                  console.error(
-                    "[notion-article-node] document archive failed",
-                    { nodeId: node.id, notionPageId: node.notionPageId, error }
-                  )
-                  toast.warning(
-                    "Node đã xóa nhưng không thể archive Notion page."
-                  )
-                })
-              }
+              await canvas.deleteBlockPermanent(node.id)
             }}
             onCollapse={() => setSidebarOpen(false)}
           />
@@ -206,26 +254,28 @@ export function BuilderPage({
               type="button"
               variant="ghost"
               size="icon-sm"
-              title="Mở Kho Node"
+              title="Mở Kho Roadmap"
               onClick={() => setSidebarOpen(true)}
             >
               <PanelLeftOpen className="size-4" />
             </Button>
           </div>
         )}
-        <BuilderCanvas
+        <CompositionCanvas
           canvas={canvas}
-          className="h-full min-w-0 flex-1"
+          builderBasePath={builderBasePath}
+          className={cn("h-full min-w-0 flex-1")}
           onSyncPublish={onSyncPublish}
         />
       </div>
 
       {confirmDelete && (
-        <DeleteRoadmapDialog
-          roadmap={canvas.roadmap}
+        <DeleteNodeDialog
+          node={owner}
+          childCount={canvas.memberNodes.length}
           onCancel={() => setConfirmDelete(false)}
           onConfirm={async () => {
-            const ok = await canvas.deleteRoadmap()
+            const ok = await canvas.deleteBlockPermanent(owner.id)
             setConfirmDelete(false)
             if (ok) window.location.href = listHref
           }}

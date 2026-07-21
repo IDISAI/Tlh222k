@@ -69,6 +69,7 @@ type Mutation {
   createNode(input: CreateNodeInput!): RoadmapNode!
   updateNode(id: ID!, input: UpdateNodeInput!): RoadmapNode!
   deleteNode(id: ID!): Boolean!
+  moveNode(nodeId: ID!, roadmapId: ID!, positionX: Float!, positionY: Float!): RoadmapNode!
   saveRoadmap(roadmapId: ID!, nodes: [NodeInput!]!): Boolean!
 }
 

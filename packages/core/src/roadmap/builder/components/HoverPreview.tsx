@@ -37,7 +37,7 @@ export function HoverPreview({
 }: HoverPreviewProps) {
   const Icon = NODE_TYPE_ICONS[node.nodeType]
   const children = childrenOf(nodes, node.id)
-  const isBranch = node.nodeType === "role" || node.nodeType === "skill"
+  const isBranch = node.nodeType === "role" || node.nodeType === "skill" || node.nodeType === "chapter"
   const isArticle = node.nodeType === "article"
   const articleLink =
     node.articleType === "notion" && node.notionPageId

@@ -1,39 +1,41 @@
 "use client"
 
-import { PencilLine, Plus, Trash2 } from "lucide-react"
+import { PanelRightClose, PencilLine, Trash2 } from "lucide-react"
 import { cn } from "@workspace/ui/lib/utils"
 
 import type { RoadmapNode } from "../../types"
-import { allowedChildTypes } from "../../utils/validate-hierarchy"
 
-interface NodeContextMenuProps {
+interface BlockContextMenuProps {
   node: RoadmapNode
+  /** The owner renders pinned and can't be removed from its own canvas. */
+  isOwner: boolean
   screenX: number
   screenY: number
   onClose: () => void
   onEdit: (node: RoadmapNode) => void
-  onAddChild: (node: RoadmapNode) => void
-  /** Permanent delete (confirmed by the parent). Children reparent up. */
-  onDelete: (node: RoadmapNode) => void
+  /** Remove from THIS canvas only (membership + its edges). Not permanent. */
+  onRemoveFromCanvas: (node: RoadmapNode) => void
+  /** Permanent system delete (purges the block from every canvas). */
+  onDeletePermanent: (node: RoadmapNode) => void
 }
 
 /**
- * Right-click menu on a canvas node. Permanent deletion lives exclusively in
- * the sidebar — a node cannot be taken off the canvas while staying in the
- * system (Node.roadmapId is required), so no "remove from canvas" item.
+ * Right-click menu on a canvas block. "Gỡ khỏi canvas" removes only membership
+ * (LEGO: other canvases and the block itself survive); "Xóa vĩnh viễn" removes
+ * it from the whole system.
  */
-export function NodeContextMenu({
+export function BlockContextMenu({
   node,
+  isOwner,
   screenX,
   screenY,
   onClose,
   onEdit,
-  onAddChild,
-  onDelete,
-}: NodeContextMenuProps) {
+  onRemoveFromCanvas,
+  onDeletePermanent,
+}: BlockContextMenuProps) {
   const left = Math.max(8, Math.min(screenX, window.innerWidth - 228))
-  const top = Math.max(8, Math.min(screenY, window.innerHeight - 180))
-  const canHaveChildren = allowedChildTypes(node.nodeType).length > 0
+  const top = Math.max(8, Math.min(screenY, window.innerHeight - 200))
 
   const item =
     "flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-sm hover:bg-accent hover:text-accent-foreground"
@@ -63,27 +65,27 @@ export function NodeContextMenu({
         >
           <PencilLine className="size-4" /> Chỉnh sửa
         </button>
-        {canHaveChildren && (
+        {!isOwner && (
           <button
             type="button"
             className={item}
             onClick={() => {
-              onAddChild(node)
+              onRemoveFromCanvas(node)
               onClose()
             }}
           >
-            <Plus className="size-4" /> Thêm node con
+            <PanelRightClose className="size-4" /> Gỡ khỏi canvas
           </button>
         )}
         <button
           type="button"
           className={cn(item, "text-destructive hover:text-destructive")}
           onClick={() => {
-            onDelete(node)
+            onDeletePermanent(node)
             onClose()
           }}
         >
-          <Trash2 className="size-4" /> Xóa
+          <Trash2 className="size-4" /> Xóa vĩnh viễn
         </button>
       </div>
     </>

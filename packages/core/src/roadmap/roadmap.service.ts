@@ -1,18 +1,25 @@
 import {
+  BLOCK_TYPES,
   MAX_CHILDREN,
   MAX_TITLE_LENGTH,
   NODE_TYPES,
   RoadmapServiceError,
+  type ArticleType,
   type CallerRole,
+  type Composition,
   type CreateNodeInput,
   type CreateRoadmapInput,
+  type EdgeKind,
   type NodeStatus,
+  type NodeType,
   type Roadmap,
+  type RoadmapEdge,
   type RoadmapGraph,
   type RoadmapNode,
   type UpdateNodeInput,
 } from "./types"
 import { getStore, persistStore } from "./mock/builder-store"
+import { deriveCompositionFromNodes } from "./utils/derive-composition"
 import { emitRoadmapUpdate } from "./utils/update-signal"
 import { slugify, uniqueSlug } from "./utils/slugify"
 import { validateHierarchy } from "./utils/validate-hierarchy"
@@ -52,16 +59,46 @@ const newId = (prefix: string): string =>
       : Math.random().toString(36).slice(2, 10)
   }`
 
+/** Deep copy so callers never mutate the live store by reference. */
+const clone = <T>(value: T): T =>
+  typeof structuredClone === "function"
+    ? structuredClone(value)
+    : (JSON.parse(JSON.stringify(value)) as T)
+
 /**
  * Roadmap domain service. Currently mock-backed; each method maps 1:1 onto a
  * GraphQL operation (see graphql/operations.graphql) so the body can be
  * swapped for Apollo calls without touching callers.
  */
 export class RoadmapService {
-  // ponytail: → `roadmaps` query
+  // ponytail: → `publicBlocks` query
   async list(): Promise<Roadmap[]> {
     await delay()
-    return getStore().roadmaps.filter((r) => r.isPublished)
+    // LEGO: a role/skill block IS a roadmap (independent + reusable), so the
+    // public home lists EVERY published block — not container Roadmap records.
+    const nodes = getStore().nodes
+    const childCount = new Map<string, number>()
+    for (const n of nodes) {
+      if (n.parentId && !n.isDeleted) {
+        childCount.set(n.parentId, (childCount.get(n.parentId) ?? 0) + 1)
+      }
+    }
+    return nodes
+      .filter(
+        (n) =>
+          !n.isDeleted &&
+          n.isPublished === true &&
+          (n.nodeType === "role" || n.nodeType === "skill")
+      )
+      .map((n) => ({
+        id: n.id,
+        slug: n.slug,
+        title: n.title,
+        description: n.description,
+        thumbnailUrl: null,
+        isPublished: true,
+        nodeCount: childCount.get(n.id) ?? 0,
+      }))
   }
 
   // ponytail: → `roadmaps(includeUnpublished: true)` query — admin list (Req 1.1)
@@ -142,8 +179,38 @@ export class RoadmapService {
   }
 
   /**
-   * Builder graph by roadmap id — includes soft-deleted nodes so the canvas
-   * can render them as Disabled_Node (Req 4.4).
+   * PUBLIC per-block composition (viewer ⇄ builder sync): one block + its DIRECT
+   * children (blocks render on the canvas, articles feed the detail panel).
+   * Drilling into a member fetches ITS block graph. Mirrors svc-api
+   * `publicBlockGraph`. ponytail: → `publicBlockGraph(id)` query.
+   */
+  async publicBlockGraph(id: string): Promise<RoadmapGraph | null> {
+    await delay()
+    const store = getStore()
+    const node = store.nodes.find((n) => n.id === id && !n.isDeleted)
+    if (!node || node.nodeType === "article" || !node.isPublished) return null
+    // Whole roadmap's nodes so the web viewer derives the same composition the
+    // admin builder renders (shared deriveCompositionFromNodes).
+    const roadmapNodes = store.nodes.filter(
+      (n) => n.roadmapId === node.roadmapId && !n.isDeleted
+    )
+    return {
+      roadmap: {
+        id: node.id,
+        slug: node.slug,
+        title: node.title,
+        description: node.description,
+        thumbnailUrl: null,
+        isPublished: true,
+        nodeCount: roadmapNodes.length,
+      },
+      nodes: roadmapNodes.map((n) => ({ ...n, status: "locked" as const })),
+    }
+  }
+
+  /**
+   * Builder graph by roadmap id. Soft-deleted nodes are excluded — they never
+   * render on the canvas, not even as disabled ghosts.
    * ponytail: → `roadmapGraphById(id)` query
    */
   async graphById(
@@ -155,7 +222,7 @@ export class RoadmapService {
     const roadmap = getStore().roadmaps.find((r) => r.id === id)
     if (!roadmap) return null
     const nodes = getStore()
-      .nodes.filter((n) => n.roadmapId === id)
+      .nodes.filter((n) => n.roadmapId === id && !n.isDeleted)
       .map((n) => ({ ...n }))
     return { roadmap, nodes }
   }
@@ -317,20 +384,56 @@ export class RoadmapService {
   }
 
   /**
-   * Permanent delete (Req 4.3): soft-flag the node and its whole subtree so
-   * open canvases can render them as Disabled_Node instead of crashing.
+   * Move a node into another roadmap (sidebar drag-drop). No clone: the node
+   * keeps its identity and slug — it just changes owner. Children left behind
+   * in the source roadmap are detached.
    */
-  // ponytail: → `deleteNode` mutation (cascade to children)
+  // ponytail: → `moveNode` mutation
+  async moveNode(
+    nodeId: string,
+    roadmapId: string,
+    position: { x: number; y: number },
+    callerRole: CallerRole
+  ): Promise<RoadmapNode> {
+    assertCanWrite(callerRole)
+    await delay()
+    const store = getStore()
+    const node = store.nodes.find((n) => n.id === nodeId)
+    if (!node || node.isDeleted) throw new RoadmapServiceError("NOT_FOUND")
+    const target = store.roadmaps.find((r) => r.id === roadmapId)
+    if (!target) throw new RoadmapServiceError("NOT_FOUND")
+    const sourceRoadmapId = node.roadmapId
+
+    for (const n of store.nodes) {
+      if (n.parentId === nodeId) n.parentId = null
+    }
+    node.roadmapId = roadmapId
+    node.parentId = null
+    node.positionX = position.x
+    node.positionY = position.y
+    persistStore()
+    emitRoadmapUpdate(sourceRoadmapId)
+    if (sourceRoadmapId !== roadmapId) emitRoadmapUpdate(roadmapId)
+    return { ...node }
+  }
+
+  /**
+   * Permanent delete of a SINGLE node. Direct children survive: they reparent
+   * up to the deleted node's parent so a sub-roadmap is never lost when its
+   * parent roadmap is deleted.
+   */
+  // ponytail: → `deleteNode` mutation (reparent children up)
   async deleteNode(id: string, callerRole: CallerRole): Promise<boolean> {
     assertCanWrite(callerRole)
     await delay()
     const store = getStore()
     const node = store.nodes.find((n) => n.id === id)
     if (!node) throw new RoadmapServiceError("NOT_FOUND")
-    const doomed = new Set([id, ...this.descendantsOf(id).map((n) => n.id)])
+    const newParent = node.parentId ?? null
     for (const n of store.nodes) {
-      if (doomed.has(n.id)) n.isDeleted = true
+      if (n.parentId === id) n.parentId = newParent
     }
+    node.isDeleted = true
     persistStore()
     emitRoadmapUpdate(node.roadmapId)
     return true
@@ -378,7 +481,320 @@ export class RoadmapService {
     )
   }
 
+  // ── Composition / edges (LEGO model) ──────────────────────────────────────
+
+  /**
+   * An owner block's canvas (members + edges). Falls back to DERIVING one from
+   * the legacy parentId tree — direct non-article children become members with
+   * an owner→child solid edge — so seed data shows up without a migration. The
+   * derived shape is not persisted until the first mutating call.
+   * ponytail: → `composition(ownerId)` query when the backend lands.
+   */
+  async getComposition(
+    ownerId: string,
+    opts: { callerRole: CallerRole }
+  ): Promise<Composition> {
+    assertCanWrite(opts.callerRole)
+    await delay()
+    return clone(this.readComposition(ownerId))
+  }
+
+  /** Add an existing block to an owner's canvas (sidebar drag / drop). */
+  // ponytail: → `addMember` mutation
+  async addMember(
+    ownerId: string,
+    nodeId: string,
+    position: { x: number; y: number },
+    callerRole: CallerRole
+  ): Promise<Composition> {
+    assertCanWrite(callerRole)
+    await delay()
+    const store = getStore()
+    const block = store.nodes.find((n) => n.id === nodeId && !n.isDeleted)
+    if (!block) throw new RoadmapServiceError("NOT_FOUND")
+    if (block.nodeType === "article") {
+      throw new RoadmapServiceError("INVALID_NODE_TYPE")
+    }
+    // A block cannot sit on its own canvas (it already renders as the owner).
+    if (nodeId === ownerId) throw new RoadmapServiceError("INVALID_HIERARCHY")
+    const comp = this.mutableComposition(ownerId)
+    if (!comp.members.some((m) => m.nodeId === nodeId)) {
+      comp.members.push({ nodeId, x: position.x, y: position.y })
+    }
+    persistStore()
+    emitRoadmapUpdate(ownerId)
+    return clone(comp)
+  }
+
+  /**
+   * Remove a block from an owner's canvas (delete-from-canvas). Only membership
+   * and the edges touching THIS block are dropped — every other edge and the
+   * block itself survive (LEGO independence).
+   */
+  // ponytail: → `removeMember` mutation
+  async removeFromCanvas(
+    ownerId: string,
+    nodeId: string,
+    callerRole: CallerRole
+  ): Promise<Composition> {
+    assertCanWrite(callerRole)
+    await delay()
+    const comp = this.mutableComposition(ownerId)
+    comp.members = comp.members.filter((m) => m.nodeId !== nodeId)
+    comp.edges = comp.edges.filter(
+      (e) => e.sourceId !== nodeId && e.targetId !== nodeId
+    )
+    persistStore()
+    emitRoadmapUpdate(ownerId)
+    return clone(comp)
+  }
+
+  /** Persist a member's dragged position on an owner's canvas. */
+  // ponytail: → `moveMember` mutation
+  async moveMember(
+    ownerId: string,
+    nodeId: string,
+    position: { x: number; y: number },
+    callerRole: CallerRole
+  ): Promise<void> {
+    assertCanWrite(callerRole)
+    await delay()
+    const comp = this.mutableComposition(ownerId)
+    if (nodeId === ownerId) {
+      // Owner dragged on its OWN canvas → its own-canvas position (LEGO), NOT
+      // the shared RoadmapNode.positionX/Y used on parent canvases.
+      comp.ownerX = position.x
+      comp.ownerY = position.y
+      persistStore()
+      return
+    }
+    const member = comp.members.find((m) => m.nodeId === nodeId)
+    if (member) {
+      member.x = position.x
+      member.y = position.y
+      persistStore()
+    }
+  }
+
+  /**
+   * Create a brand-new block (role/skill/chapter) and place it on the owner's
+   * canvas. A block has no parent and owns itself (`roadmapId === id`) — it IS a
+   * roadmap. `ownerId` omitted just creates a free-floating block.
+   */
+  // ponytail: → `createBlock` mutation
+  async createBlock(
+    input: {
+      nodeType: NodeType
+      title: string
+      description?: string
+      ownerId?: string
+      positionX: number
+      positionY: number
+    },
+    callerRole: CallerRole
+  ): Promise<RoadmapNode> {
+    assertCanWrite(callerRole)
+    if (!BLOCK_TYPES.includes(input.nodeType)) {
+      throw new RoadmapServiceError("INVALID_NODE_TYPE")
+    }
+    await delay()
+    const store = getStore()
+    const id = newId("nd")
+    const title = input.title.trim().slice(0, MAX_TITLE_LENGTH)
+    const node: RoadmapNode = {
+      id,
+      roadmapId: id, // self-owned: the block IS its own roadmap
+      parentId: null,
+      title,
+      slug: uniqueSlug(slugify(title), (s) =>
+        store.nodes.some((n) => n.slug === s)
+      ),
+      nodeType: input.nodeType,
+      description: input.description?.trim() || null,
+      notionPageId: null,
+      articleType: null,
+      jupyterUrl: null,
+      positionX: input.positionX,
+      positionY: input.positionY,
+      order: store.nodes.length,
+      status: "locked",
+    }
+    store.nodes.push(node)
+    if (input.ownerId) {
+      const comp = this.mutableComposition(input.ownerId)
+      comp.members.push({
+        nodeId: id,
+        x: input.positionX,
+        y: input.positionY,
+      })
+    }
+    persistStore()
+    emitRoadmapUpdate(input.ownerId ?? id)
+    return { ...node }
+  }
+
+  /**
+   * Permanent system delete (sidebar / table "Xóa"). The block is soft-deleted
+   * and purged from EVERY composition (as owner, member, and edge endpoint).
+   * Other independent blocks are never deleted — only their link to this one.
+   */
+  // ponytail: → `deleteBlock` mutation
+  async deleteBlockPermanent(
+    nodeId: string,
+    callerRole: CallerRole
+  ): Promise<boolean> {
+    assertCanWrite(callerRole)
+    await delay()
+    const store = getStore()
+    const node = store.nodes.find((n) => n.id === nodeId)
+    if (!node) throw new RoadmapServiceError("NOT_FOUND")
+    node.isDeleted = true
+    for (const comp of store.compositions) {
+      comp.members = comp.members.filter((m) => m.nodeId !== nodeId)
+      comp.edges = comp.edges.filter(
+        (e) => e.sourceId !== nodeId && e.targetId !== nodeId
+      )
+    }
+    store.compositions = store.compositions.filter((c) => c.ownerId !== nodeId)
+    persistStore()
+    emitRoadmapUpdate(node.roadmapId)
+    return true
+  }
+
+  /** Draw a wire between two blocks on an owner's canvas (upserts by pair). */
+  // ponytail: → `addEdge` mutation
+  async addEdge(
+    ownerId: string,
+    sourceId: string,
+    targetId: string,
+    kind: EdgeKind,
+    callerRole: CallerRole
+  ): Promise<RoadmapEdge> {
+    assertCanWrite(callerRole)
+    if (sourceId === targetId) {
+      throw new RoadmapServiceError("INVALID_HIERARCHY")
+    }
+    await delay()
+    const comp = this.mutableComposition(ownerId)
+    const existing = comp.edges.find(
+      (e) => e.sourceId === sourceId && e.targetId === targetId
+    )
+    if (existing) {
+      existing.kind = kind
+      persistStore()
+      emitRoadmapUpdate(ownerId)
+      return clone(existing)
+    }
+    const edge: RoadmapEdge = { id: newId("edge"), sourceId, targetId, kind }
+    comp.edges.push(edge)
+    persistStore()
+    emitRoadmapUpdate(ownerId)
+    return clone(edge)
+  }
+
+  /** Change a wire's kind (right-click → "loại dây"). */
+  // ponytail: → `updateEdge` mutation
+  async updateEdgeKind(
+    ownerId: string,
+    edgeId: string,
+    kind: EdgeKind,
+    callerRole: CallerRole
+  ): Promise<RoadmapEdge> {
+    assertCanWrite(callerRole)
+    await delay()
+    const comp = this.mutableComposition(ownerId)
+    const edge = comp.edges.find((e) => e.id === edgeId)
+    if (!edge) throw new RoadmapServiceError("NOT_FOUND")
+    edge.kind = kind
+    persistStore()
+    emitRoadmapUpdate(ownerId)
+    return clone(edge)
+  }
+
+  /** Cut a wire (right-click → "hủy liên kết"). */
+  // ponytail: → `removeEdge` mutation
+  async removeEdge(
+    ownerId: string,
+    edgeId: string,
+    callerRole: CallerRole
+  ): Promise<Composition> {
+    assertCanWrite(callerRole)
+    await delay()
+    const comp = this.mutableComposition(ownerId)
+    comp.edges = comp.edges.filter((e) => e.id !== edgeId)
+    persistStore()
+    emitRoadmapUpdate(ownerId)
+    return clone(comp)
+  }
+
+  /** Overwrite a stored composition (used by undo/redo to restore a snapshot). */
+  async restoreComposition(
+    ownerId: string,
+    comp: Composition,
+    callerRole: CallerRole
+  ): Promise<void> {
+    assertCanWrite(callerRole)
+    const store = getStore()
+    const idx = store.compositions.findIndex((c) => c.ownerId === ownerId)
+    if (idx !== -1) store.compositions[idx] = comp
+    else store.compositions.push(comp)
+    persistStore()
+    emitRoadmapUpdate(ownerId)
+  }
+
+  /** Create an article leaf under a chapter block. */
+  async createArticle(
+    input: {
+      chapterId: string
+      title: string
+      articleType: ArticleType
+    },
+    callerRole: CallerRole
+  ): Promise<RoadmapNode> {
+    const chapter = getStore().nodes.find(
+      (n) => n.id === input.chapterId && !n.isDeleted
+    )
+    if (!chapter) throw new RoadmapServiceError("NOT_FOUND")
+    return this.createNode(
+      {
+        roadmapId: chapter.roadmapId,
+        parentId: input.chapterId,
+        title: input.title,
+        nodeType: "article",
+        articleType: input.articleType,
+        positionX: 0,
+        positionY: 0,
+      },
+      callerRole
+    )
+  }
+
   // ── Internals ─────────────────────────────────────────────────────────────
+
+  /** Read-only composition: stored if present, else derived from the tree. */
+  private readComposition(ownerId: string): Composition {
+    const stored = getStore().compositions.find((c) => c.ownerId === ownerId)
+    return stored ?? this.deriveComposition(ownerId)
+  }
+
+  /** Bridge the legacy parentId tree into a composition (shared derive). */
+  private deriveComposition(ownerId: string): Composition {
+    return deriveCompositionFromNodes(ownerId, getStore().nodes)
+  }
+
+  /**
+   * Get the owner's stored composition, materializing (and persisting on the
+   * next `persistStore`) the derived one on first edit.
+   */
+  private mutableComposition(ownerId: string): Composition {
+    const store = getStore()
+    let comp = store.compositions.find((c) => c.ownerId === ownerId)
+    if (!comp) {
+      comp = this.deriveComposition(ownerId)
+      store.compositions.push(comp)
+    }
+    return comp
+  }
 
   private activeNodesOf(roadmapId: string): RoadmapNode[] {
     return getStore()

@@ -21,7 +21,7 @@ import "@xyflow/react/dist/style.css"
 
 import { toast } from "@workspace/ui/components/sonner"
 
-import { type ArticleType, type NodeType, type RoadmapNode } from "../../types"
+import { type ArticleType, type NodeType, type RoadmapEdge, type RoadmapNode } from "../../types"
 import type { BuilderCanvasApi } from "../hooks/use-builder-canvas"
 import type {
   BuilderFlowNode,
@@ -33,6 +33,8 @@ import { TOAST_MESSAGES } from "../utils/toast-messages"
 import { BuilderCanvasContext } from "./builder-context"
 import { BuilderNodeComponent } from "./BuilderNodeComponent"
 import { ChildCountEdgeComponent } from "./ChildCountEdge"
+import { DeleteNodeDialog } from "./DeleteNodeDialog"
+import { EdgeContextMenu } from "./EdgeContextMenu"
 import { NodeContextMenu } from "./NodeContextMenu"
 import { NodeDetailDialog } from "./NodeDetailDialog"
 import { NodeEditPanel } from "./NodeEditPanel"
@@ -44,6 +46,12 @@ const edgeTypes = { childCount: ChildCountEdgeComponent }
 interface BuilderCanvasProps {
   canvas: BuilderCanvasApi
   className?: string
+  /**
+   * Rooted view: the canvas shows this node + its descendants. New nodes made
+   * on the empty pane attach to it (else a parentId=null node would fall
+   * outside the rooted subtree and vanish).
+   */
+  rootNodeId?: string
   /** Publish-state sync for notion articles (notion-article-node Req 7). */
   onSyncPublish?: (notionPageId: string, isPublished: boolean) => Promise<void>
 }
@@ -87,6 +95,7 @@ function minimapNodeColor(node: Node): string {
 function BuilderCanvasInner({
   canvas,
   className,
+  rootNodeId,
   onSyncPublish,
 }: BuilderCanvasProps) {
   const { resolvedTheme } = useTheme()
@@ -108,14 +117,37 @@ function BuilderCanvasInner({
   } | null>(null)
   const [detailNode, setDetailNode] = useState<RoadmapNode | null>(null)
   const [editNode, setEditNode] = useState<RoadmapNode | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<RoadmapNode | null>(null)
   const [isDragging, setIsDragging] = useState(false)
+  const [edgeMenu, setEdgeMenu] = useState<{
+    edge: RoadmapEdge
+    x: number
+    y: number
+  } | null>(null)
+
+  // Base path for role/skill "Điều hướng" and chapter detail links. The
+  // builder page lives at `{base}/{roadmapId}`, so strip the last segment of
+  // the current path — works whether the admin zone is reached via the
+  // multi-zone host (/admin/roadmaps/...) or the direct domain (/roadmaps/...).
+  const builderBasePath = useMemo(() => {
+    if (typeof window === "undefined") return "/roadmaps"
+    return window.location.pathname.replace(/\/[^/]+\/?$/, "") || "/roadmaps"
+  }, [])
 
   // Domain → React Flow sync. Previous selection is preserved; nodes that are
   // new to the canvas come in selected with handles ready (Req 3.1/3.4).
   useEffect(() => {
+    // React Flow (and the MiniMap) crash on duplicate node ids. Dedup by id —
+    // last write wins — so a stray double-append can never reach the renderer.
+    const seen = new Set<string>()
+    const domainNodes = canvas.nodes.filter((n) => {
+      if (seen.has(n.id)) return false
+      seen.add(n.id)
+      return true
+    })
     setRfNodes((prev) => {
       const prevById = new Map(prev.map((n) => [n.id, n]))
-      const next = canvas.nodes.map<BuilderFlowNode>((dn) => {
+      const next = domainNodes.map<BuilderFlowNode>((dn) => {
         const existing = prevById.get(dn.id)
         return {
           id: dn.id,
@@ -134,7 +166,7 @@ function BuilderCanvasInner({
       initializedRef.current = true
       return next
     })
-    setRfEdges(buildBuilderEdges(canvas.nodes))
+    setRfEdges(buildBuilderEdges(domainNodes))
   }, [canvas.nodes, setRfNodes, setRfEdges])
 
   // Undo (Ctrl/Cmd+Z) / Redo (Ctrl/Cmd+Shift+Z or Ctrl+Y). Ignored while typing
@@ -206,12 +238,19 @@ function BuilderCanvasInner({
     [canvas]
   )
 
-  /** Delete key / RF removal → canvas-only removal (Req 3.3). */
-  const onNodesDelete = useCallback(
-    (deleted: Node[]) => {
-      canvas.removeFromCanvas(deleted.map((n) => n.id))
-    },
-    [canvas]
+  /**
+   * Delete key: edges only. Node removal is vetoed — a node cannot leave the
+   * canvas while staying in the system (Node.roadmapId is required); permanent
+   * deletion lives exclusively in the sidebar.
+   */
+  const onBeforeDelete = useCallback(
+    async ({
+      edges,
+    }: {
+      nodes: BuilderFlowNode[]
+      edges: ChildCountEdge[]
+    }) => ({ nodes: [] as BuilderFlowNode[], edges }),
+    []
   )
 
   const onEdgesDelete = useCallback(
@@ -228,6 +267,12 @@ function BuilderCanvasInner({
       const { clientX, clientY } = event
       const flow = screenToFlowPosition({ x: clientX, y: clientY })
       setCtxMenu(null)
+      // In a rooted view, a node created on the empty pane must attach to the
+      // root node — otherwise a parentId=null node lands outside the rooted
+      // subtree and never shows up on this canvas.
+      const rooted = rootNodeId
+        ? (canvas.nodesRef.current.find((n) => n.id === rootNodeId) ?? null)
+        : null
       setSelector({
         position: {
           screenX: clientX,
@@ -235,10 +280,10 @@ function BuilderCanvasInner({
           flowX: flow.x,
           flowY: flow.y,
         },
-        parent: null,
+        parent: rooted,
       })
     },
-    [screenToFlowPosition]
+    [screenToFlowPosition, rootNodeId, canvas]
   )
 
   const onNodeContextMenu = useCallback(
@@ -247,7 +292,27 @@ function BuilderCanvasInner({
       const domain = canvas.nodesRef.current.find((n) => n.id === rfNode.id)
       if (!domain) return
       setSelector(null)
+      setEdgeMenu(null)
       setCtxMenu({ node: domain, x: event.clientX, y: event.clientY })
+    },
+    [canvas]
+  )
+
+  const onEdgeContextMenu = useCallback(
+    (event: React.MouseEvent, rfEdge: Edge) => {
+      event.preventDefault()
+      const targetNode = canvas.nodesRef.current.find((n) => n.id === rfEdge.target)
+      if (!targetNode || !targetNode.parentId) return
+      
+      const edge: RoadmapEdge = {
+        id: rfEdge.id,
+        sourceId: targetNode.parentId,
+        targetId: targetNode.id,
+        kind: "solid"
+      }
+      setSelector(null)
+      setCtxMenu(null)
+      setEdgeMenu({ edge, x: event.clientX, y: event.clientY })
     },
     [canvas]
   )
@@ -392,10 +457,11 @@ function BuilderCanvasInner({
           onConnect={onConnect}
           onNodeDragStart={onNodeDragStart}
           onNodeDragStop={onNodeDragStop}
-          onNodesDelete={onNodesDelete}
+          onBeforeDelete={onBeforeDelete}
           onEdgesDelete={onEdgesDelete}
           onPaneContextMenu={onPaneContextMenu}
           onNodeContextMenu={onNodeContextMenu}
+          onEdgeContextMenu={onEdgeContextMenu}
           onNodeDoubleClick={onNodeDoubleClick}
           onDragOver={onDragOver}
           onDrop={onDrop}
@@ -427,7 +493,23 @@ function BuilderCanvasInner({
           onClose={() => setCtxMenu(null)}
           onEdit={setEditNode}
           onAddChild={handleAddChild}
-          onRemoveFromCanvas={(node) => canvas.removeFromCanvas([node.id])}
+          onDelete={setDeleteTarget}
+        />
+      )}
+
+      {deleteTarget && (
+        <DeleteNodeDialog
+          node={deleteTarget}
+          childCount={
+            canvas.nodesRef.current.filter(
+              (n) => n.parentId === deleteTarget.id && !n.isDeleted
+            ).length
+          }
+          onCancel={() => setDeleteTarget(null)}
+          onConfirm={async () => {
+            await canvas.deleteNodePermanent(deleteTarget.id)
+            setDeleteTarget(null)
+          }}
         />
       )}
 
@@ -436,8 +518,7 @@ function BuilderCanvasInner({
         nodes={canvas.nodes}
         onClose={() => setDetailNode(null)}
         onEdit={setEditNode}
-        onRemoveFromCanvas={(node) => canvas.removeFromCanvas([node.id])}
-        builderBasePath="/roadmaps"
+        builderBasePath={builderBasePath}
       />
 
       {editNode && (
@@ -446,6 +527,20 @@ function BuilderCanvasInner({
           onClose={() => setEditNode(null)}
           onSave={canvas.updateNodeMeta}
           onSyncPublish={onSyncPublish}
+        />
+      )}
+
+      {edgeMenu && (
+        <EdgeContextMenu
+          edge={edgeMenu.edge}
+          screenX={edgeMenu.x}
+          screenY={edgeMenu.y}
+          onClose={() => setEdgeMenu(null)}
+          onSetKind={() => {}}
+          onRemove={(edgeId) => {
+            const targetId = edgeId.split("->")[1]
+            if (targetId) canvas.reparent(targetId, null)
+          }}
         />
       )}
     </BuilderCanvasContext.Provider>

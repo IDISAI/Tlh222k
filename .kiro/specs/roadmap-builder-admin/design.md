@@ -1,5 +1,7 @@
 # Design Document: Roadmap Builder Admin
 
+> ⚠️ **SUPERSEDED một phần (2026-07-19, nhánh `hf/roadmap`).** Đã đảo: **Disabled_Node** / **"Xóa khỏi Canvas"** gỡ hẳn (xóa vĩnh viễn, `roadmapGraphById` lọc `isDeleted`); kéo node lạ = **move**; node role/skill = roadmap (detail = rooted view `?node={id}`). Chỗ nói `packages/core/src/roadmap` là submodule cũng lỗi thời — nay inline. Nguồn chuẩn: `CLAUDE.md` mục "Roadmap builder model". Doc dưới giữ làm lịch sử.
+
 ## Overview
 
 Roadmap Builder Admin là tính năng cho phép admin và super-admin xây dựng và quản lý roadmap trực tiếp trên canvas ReactFlow trong `apps/admin`. Thiết kế này **mở rộng** domain logic hiện có tại `packages/core/src/roadmap` (submodule `IDISAI/roadmap`) và thêm các route CRUD vào `apps/admin`, hoàn toàn không làm thay đổi hành vi hiện tại của `apps/web`.

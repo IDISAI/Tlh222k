@@ -1,7 +1,8 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { Check, PencilLine, Plus, Trash2, X } from "lucide-react"
+import { PencilLine, Plus, Trash2, Check, X } from "lucide-react"
+import { Badge } from "@workspace/ui/components/badge"
 import { Button } from "@workspace/ui/components/button"
 import { Skeleton } from "@workspace/ui/components/skeleton"
 import { toast } from "@workspace/ui/components/sonner"
@@ -15,50 +16,78 @@ import {
 } from "@workspace/ui/components/table"
 
 import { RoadmapService } from "../../api"
-import type { CallerRole, Roadmap } from "../../types"
-import {
-  formatDate,
-  formatRelativeTime,
-  truncateDescription,
-} from "../../utils"
+import type { CallerRole, RoadmapNode } from "../../types"
+import { truncateDescription } from "../../utils"
 import { serviceErrorMessage } from "../utils/toast-messages"
 import { CreateRoadmapDialog } from "./CreateRoadmapDialog"
-import { DeleteRoadmapDialog } from "./DeleteRoadmapDialog"
+import { DeleteNodeDialog } from "./DeleteNodeDialog"
 
 interface RoadmapListAdminProps {
   role: CallerRole
-  /** Builder route prefix; rows link to `${builderBasePath}/${id}`. */
-  builderBasePath?: string
   /**
-   * Base path for author profile links (`${authorBasePath}/${authorId}`).
-   * Configurable so admin vs super-admin apps point to their own user route.
+   * Accepted for API compatibility. Row/edit links are derived from the
+   * current URL at runtime (see `builderHref`), so this prop is unused.
    */
+  builderBasePath?: string
+  /** Accepted for API compatibility; no longer used (no author column). */
   authorBasePath?: string
 }
 
+/** A roadmap-node row: a role/skill node (a role/skill node IS a roadmap). */
+interface Row {
+  node: RoadmapNode
+  descendants: number
+}
+
+/** Total descendants of a node across the whole system. */
+function descendantCount(nodes: RoadmapNode[], rootId: string): number {
+  const ids = new Set<string>([rootId])
+  let grew = true
+  while (grew) {
+    grew = false
+    for (const n of nodes) {
+      if (n.parentId && ids.has(n.parentId) && !ids.has(n.id)) {
+        ids.add(n.id)
+        grew = true
+      }
+    }
+  }
+  return ids.size - 1
+}
+
 /**
- * Admin roadmap list (design Screen 1): every roadmap incl. unpublished
- * drafts, with create / edit / delete actions. Client-fetched so the
- * localStorage-backed mock store is authoritative.
+ * Admin roadmap list (Quản lý Roadmap). A roadmap IS a role/skill node, so this
+ * lists every role/skill node — the same set the builder's "Kho Roadmap"
+ * sidebar shows, in table form. Client-fetched so the localStorage-backed mock
+ * store is authoritative.
  */
-export function RoadmapListAdmin({
-  role,
-  builderBasePath = "/roadmaps",
-  authorBasePath = "/super-admin/users",
-}: RoadmapListAdminProps) {
+export function RoadmapListAdmin({ role }: RoadmapListAdminProps) {
   const service = useMemo(() => new RoadmapService(), [])
-  const [roadmaps, setRoadmaps] = useState<Roadmap[] | null>(null)
+  const [rows, setRows] = useState<Row[] | null>(null)
   const [showCreate, setShowCreate] = useState(false)
-  const [deleteTarget, setDeleteTarget] = useState<Roadmap | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<Row | null>(null)
+
+  // The list page IS the builder base, so derive builder links from the current
+  // URL — works via the multi-zone host or the direct admin domain. A block IS a
+  // roadmap: its detail is its own composition canvas at `{base}/{node.id}`.
+  const nodeHref = (node: RoadmapNode) =>
+    `${window.location.pathname.replace(/\/+$/, "")}/${node.id}`
 
   const load = useCallback(async () => {
     try {
-      setRoadmaps(await service.listAdmin(role))
+      const allNodes = await service.listNodes()
+      const roadmapNodes = allNodes
+        .filter(
+          (n) =>
+            !n.isDeleted && (n.nodeType === "role" || n.nodeType === "skill")
+        )
+        .map((node) => ({ node, descendants: descendantCount(allNodes, node.id) }))
+      setRows(roadmapNodes)
     } catch (error) {
       toast.error(serviceErrorMessage(error))
-      setRoadmaps([])
+      setRows([])
     }
-  }, [service, role])
+  }, [service])
 
   useEffect(() => {
     void load()
@@ -83,7 +112,7 @@ export function RoadmapListAdmin({
         </Button>
       </div>
 
-      {roadmaps === null ? (
+      {rows === null ? (
         <div className="space-y-2">
           <Skeleton className="h-10 w-full" />
           <Skeleton className="h-10 w-full" />
@@ -91,96 +120,82 @@ export function RoadmapListAdmin({
         </div>
       ) : (
         <div className="rounded-xl border">
-          <Table className="min-w-[1180px] table-fixed">
+          <Table className="min-w-[840px] table-fixed">
             <colgroup>
+              <col className="w-[240px]" />
+              <col className="w-[92px]" />
+              <col className="w-[320px]" />
               <col className="w-[180px]" />
-              <col className="w-[300px]" />
-              <col className="w-[160px]" />
-              <col className="w-[150px]" />
-              <col className="w-[120px]" />
-              <col className="w-[120px]" />
-              <col className="w-[72px]" />
+              <col className="w-[80px]" />
               <col className="w-[96px]" />
-              <col className="w-[150px]" />
+              <col className="w-[130px]" />
             </colgroup>
             <TableHeader>
               <TableRow>
                 <TableHead>Tên</TableHead>
+                <TableHead>Loại</TableHead>
                 <TableHead>Mô tả</TableHead>
                 <TableHead>Slug</TableHead>
-                <TableHead>Tác giả</TableHead>
-                <TableHead>Ngày tạo</TableHead>
-                <TableHead>Cập nhật</TableHead>
                 <TableHead className="text-right">Nodes</TableHead>
                 <TableHead className="text-center">Xuất bản</TableHead>
                 <TableHead className="text-right">Hành động</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {roadmaps.length === 0 && (
+              {rows.length === 0 && (
                 <TableRow>
                   <TableCell
-                    colSpan={9}
+                    colSpan={7}
                     className="text-center text-muted-foreground"
                   >
                     Chưa có roadmap nào — hãy tạo roadmap đầu tiên.
                   </TableCell>
                 </TableRow>
               )}
-              {roadmaps.map((roadmap) => (
+              {rows.map(({ node, descendants }) => (
                 <TableRow
-                  key={roadmap.id}
+                  key={node.id}
                   className="cursor-pointer"
-                  // Row click opens the builder/detail page (item: click roadmap → detail).
                   onClick={() => {
-                    window.location.href = `${builderBasePath}/${roadmap.id}`
+                    window.location.href = nodeHref(node)
                   }}
                 >
                   <TableCell className="font-medium">
-                    <span className="block truncate" title={roadmap.title}>
-                      {roadmap.title}
+                    <span className="block truncate" title={node.title}>
+                      {node.title}
                     </span>
+                  </TableCell>
+                  <TableCell>
+                    <Badge
+                      variant="outline"
+                      className={
+                        node.nodeType === "role"
+                          ? "border-blue-500 text-blue-600 dark:text-blue-400"
+                          : "border-purple-500 text-purple-600 dark:text-purple-400"
+                      }
+                    >
+                      {node.nodeType}
+                    </Badge>
                   </TableCell>
                   <TableCell className="text-muted-foreground">
                     <span
                       className="block truncate"
-                      title={roadmap.description ?? "—"}
+                      title={node.description ?? "—"}
                     >
-                      {roadmap.description
-                        ? truncateDescription(roadmap.description, 80)
+                      {node.description
+                        ? truncateDescription(node.description, 90)
                         : "—"}
                     </span>
                   </TableCell>
                   <TableCell className="text-muted-foreground">
-                    <span className="block truncate" title={roadmap.slug}>
-                      {roadmap.slug}
+                    <span className="block truncate" title={node.slug}>
+                      {node.slug}
                     </span>
                   </TableCell>
-                  <TableCell onClick={(e) => e.stopPropagation()}>
-                    {roadmap.author ?? roadmap.authorId ? (
-                      <a
-                        href={`${authorBasePath}/${roadmap.author?.id ?? roadmap.authorId}`}
-                        className="block truncate text-primary underline-offset-4 hover:underline"
-                        title={roadmap.author?.name ?? roadmap.authorId ?? ""}
-                      >
-                        {roadmap.author?.name ?? roadmap.authorId}
-                      </a>
-                    ) : (
-                      "—"
-                    )}
-                  </TableCell>
-                  <TableCell className="text-muted-foreground">
-                    {formatDate(roadmap.createdAt)}
-                  </TableCell>
-                  <TableCell className="text-muted-foreground">
-                    {formatRelativeTime(roadmap.updatedAt)}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    {roadmap.nodeCount}
-                  </TableCell>
+                  <TableCell className="text-right">{descendants}</TableCell>
                   <TableCell>
                     <span className="flex justify-center">
-                      {roadmap.isPublished ? (
+                      {node.isPublished ? (
                         <Check className="size-4 text-emerald-600" />
                       ) : (
                         <X className="size-4 text-muted-foreground" />
@@ -193,9 +208,7 @@ export function RoadmapListAdmin({
                         size="sm"
                         variant="outline"
                         nativeButton={false}
-                        render={
-                          <a href={`${builderBasePath}/${roadmap.id}`} />
-                        }
+                        render={<a href={nodeHref(node)} />}
                       >
                         <PencilLine className="size-3.5" /> Sửa
                       </Button>
@@ -203,7 +216,7 @@ export function RoadmapListAdmin({
                         type="button"
                         size="sm"
                         variant="destructive"
-                        onClick={() => setDeleteTarget(roadmap)}
+                        onClick={() => setDeleteTarget({ node, descendants })}
                       >
                         <Trash2 className="size-3.5" /> Xóa
                       </Button>
@@ -220,20 +233,25 @@ export function RoadmapListAdmin({
         <CreateRoadmapDialog
           role={role}
           onClose={() => setShowCreate(false)}
-          onCreated={(roadmap) => {
+          onCreated={() => {
+            // Stay on the list and refresh — no redirect into the new roadmap.
             setShowCreate(false)
-            window.location.href = `${builderBasePath}/${roadmap.id}`
+            void load()
           }}
         />
       )}
 
       {deleteTarget && (
-        <DeleteRoadmapDialog
-          roadmap={deleteTarget}
+        <DeleteNodeDialog
+          node={deleteTarget.node}
+          childCount={deleteTarget.descendants}
           onCancel={() => setDeleteTarget(null)}
           onConfirm={async () => {
             try {
-              await service.deleteRoadmap(deleteTarget.id, role)
+              // Permanent delete: purge the block from every canvas. Other
+              // independent blocks survive (LEGO) — only their link to this one
+              // is cut.
+              await service.deleteBlockPermanent(deleteTarget.node.id, role)
               toast.success("Đã xóa roadmap")
               setDeleteTarget(null)
               await load()
