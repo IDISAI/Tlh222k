@@ -15,6 +15,7 @@ import { RoadmapModule } from "./roadmap/roadmap.module"
 import { NotionModule } from "./notion/notion.module"
 import { resolveUser, type CurrentUser } from "./auth/clerk"
 import { AuthMiddleware } from "./auth/auth.middleware"
+import { DomainExceptionFilter } from "./common/domain-exception.filter"
 
 @Module({
   imports: [
@@ -52,6 +53,9 @@ import { AuthMiddleware } from "./auth/auth.middleware"
     NotionModule,
   ],
   providers: [
+    // Maps framework-free DomainError → GraphQLError(extensions.code). Listed
+    // first so its @Catch(DomainError) matches before the Sentry catch-all.
+    { provide: APP_FILTER, useClass: DomainExceptionFilter },
     // Catches unhandled exceptions and reports them to Sentry, then re-throws
     // so Nest's / Apollo's existing error handling still runs.
     { provide: APP_FILTER, useClass: SentryGlobalFilter },

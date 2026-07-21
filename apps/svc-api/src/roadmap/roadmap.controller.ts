@@ -19,7 +19,7 @@ import {
 
 import { CurrentUser } from "../auth/current-user.decorator"
 import type { CurrentUser as CurrentUserType } from "../auth/clerk"
-import type { NodeStatus } from "./hierarchy"
+import type { NodeStatus } from "./domain"
 import {
   RoadmapService,
   type CreateNodeInput,

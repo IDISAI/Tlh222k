@@ -1,5 +1,7 @@
 # Security Hardening and Stability Evidence Implementation Plan
 
+> ✅ **DONE (2026-07-19).** Tất cả P1/P2 risks đã được xử lý. Chi tiết: Clerk prod-bypass hardened, CI env gates, WAC, acyclic validator, durable SSE events. Xem `docs/security/2026-07-16-hardening-verification.md` để biết evidence. **Đừng implement lại plan này.**
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Remove every P1/P2 risk from the 2026-07-16 audit, prove regressions with automated tests, and capture a browser video showing stable user-facing flows.

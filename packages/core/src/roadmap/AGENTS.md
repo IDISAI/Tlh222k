@@ -7,13 +7,18 @@ Feature `roadmap` của domain logic, sống **inline** trong monorepo `IDISAI/T
 - Import React/kiểu từ core dùng relative trong feature; `core` đặt `moduleResolution: Bundler` nên barrel `export *` không cần đuôi file.
 - **Không còn submodule:** commit thẳng ở monorepo, không bump gitlink. `main` là nhánh chính.
 
-## Mô hình builder (redesign 2026-07-19, nhánh `hf/roadmap`)
+## Mô hình builder hiện tại — LEGO composition (redesign 2026-07-20, nhánh `hf/roadmap`)
 
-**Node role/skill CHÍNH LÀ roadmap** — một record duy nhất. Đây là model hiện hành, **thay thế** các spec cũ trong `.kiro` (đặc biệt notion-article-node Req 11 và "Xóa khỏi Canvas"/Disabled_Node của roadmap-builder-admin). Chi tiết đầy đủ ở `CLAUDE.md` mục "Roadmap builder model". Tóm tắt:
+> ⚠️ **Model cũ (trước 2026-07-20) đã bị thay thế hoàn toàn.** Bỏ qua mọi tài liệu nhắc đến: `?node=` URL, "rooted view cùng cây", "kéo node = move", "linkedRoadmapId điều khiển navigation", "xóa subtree", hoặc auto-tạo Roadmap khi thêm node role/skill. Nguồn chuẩn: `CLAUDE.md` mục "Roadmap builder model".
 
-- **Kho Node sidebar = Kho Roadmap**: `NodeSidebar` và bảng `RoadmapListAdmin` liệt kê CÙNG tập = mọi role/skill node (mỗi cái là 1 roadmap). Sidebar chỉ hiện role/skill.
-- Tạo child node role/skill trên canvas KHÔNG tự sinh Roadmap riêng, không seed. Nhưng dialog "Tạo roadmap mới" (có ô chọn role/skill) tạo 1 Roadmap container + root node loại đó — root node đó CHÍNH LÀ roadmap trên canvas + trong kho.
-- Detail của node role/skill = rooted view cùng cây: `/roadmaps/{roadmapId}?node={nodeId}` (node + con cháu). `BuilderPage` nhận `rootNodeId`.
-- `nodeNavigationUrl` role/skill → `{base}/{roadmapId}?node={id}` (không bao giờ null). `linkedRoadmapId` còn trong schema/service nhưng không còn điều khiển navigation, không auto-set.
-- Xóa: root node (parentId null) → xóa cả container; child node → xóa subtree. Vĩnh viễn (không "Xóa khỏi Canvas", không ghost). `roadmapGraphById` lọc `isDeleted` ở cả mock lẫn svc-api.
-- Kéo node lạ từ sidebar = **move** (`moveNode`), không clone. `Node.roadmapId` một chủ sở hữu.
+Model hiện hành thay thế hoàn toàn cả spec `.kiro` lẫn model 2026-07-19.
+
+**Nguyên tắc cốt lõi:**
+
+- **Mỗi node role/skill/chapter là một BLOCK độc lập, sở hữu một canvas.** Canvas của block = `Composition` (`types.ts`): `{ ownerId, members: [{ nodeId, x, y }], edges: [{ id, source, target, kind }] }`. Owner render ghim trên đỉnh; `members` là các block khác đặt lên.
+- **Membership thay thế cây parentId.** Một block có thể là member của nhiều canvas (reusable LEGO). `article` là leaf — chỉ hiện trong right panel của chapter (`NodeDetailDialog`), không bao giờ trên canvas.
+- **Edge là entity mới** (`EdgeKind = solid | dashed`), độc lập với parentId. Vẽ edge bằng cách kéo handle (`addEdge`); chuột phải wire → đổi kind / cắt (`removeEdge`). `EdgeContextMenu`.
+- **parentId / roadmapId vẫn giữ trong storage** để viewer công khai tiếp tục hoạt động. `RoadmapService.getComposition` derive composition từ parentId children khi chưa có data — không cần migration. Block mới tự own (`roadmapId === id`). Composition ops persist ngay; không có bước "Lưu" batch.
+- **Detail page = canvas của một owner block** tại `/roadmaps/{nodeId}` (không có `?node=`). `BuilderPage` nhận `nodeId`; `useCompositionCanvas` + `CompositionCanvas` render. Drill vào member = nhấn "Điều hướng" trong detail panel → `{base}/{node.id}`; panel của owner ẩn nút đó (`NodeDetailDialog hideNavigate`).
+- **Hai loại xóa:** Canvas remove (`removeFromCanvas`) chỉ xóa membership + edge của block đó trên canvas đang xem — block vẫn tồn tại. Sidebar/table delete (`deleteBlockPermanent`) soft-delete và purge block khỏi mọi composition.
+- **Mock-first cho đến khi `NEXT_PUBLIC_SVC_API_URL` được set.** Apollo `RoadmapApi` chưa có composition methods; `service-selector.ts` cast qua gap — chỉ break khi env var có giá trị.

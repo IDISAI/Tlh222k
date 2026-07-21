@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import { assertAcyclicTree } from "./tree-invariants"
+import { assertAcyclicTree } from "./tree"
 
 describe("assertAcyclicTree", () => {
   it("accepts a valid forest", () => {
@@ -34,8 +34,10 @@ describe("assertAcyclicTree", () => {
       reason: "cycle",
     },
   ])("rejects $reason", ({ nodes }) => {
+    // Domain throws a framework-free DomainError; the interface layer maps
+    // `.code` → GraphQL extensions.code (see DomainExceptionFilter).
     expect(() => assertAcyclicTree(nodes)).toThrowError(
-      expect.objectContaining({ extensions: { code: "INVALID_HIERARCHY" } })
+      expect.objectContaining({ code: "INVALID_HIERARCHY" })
     )
   })
 })

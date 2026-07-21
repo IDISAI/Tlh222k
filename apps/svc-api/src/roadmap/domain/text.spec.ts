@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { normalizeHttpUrl } from "./hierarchy"
+import { normalizeHttpUrl } from "./text"
 
 describe("normalizeHttpUrl", () => {
   it("returns null for empty / whitespace / nullish", () => {

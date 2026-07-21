@@ -1,5 +1,7 @@
 # Jupyter Notebook End-to-End Implementation Plan
 
+> ✅ **DONE (2026-07-15).** Notebooks live in production via Pyodide client-side (no kernel-server required for prod). Committed `.ipynb` fixtures + `outputFileTracingIncludes`; ungated read path; Pyodide adapter in `packages/core/src/notebook/kernel/pyodide`. Kiro sandbox (kernel-server) is a dev/future feature. **Đừng implement lại plan này.**
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Deliver internal, sandboxed Jupyter execution for every roadmap Jupyter article across web, admin, and super-admin, with a free-tier Docker deployment profile.

@@ -1,4 +1,5 @@
-import { RoadmapError } from "../common/roadmap-error"
+// Domain layer — forest invariants for the node parent tree. Pure.
+import { DomainError } from "./errors"
 
 export interface TreeNodeRef {
   id: string
@@ -6,10 +7,10 @@ export interface TreeNodeRef {
 }
 
 function invalidTree(): never {
-  throw new RoadmapError("INVALID_HIERARCHY", "INVALID_TREE")
+  throw new DomainError("INVALID_HIERARCHY", "INVALID_TREE")
 }
 
-/** Reject malformed forests before any parent-link write reaches Prisma. */
+/** Reject malformed forests before any parent-link write reaches persistence. */
 export function assertAcyclicTree(nodes: readonly TreeNodeRef[]): void {
   const parents = new Map<string, string | null>()
   for (const node of nodes) {

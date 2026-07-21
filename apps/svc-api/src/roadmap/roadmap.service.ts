@@ -11,11 +11,11 @@ import {
   isNodeType,
   normalizeHttpUrl,
   slugify,
+  assertAcyclicTree,
   type ArticleType,
   type NodeStatus,
   type NodeType,
-} from "./hierarchy"
-import { assertAcyclicTree } from "./tree-invariants"
+} from "./domain"
 
 const SAVE_TIMEOUT_MS = 10_000
 const TREE_TRANSACTION_OPTIONS = {

@@ -1,15 +1,9 @@
 import { GraphQLError } from "graphql"
 
-/** Mirrors packages/core RoadmapErrorCode 1:1 (→ GraphQL extensions.code). */
-export type RoadmapErrorCode =
-  | "PERMISSION_DENIED"
-  | "INVALID_NODE_TYPE"
-  | "INVALID_HIERARCHY"
-  | "LEAF_NODE_CANNOT_HAVE_CHILDREN"
-  | "CHILDREN_LIMIT_EXCEEDED"
-  | "NOT_FOUND"
-  | "TIMEOUT"
-  | "INVALID_URL"
+// Single source of truth for the code union lives in the domain layer.
+import type { RoadmapErrorCode } from "../roadmap/domain/errors"
+
+export type { RoadmapErrorCode }
 
 /**
  * Throwable that becomes a `GraphQLError` with `extensions.code`, so the

@@ -85,9 +85,11 @@ describe("RoadmapService tree integrity", () => {
     tx.node.findMany.mockResolvedValue([root, child])
     tx.node.update.mockResolvedValue({ ...root, parentId: child.id })
 
+    // assertAcyclicTree now throws a framework-free DomainError (`.code`); the
+    // GraphQL extensions.code mapping is covered by DomainExceptionFilter.
     await expect(
       service.updateNode(root.id, { parentId: child.id }, admin)
-    ).rejects.toMatchObject({ extensions: { code: "INVALID_HIERARCHY" } })
+    ).rejects.toMatchObject({ code: "INVALID_HIERARCHY" })
     expect(tx.node.update).not.toHaveBeenCalled()
   })
 

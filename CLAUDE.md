@@ -1,11 +1,10 @@
 # CLAUDE.md
 
-This file is the canonical guide for AI agents working in this repository.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Commands
 
-Turborepo + pnpm workspace. Node >= 20, pnpm 10.33.4. `apps/kernel-server` is a
-standalone Go module — it is NOT part of the pnpm/turbo workspace.
+Turborepo + pnpm workspace. Node >= 20, pnpm 10.33.4. `apps/kernel-server` is a standalone Go module — NOT part of the pnpm/turbo workspace.
 
 ```bash
 pnpm install
@@ -13,217 +12,165 @@ pnpm dev          # turbo apps + kernel-server Go binary (via apps/kernel-server
 pnpm dev:js       # turbo JS apps only (no Go)
 pnpm dev:go       # kernel-server Go binary only
 pnpm build
-pnpm lint
-pnpm typecheck
+pnpm lint         # ESLint across all apps/packages
+pnpm typecheck    # tsc --noEmit across all apps/packages
 pnpm format
 
+# Per-app
 pnpm --filter web dev
 pnpm --filter admin dev
 pnpm --filter super-admin dev
 pnpm --filter svc-api dev
-pnpm -F @workspace/db generate
-pnpm -F @workspace/db db:push
+
+# DB (SQLite locally, Postgres in prod — never mutate schema.prisma to switch)
+pnpm -F @workspace/db generate      # regenerate Prisma client (SQLite)
+pnpm -F @workspace/db db:push       # push schema changes to local SQLite
 pnpm -F @workspace/db seed
 
-# kernel-server (Go, from apps/kernel-server/)
+# kernel-server (Go, run from apps/kernel-server/)
 go build ./...
 go vet ./...
-APP_ENV=development DEV_AUTH_ROLE=super-admin SESSION_TICKET_SECRET=development-only-ticket-secret go run ./cmd/server   # listens on :3006
+APP_ENV=development DEV_AUTH_ROLE=super-admin SESSION_TICKET_SECRET=development-only-ticket-secret go run ./cmd/server
 ```
 
-There is no test runner configured yet. CI is
-`install --frozen-lockfile -> lint -> typecheck -> build`. `lint` is ESLint;
-`typecheck` is `tsc --noEmit`. CI does NOT cover the Go kernel-server.
+No test runner is configured for JS yet. CI pipeline: `install --frozen-lockfile → lint → typecheck → build`. Go kernel-server is NOT covered by CI.
+
+Git hooks (Husky) run on commit/push: `commit-msg` enforces Conventional Commits (`feat|fix|chore|refactor|test|docs|ci: description`), `pre-commit` runs lint+test, `pre-push` runs tests.
 
 ## Architecture
 
-Current committed system:
+| App / Package | Purpose | Port |
+|---|---|---|
+| `apps/web` | Public Next.js frontend, **Multi-Zone host** | 3000 |
+| `apps/admin` | Admin roadmap-builder Next.js child zone | 3002 |
+| `apps/super-admin` | User-management Next.js child zone | 3003 |
+| `apps/svc-api` | NestJS backend: GraphQL, REST, Swagger, SSE | 3005 |
+| `apps/kernel-server` | Go backend: notebook CRUD, Clerk auth, sandbox tickets | 3006 |
+| `packages/core` | Shared domain logic, feature-first | — |
+| `packages/db` | Prisma schema/client/seed | — |
+| `packages/ui` | shadcn/ui + Tailwind v4 components | — |
 
-- `apps/web`: public Next.js frontend and Multi-Zone host, port 3000.
-- `apps/admin`: admin/roadmap-builder Next.js child zone, port 3002.
-- `apps/super-admin`: super-admin/user-management child zone, port 3003.
-- `apps/svc-api`: NestJS backend exposing GraphQL, REST, Swagger, and SSE,
-  default port 3005.
-- `apps/kernel-server`: **Go** backend for the notebook feature. Standalone Go
-  module (not in the pnpm/turbo workspace). Port 3006. Notebook CRUD (filesystem
-  store), Clerk-gated auth, CORS, sandbox session tickets. Phase 3: Jupyter
-  WebSocket proxy for live kernel execution.
-- `packages/core`: shared domain logic, feature-first. Key modules:
-  - `src/notebook`: `NotebookService`, viewer, editor, kernel client, exercise,
-    runtime, utils. All nbformat parsing lives here — not in Go.
-  - `src/roadmap`: roadmap domain logic. `api/` holds the Apollo Client + React
-    provider that talk GraphQL to `svc-api`; env-flag seam falls back to a
-    localStorage mock service when no backend URL is set. `builder/` is the
-    admin roadmap-builder (canvas, sidebar, hooks). See "Roadmap builder model"
-    below.
-  - `src/navigation`: navigation helpers (incl. `no-script-next-themes`).
-- `packages/db`: Prisma schema/client and seed data.
-- `packages/ui`: shared shadcn/ui + Tailwind v4 components.
-- `packages/eslint-config` and `packages/typescript-config`: shared tooling.
+**Multi-Zone:** `apps/web` is the zone host. Its `next.config.ts` `rewrites()` proxy `/admin/*` → child dev server `:3002` (dev) or `ADMIN_URL` (prod), and `/super-admin/*` → `:3003` / `SUPER_ADMIN_URL`. Child apps build without `basePath`; assets proxy via `/admin-static/*` and `/super-admin-static/*`.
 
-Dependency direction:
+**Dependency rule:** `apps/* → packages/*` only. `packages/*` must never import `apps/*`. Package scope is `@workspace/*`.
 
-```text
-apps/*      -> packages/*   OK
-packages/*  -> apps/*       never
+Apps consume packages via `workspace:*` dep + `transpilePackages` + tsconfig `paths`. `apps/web/lib/core.ts` is the per-app customization seam.
+
+## packages/core structure
+
+Feature-first under `src/<feature>/`:
+
+```
+src/
+  roadmap/     types, api, hooks, components, utils, graph, drawer, viewer,
+               progress, dashboard, builder, graphql, mock
+  notebook/    NotebookService, editor, viewer, kernel, exercise, runtime, utils
+  navigation/  role helpers, no-script-next-themes
+  notion/      NotionWorkspace, NotionService, hooks, components
 ```
 
-Package scope is `@workspace/*`, not `@vizteck/*`.
+`packages/core/src/index.ts` re-exports `./roadmap`, `./navigation`, `./notion`, `./notebook`. `packages/core/src/roadmap/index.ts` re-exports all sub-features. Removing/renaming a public export here breaks typecheck across the entire monorepo — update barrel `index.ts` files whenever adding or removing exports.
 
-## Roadmap builder model
+## Roadmap builder model (LEGO composition — branch hf/roadmap)
 
-Current model (redesigned 2026-07-20, branch `hf/roadmap`, mock-first —
-**LEGO composition**, supersedes both the `.kiro` specs AND the earlier
-rooted-view `?node=` tree). Confirmed with the product owner via Q&A: "block
-đơn" + "composition thay cây" + "canvas lồng nhiều cấp" + "dây = entity mới".
+Current model as of 2026-07-20. Supersedes `.kiro` specs and any earlier `?node=` tree approach.
 
-- **Every role/skill/chapter node is a BLOCK that owns a canvas.** A block's
-  canvas is its `Composition` (`packages/core/src/roadmap/types.ts`):
-  `{ ownerId, members: [{ nodeId, x, y }], edges: [{ id, source, target, kind }] }`.
-  The owner renders pinned on top; `members` are other blocks placed on it.
-  Membership REPLACES the parentId tree — a block can be a member of many
-  canvases (reusable LEGO). `article` is a leaf, never a block: it shows in the
-  right panel of its chapter (`NodeDetailDialog`), never on a canvas.
-- **Edges are a new entity** roadmap↔roadmap (`EdgeKind` = `solid | dashed`),
-  independent of parentId. Right-click a wire → change kind / cut (`removeEdge`).
-  `EdgeContextMenu`; draw by connecting handles (`addEdge`).
-- **parentId / roadmapId are kept as storage** so the public viewer keeps
-  working. `RoadmapService.getComposition` DERIVES a composition from a node's
-  parentId children when none is stored yet (no migration); new blocks
-  self-own (`roadmapId === id`). Composition ops persist immediately — there is
-  no batch "Lưu" step in the composition canvas.
-- **Detail page = one owner block's composition canvas** at `/roadmaps/{nodeId}`
-  (no `?node=`). `BuilderPage` takes `nodeId`; `useCompositionCanvas` +
-  `CompositionCanvas` render it. Drill into a member = its detail-panel
-  "Điều hướng" → `{base}/{node.id}` (`nodeNavigationUrl` builder branch); the
-  owner's own panel hides that button (`NodeDetailDialog hideNavigate`).
-- **Kho Roadmap sidebar = Quản lý Roadmap table.** `NodeSidebar` and
-  `RoadmapListAdmin` list the same set (role/skill blocks), same store
-  (`listNodes`). "Tạo roadmap mới" (table) and right-click-canvas both call
-  `createBlock` (role/skill/chapter) — no container `Roadmap`.
-- **Two deletes.** Canvas remove (`removeFromCanvas`, block context menu / right
-  panel) drops only membership + that block's own edges — every other edge and
-  the block itself survive. Sidebar/table delete (`deleteBlockPermanent`)
-  soft-deletes and purges the block from every composition.
-- **Verified mock-first**: `composition.service.test.ts` + `roadmap-e2e.test.ts`
-  (core/admin/web typecheck clean). TODO before enabling the backend: Apollo
-  `RoadmapApi` has no composition methods yet (the env selector casts over the
-  gap, so it only breaks when `NEXT_PUBLIC_SVC_API_URL` is set).
+- **Every role/skill/chapter node IS a block that owns a canvas.** A block's canvas is its `Composition` (`packages/core/src/roadmap/types.ts`): `{ ownerId, members: [{ nodeId, x, y }], edges: [{ id, source, target, kind }] }`. The owner renders pinned at top; `members` are other blocks placed on it.
+- **Membership replaces the parentId tree.** A block can be a member of many canvases (reusable LEGO). `article` is a leaf only — it appears in the right panel of its chapter (`NodeDetailDialog`), never on a canvas.
+- **Edges are a new entity** (`EdgeKind = solid | dashed`), independent of parentId. Draw by connecting handles (`addEdge`); right-click → change kind / cut (`removeEdge`). `EdgeContextMenu`.
+- **parentId / roadmapId are kept in storage** so the public viewer keeps working. `RoadmapService.getComposition` derives a composition from parentId children when none is stored yet — no migration needed. New blocks self-own (`roadmapId === id`). Composition ops persist immediately; no batch save step.
+- **Detail page = one owner block's composition canvas** at `/roadmaps/{nodeId}` (no `?node=`). `BuilderPage` takes `nodeId`; `useCompositionCanvas` + `CompositionCanvas` render it. Drill into a member via its detail-panel "Điều hướng" link → `{base}/{node.id}`; the owner's own panel hides that button (`NodeDetailDialog hideNavigate`).
+- **Two deletes:** Canvas remove (`removeFromCanvas`) drops only membership + that block's edges — the block itself and all other edges survive. Sidebar/table delete (`deleteBlockPermanent`) soft-deletes and purges from every composition.
+- **Mock-first until `NEXT_PUBLIC_SVC_API_URL` is set.** Apollo `RoadmapApi` has no composition methods yet; `service-selector.ts` casts over the gap, so it only breaks in production when the env var is present.
 
-## Former Submodules
+## Roadmap service selector
 
-`packages/ui` and `packages/core/src/roadmap` used to be separate git
-submodules. They are now inline in this repo. `.gitmodules` is empty, there are
-no gitlinks, and one parent-repo commit covers changes to them. Ignore old docs
-that still say to clone or bump submodules.
+`packages/core/src/roadmap/api/service-selector.ts` exports `RoadmapService`. When `NEXT_PUBLIC_SVC_API_URL` (or legacy `NEXT_PUBLIC_SVC_ROADMAP_URL`) is set, it returns `RoadmapApi` (Apollo GraphQL client to `svc-api`). Otherwise it returns `MockRoadmapService` (localStorage). All three frontends consume the same exported `RoadmapService` class; the seam is transparent to callers.
 
-## Domain Logic
+## Database schema (packages/db/prisma/schema.prisma)
 
-Put shared domain logic in `packages/core`, organized feature-first:
+Postgres (Neon) in dev and prod. Key models:
 
-```text
-src/<feature>/
-  types.ts
-  <feature>.service.ts
-  hooks/
-  components/
-  utils/
-  index.ts
-```
+- **`Roadmap`** — slug (unique), title, isPublished, owns many `Node`.
+- **`Node`** — nodeType (`role | skill | chapter | article`), parentId tree, positionX/Y on canvas, isDeleted soft-delete, linkedRoadmapId (role/skill auto-link), articleType (`notion | jupyter`), progress join.
+- **`RoadmapUpdateEvent`** — SSE changelog for real-time viewer refresh.
+- **`UserProgress`** — composite PK `(clerkUserId, nodeId)`, status `locked | in_progress | done`.
+- **`Document`** — Notion-style hierarchical docs (BlockNote JSON content), slug set only on root docs backing a "notion" article node.
 
-Apps consume packages through `workspace:*`, `transpilePackages`, and tsconfig
-paths. `apps/web/lib/core.ts` is the reference for per-app customization.
+Dev: `DATABASE_URL=file:./dev.db` (SQLite). Prod: Neon Postgres. Use `generate:sqlite` / `db:push:sqlite` locally; `generate:postgres` / `db:push:postgres` for Vercel deploys. Never mutate `schema.prisma` in place to switch providers — use the two separate schema files.
+
+## Auth
+
+All three frontends use **Clerk** with a shared instance (same session cookie). `proxy.ts` + `lib/` resolve the user role before rendering. `NEXT_PUBLIC_DEV_AUTH_ROLE` bypasses Clerk in dev — never set in production. `svc-api` verifies Clerk JWT on every request; kernel-server uses RS256 JWKS verification.
+
+React 19 warns when a client component renders `<script>`. The apps alias `next-themes` to `packages/core/src/navigation/no-script-next-themes.tsx` in their Next config to suppress the warning. Do not use `next-themes` directly.
 
 ## Env
 
-There is no shared root app env. Each app/package owns the env file beside it:
+No shared root env. Each app owns its own:
 
 ```bash
 cp apps/web/.env.example          apps/web/.env.local
 cp apps/admin/.env.example        apps/admin/.env.local
 cp apps/super-admin/.env.example  apps/super-admin/.env.local
-cp apps/svc-api/.env.example  apps/svc-api/.env
-cp apps/kernel-server/.env.example apps/kernel-server/.env
+cp apps/svc-api/.env.example      apps/svc-api/.env
 cp packages/db/.env.example       packages/db/.env
 ```
 
-Rules:
+Key variables:
 
-- Commit only `.env.example`; never commit real `.env` or `.env.local`.
-- `NEXT_PUBLIC_*` is browser-visible.
-- `NEXT_PUBLIC_SVC_API_URL` selects the real `svc-api` backend
-  (`http://localhost:3005` in dev). If empty, `@workspace/core` uses the
-  mock/localStorage roadmap service. `NEXT_PUBLIC_SVC_ROADMAP_URL` is the legacy
-  name, still honored as a fallback after the `svc-roadmap` -> `svc-api` rename.
-- `NEXT_PUBLIC_KERNEL_SERVER_URL` points web and admin at the Go kernel-server
-  (`http://localhost:3006` in dev). If empty, web falls back to committed
-  `.ipynb` fixtures and the admin editor uses per-browser localStorage.
-- `NEXT_PUBLIC_DEV_AUTH_ROLE` is a dev-only Clerk bypass and is ignored in
-  production. The Go kernel-server has a matching `DEV_AUTH_ROLE` env var.
+| Variable | Effect |
+|---|---|
+| `NEXT_PUBLIC_SVC_API_URL` | Enables real `svc-api` GraphQL backend. Empty = mock/localStorage. Legacy name `NEXT_PUBLIC_SVC_ROADMAP_URL` honored. |
+| `NEXT_PUBLIC_KERNEL_SERVER_URL` | Points frontends at Go kernel-server. Empty = web uses committed `.ipynb` fixtures. |
+| `NEXT_PUBLIC_DEV_AUTH_ROLE` | Dev-only Clerk bypass (`admin`, `super-admin`). Ignored in production. |
+| `DATABASE_URL` / `DIRECT_URL` | Postgres connection (pooled / direct). Shared between `svc-api` and `packages/db`. |
+| `FRONTEND_ORIGINS` | CORS allow-list for `svc-api` (comma-separated). |
 
-Full guide: [docs/onboarding/env.md](docs/onboarding/env.md).
-
-## Next.js 16.2.6
-
-This repo pins Next.js 16.2.6. Before writing Next code, read the relevant
-installed guide under `node_modules/.pnpm/.../node_modules/next/dist/docs/`.
-The plain `node_modules/next/dist/docs/` path may not exist with this pnpm
-layout.
-
-React 19 warns when a client component renders a `<script>` tag. The apps alias
-`next-themes` to `packages/core/src/navigation/no-script-next-themes.tsx` in
-their Next config to keep `useTheme()` behavior without the inline script.
-
-## Documentation
-
-Keep `README.md` for human orientation and `AGENTS.md` for AI-agent notes in
-committed workspace folders. Do not add those files to generated/cache folders
-such as `.git`, `.next`, `.turbo`, `dist`, or `node_modules`.
-
-Docs under `docs/onboarding/` sometimes describe a larger target system. Treat
-anything not represented in committed code as roadmap, not current behavior.
+Full variable reference: [docs/onboarding/env.md](docs/onboarding/env.md).
 
 ## CI/CD
 
-Workflows live in `.github/workflows/`:
+Workflows in `.github/workflows/`:
 
-- `ci.yml`: lint -> typecheck -> build.
+- `ci.yml`: lint → typecheck → build.
 - `deploy-staging.yml`: Vercel preview deploys.
-- `release.yml`: Vercel production deploys and GitHub release.
+- `release.yml`: Vercel production deploys + GitHub release.
 
-Deploys cover web, admin, and super-admin. Required GitHub secrets include
-`VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID_WEB`,
-`VERCEL_PROJECT_ID_ADMIN`, and `VERCEL_PROJECT_ID_SUPER_ADMIN`.
+Covers `web`, `admin`, `super-admin`. GitHub secrets needed: `VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID_WEB`, `VERCEL_PROJECT_ID_ADMIN`, `VERCEL_PROJECT_ID_SUPER_ADMIN`.
+
+## Notes for AI agents
+
+- **Next.js 16.2.6 is pinned** — APIs may differ from training data. Read `node_modules/next/dist/docs/` before writing Next.js code.
+- **No submodules.** `packages/ui` and `packages/core/src/roadmap` were submodules; they are now inline. Ignore docs that say to clone or bump submodules.
+- **Docs under `docs/onboarding/` may describe a larger target system.** Treat anything not in committed code as roadmap, not current behavior.
+- **kernel-server is stdlib-only Go.** Do not add third-party Go dependencies. All nbformat parsing lives in TS `NotebookService`; do not add a Go parser.
+- **Prisma dual-schema setup.** `schema.prisma` = Postgres (production). Local dev uses the same schema with SQLite via `DATABASE_URL=file:./dev.db`. `generate:postgres` is for Vercel deploy — running it locally breaks `:3005`.
 
 ## Skill routing
 
-When the user's request matches an available skill, invoke it via the Skill tool. When in doubt, invoke the skill.
+When the user's request matches an available skill, invoke it via the Skill tool.
 
-Key routing rules:
-- Product ideas/brainstorming → invoke /office-hours
-- Strategy/scope → invoke /plan-ceo-review
-- Architecture → invoke /plan-eng-review
-- Design system/plan review → invoke /design-consultation or /plan-design-review
-- Full review pipeline → invoke /autoplan
-- Bugs/errors → invoke /investigate
-- QA/testing site behavior → invoke /qa or /qa-only
-- Code review/diff check → invoke /review
-- Visual polish → invoke /design-review
-- Ship/deploy/PR → invoke /ship or /land-and-deploy
-- Save progress → invoke /context-save
-- Resume context → invoke /context-restore
-- Author a backlog-ready spec/issue → invoke /spec
+| Request type | Skill |
+|---|---|
+| Product ideas / brainstorming | `/office-hours` |
+| Strategy / scope | `/plan-ceo-review` |
+| Architecture | `/plan-eng-review` |
+| Design system / plan review | `/design-consultation` or `/plan-design-review` |
+| Full review pipeline | `/autoplan` |
+| Bugs / errors | `/investigate` |
+| QA / testing site behavior | `/qa` or `/qa-only` |
+| Code review / diff check | `/review` |
+| Visual polish | `/design-review` |
+| Ship / deploy / PR | `/ship` or `/land-and-deploy` |
+| Save progress | `/context-save` |
+| Resume context | `/context-restore` |
+| Author a backlog-ready spec | `/spec` |
 
 ## Agent skills
 
-### Issue tracker
-
 Issues live in GitHub Issues on `IDISAI/Tlh222k`, via the `gh` CLI. See `docs/agents/issue-tracker.md`.
 
-### Triage labels
+Triage labels: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`. See `docs/agents/triage-labels.md`.
 
-Default five canonical roles (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). See `docs/agents/triage-labels.md`.
-
-### Domain docs
-
-Single-context: one `CONTEXT.md` + `docs/adr/` at the repo root. See `docs/agents/domain.md`.
+Domain docs: one `CONTEXT.md` + `docs/adr/` at repo root. See `docs/agents/domain.md`.
