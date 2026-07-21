@@ -7,6 +7,8 @@ import {
   MiniMap,
   ReactFlow,
   ReactFlowProvider,
+  useEdgesState,
+  useNodesState,
   type ColorMode,
   type Edge,
   type Node,
@@ -99,7 +101,7 @@ function ViewerCanvasInner({
     return deriveCompositionFromNodes(ownerId, nodes)
   }, [ownerId, nodes])
 
-  const rfNodes = useMemo<BuilderFlowNode[]>(() => {
+  const computedNodes = useMemo<BuilderFlowNode[]>(() => {
     if (composition) {
       const owner = nodes.find((n) => n.id === ownerId)
       if (!owner) return []
@@ -145,9 +147,9 @@ function ViewerCanvasInner({
       }))
   }, [nodes, ownerId, composition])
 
-  const rfEdges = useMemo<Edge[]>(() => {
+  const computedEdges = useMemo<Edge[]>(() => {
     if (composition) {
-      const nodeIds = new Set(rfNodes.map((n) => n.id))
+      const nodeIds = new Set(computedNodes.map((n) => n.id))
       return composition.edges
         .filter((e) => nodeIds.has(e.sourceId) && nodeIds.has(e.targetId))
         .map((e) => ({
@@ -161,7 +163,16 @@ function ViewerCanvasInner({
         }))
     }
     return buildViewerEdges(nodes)
-  }, [nodes, rfNodes, composition])
+  }, [nodes, computedNodes, composition])
+
+  // Feed the computed graph through useNodesState/useEdgesState (not a raw
+  // `nodes` prop) so React Flow can apply its internal dimension measurements —
+  // the MiniMap needs measured node sizes to draw its rects, and a controlled
+  // `nodes` prop without `onNodesChange` never gets them (empty minimap).
+  const [rfNodes, setRfNodes, onNodesChange] = useNodesState<BuilderFlowNode>([])
+  const [rfEdges, setRfEdges, onEdgesChange] = useEdgesState<Edge>([])
+  useEffect(() => setRfNodes(computedNodes), [computedNodes, setRfNodes])
+  useEffect(() => setRfEdges(computedEdges), [computedEdges, setRfEdges])
 
   const contextValue = useMemo(() => ({ nodes, isDragging: false }), [nodes])
 
@@ -182,6 +193,8 @@ function ViewerCanvasInner({
           nodesDraggable={false}
           nodesConnectable={false}
           elementsSelectable
+          onNodesChange={onNodesChange}
+          onEdgesChange={onEdgesChange}
           onNodeClick={(_, rfNode) =>
             onNodeClick?.((rfNode.data as { node: RoadmapNode }).node)
           }
