@@ -38,10 +38,26 @@ const NODE_FIELDS = `
  */
 export class RoadmapApi {
   async list(): Promise<Roadmap[]> {
-    const data = await gql<{ roadmaps: Roadmap[] }>(
-      `query { roadmaps { ${ROADMAP_FIELDS} } }`
-    )
-    return data.roadmaps
+    // LEGO: the public home lists every published role/skill block (a block IS a
+    // roadmap), mapped onto the card shape. See svc-api `publicBlocks`.
+    const data = await gql<{
+      publicBlocks: {
+        id: string
+        slug: string
+        title: string
+        description: string | null
+        childrenCount: number
+      }[]
+    }>(`query { publicBlocks { id slug title description childrenCount } }`)
+    return data.publicBlocks.map((n) => ({
+      id: n.id,
+      slug: n.slug,
+      title: n.title,
+      description: n.description,
+      thumbnailUrl: null,
+      isPublished: true,
+      nodeCount: n.childrenCount ?? 0,
+    }))
   }
 
   async listAdmin(_callerRole: CallerRole): Promise<Roadmap[]> {
@@ -98,6 +114,19 @@ export class RoadmapApi {
       `query { allNodes { ${NODE_FIELDS} } }`
     )
     return data.allNodes
+  }
+
+  async publicBlockGraph(id: string): Promise<RoadmapGraph | null> {
+    const data = await gql<{ publicBlockGraph: RoadmapGraph | null }>(
+      `query ($id: ID!) {
+         publicBlockGraph(id: $id) {
+           roadmap { ${ROADMAP_FIELDS} }
+           nodes { ${NODE_FIELDS} }
+         }
+       }`,
+      { id }
+    )
+    return data.publicBlockGraph
   }
 
   async createRoadmap(
@@ -250,7 +279,21 @@ export class RoadmapApi {
     nodeId: string,
     role: CallerRole
   ): Promise<Composition> {
-    await this.updateNode(nodeId, { parentId: null }, role)
+    const nodes = await this.listNodes()
+    const owner = nodes.find((n) => n.id === ownerId)
+    const node = nodes.find((n) => n.id === nodeId)
+    
+    if (owner && node) {
+      // Move the node to its own roadmap (self-owned) to remove it from owner's canvas
+      // This ensures it won't be derived into owner's composition anymore
+      if (node.roadmapId === owner.roadmapId) {
+        await this.moveNode(nodeId, nodeId, { x: node.positionX, y: node.positionY }, role)
+      } else {
+        // Already in different roadmap, just clear parent link
+        await this.updateNode(nodeId, { parentId: null }, role)
+      }
+    }
+    
     return deriveCompositionFromNodes(ownerId, await this.listNodes())
   }
 

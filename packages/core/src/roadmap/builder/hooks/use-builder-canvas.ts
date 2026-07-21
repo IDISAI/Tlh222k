@@ -11,7 +11,14 @@ import type {
   RoadmapNode,
   UpdateNodeInput,
 } from "../../types"
-import { TOAST_MESSAGES, serviceErrorMessage } from "../utils/toast-messages"
+import {
+  TOAST_MESSAGES,
+  serviceErrorMessage,
+  createSuccessMessage,
+  updateSuccessMessage,
+  deleteSuccessMessage,
+  saveSuccessMessage,
+} from "../utils/toast-messages"
 
 /**
  * Domain state for one builder session. The canvas is the working copy:
@@ -176,7 +183,7 @@ export function useBuilderCanvas(
         )
         setIsDirty(true)
         void refreshAllNodes()
-        toast.success(TOAST_MESSAGES.CREATE_SUCCESS)
+        toast.success(createSuccessMessage(input.title))
       } catch (error) {
         toast.error(serviceErrorMessage(error))
         return null
@@ -348,7 +355,8 @@ export function useBuilderCanvas(
           }
         }
         void refreshAllNodes()
-        toast.success(TOAST_MESSAGES.UPDATE_SUCCESS)
+        const title = input.title || previous.title
+        toast.success(updateSuccessMessage(title))
         return true
       } catch (error) {
         applyNodePatch(id, previous, { dirty: false }) // rollback
@@ -367,23 +375,24 @@ export function useBuilderCanvas(
   const deleteNodePermanent = useCallback(
     async (id: string): Promise<boolean> => {
       try {
+        const target = nodes.find((n) => n.id === id)
+        const title = target?.title || "node"
         await service.deleteNode(id, role)
         setNodes((prev) => {
-          const target = prev.find((n) => n.id === id)
           const newParent = target?.parentId ?? null
           return prev
             .filter((n) => n.id !== id)
             .map((n) => (n.parentId === id ? { ...n, parentId: newParent } : n))
         })
         void refreshAllNodes()
-        toast.success(TOAST_MESSAGES.DELETE_SUCCESS)
+        toast.success(deleteSuccessMessage(title))
         return true
       } catch (error) {
         toast.error(serviceErrorMessage(error))
         return false
       }
     },
-    [service, role, refreshAllNodes]
+    [service, role, refreshAllNodes, nodes]
   )
 
   /** Batch-save the whole canvas (Req 3.10/3.11). */
@@ -394,25 +403,27 @@ export function useBuilderCanvas(
       await service.saveRoadmap(roadmapId, nodes, role)
       setIsDirty(false)
       void refreshAllNodes()
-      toast.success(TOAST_MESSAGES.SAVE_SUCCESS)
+      const title = roadmap?.title || "roadmap"
+      toast.success(saveSuccessMessage(title))
     } catch (error) {
       // Canvas state is intentionally left untouched (Req 3.11).
       toast.error(serviceErrorMessage(error))
     } finally {
       setIsSaving(false)
     }
-  }, [isSaving, service, roadmapId, nodes, role, refreshAllNodes])
+  }, [isSaving, service, roadmapId, nodes, role, refreshAllNodes, roadmap])
 
   const deleteRoadmap = useCallback(async (): Promise<boolean> => {
     try {
+      const title = roadmap?.title || "roadmap"
       await service.deleteRoadmap(roadmapId, role)
-      toast.success(TOAST_MESSAGES.DELETE_SUCCESS)
+      toast.success(deleteSuccessMessage(title))
       return true
     } catch (error) {
       toast.error(serviceErrorMessage(error))
       return false
     }
-  }, [service, roadmapId, role])
+  }, [service, roadmapId, role, roadmap])
 
   const togglePublish = useCallback(async () => {
     if (!roadmap) return

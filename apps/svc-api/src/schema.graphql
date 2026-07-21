@@ -82,6 +82,8 @@ type Query {
   roadmapGraph(slug: String!): RoadmapGraph
   roadmapGraphById(id: ID!): RoadmapGraph
   allNodes: [RoadmapNode!]!
+  publicBlocks: [RoadmapNode!]!
+  publicBlockGraph(id: ID!): RoadmapGraph
   myProgress: [RoadmapProgress!]!
   notionDoc(id: ID!): NotionDoc
   notionDocBySlug(slug: String!): NotionDoc

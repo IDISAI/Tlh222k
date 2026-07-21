@@ -51,6 +51,18 @@ export class RoadmapResolver {
     return this.service.allNodes(user)
   }
 
+  // Public LEGO inventory — every published role/skill block, no auth.
+  @Query("publicBlocks")
+  publicBlocks() {
+    return this.service.publicBlocks()
+  }
+
+  // Public per-block composition (viewer drill) — one block + direct children.
+  @Query("publicBlockGraph")
+  publicBlockGraph(@Args("id") id: string) {
+    return this.service.publicBlockGraph(id)
+  }
+
   @Query("myProgress")
   myProgress(@CurrentUser() user: CurrentUserType | null) {
     return this.service.myProgress(user)

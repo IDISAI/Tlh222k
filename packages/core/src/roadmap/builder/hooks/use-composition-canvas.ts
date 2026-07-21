@@ -13,7 +13,13 @@ import type {
   RoadmapNode,
   UpdateNodeInput,
 } from "../../types"
-import { TOAST_MESSAGES, serviceErrorMessage } from "../utils/toast-messages"
+import {
+  TOAST_MESSAGES,
+  serviceErrorMessage,
+  createSuccessMessage,
+  updateSuccessMessage,
+  deleteSuccessMessage,
+} from "../utils/toast-messages"
 
 /** A member block resolved to its node plus its position on this canvas. */
 export interface CompositionMemberNode {
@@ -119,8 +125,8 @@ export function useCompositionCanvas(
     const comp = await service.getComposition(ownerId, { callerRole: role })
     setComposition(comp)
     pushHistory(comp)
-    await refreshNodes()
-  }, [service, ownerId, role, pushHistory, refreshNodes])
+    // No need to call refreshNodes here - let callers decide if they need it
+  }, [service, ownerId, role, pushHistory])
 
   const undo = useCallback(async () => {
     if (historyIdxRef.current <= 0) return
@@ -158,13 +164,13 @@ export function useCompositionCanvas(
         const comp = await service.addMember(ownerId, nodeId, position, role)
         setComposition(comp)
         pushHistory(comp)
-        await refreshNodes()
+        // No need to refreshNodes - composition already updated, membership change doesn't affect allNodes
         toast.success("Đã thêm vào canvas")
       } catch (error) {
         toast.error(serviceErrorMessage(error))
       }
     },
-    [service, ownerId, role, pushHistory, refreshNodes]
+    [service, ownerId, role, pushHistory]
   )
 
   const removeFromCanvas = useCallback(
@@ -173,13 +179,13 @@ export function useCompositionCanvas(
         const comp = await service.removeFromCanvas(ownerId, nodeId, role)
         setComposition(comp)
         pushHistory(comp)
-        await refreshNodes()
+        // No need to refreshNodes - composition already updated, membership change doesn't affect allNodes
         toast.success("Đã gỡ khỏi canvas")
       } catch (error) {
         toast.error(serviceErrorMessage(error))
       }
     },
-    [service, ownerId, role, pushHistory, refreshNodes]
+    [service, ownerId, role, pushHistory]
   )
 
   /** Optimistic position update; persisted in the background on drag stop. */
@@ -213,8 +219,8 @@ export function useCompositionCanvas(
       try {
         const node = await service.createBlock({ ...input, ownerId }, role)
         await refreshComposition()
-        await refreshNodes()
-        toast.success(TOAST_MESSAGES.CREATE_SUCCESS)
+        await refreshNodes() // Need to refresh nodes after creating a new block
+        toast.success(createSuccessMessage(input.title))
         return node
       } catch (error) {
         toast.error(serviceErrorMessage(error))
@@ -234,7 +240,7 @@ export function useCompositionCanvas(
       try {
         node = await service.createArticle(input, role)
         await refreshNodes()
-        toast.success(TOAST_MESSAGES.CREATE_SUCCESS)
+        toast.success(createSuccessMessage(input.title))
       } catch (error) {
         toast.error(serviceErrorMessage(error))
         return null
@@ -289,17 +295,19 @@ export function useCompositionCanvas(
   const deleteBlockPermanent = useCallback(
     async (nodeId: string): Promise<boolean> => {
       try {
+        const node = allNodes.find((n) => n.id === nodeId)
+        const title = node?.title || "node"
         await service.deleteBlockPermanent(nodeId, role)
         await refreshComposition()
-        await refreshNodes()
-        toast.success(TOAST_MESSAGES.DELETE_SUCCESS)
+        await refreshNodes() // Need to refresh nodes after permanent delete
+        toast.success(deleteSuccessMessage(title))
         return true
       } catch (error) {
         toast.error(serviceErrorMessage(error))
         return false
       }
     },
-    [service, role, refreshComposition, refreshNodes]
+    [service, role, refreshComposition, refreshNodes, allNodes]
   )
 
   const addEdge = useCallback(
@@ -357,7 +365,9 @@ export function useCompositionCanvas(
             await onSyncPublish(notionKey, input.isPublished).catch(console.error)
           }
         }
-        toast.success(TOAST_MESSAGES.UPDATE_SUCCESS)
+        const node = allNodes.find((n) => n.id === id)
+        const title = node?.title || "node"
+        toast.success(updateSuccessMessage(title))
         return true
       } catch (error) {
         toast.error(serviceErrorMessage(error))

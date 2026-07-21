@@ -49,13 +49,23 @@ export function deriveCompositionFromNodes(
   const roadmapId = owner.roadmapId
 
   let memberNodes: RoadmapNode[] = []
-  if (owner.parentId === null) {
-    // Root canvas: shows all other non-article, non-deleted nodes in the same roadmap
+  if (owner.nodeType === "chapter") {
+    // Chapter detail page: its DIRECT children (the articles) render ON the
+    // canvas — this is the only place an article appears as a canvas node.
     memberNodes = nodes.filter(
-      (n) => n.roadmapId === roadmapId && n.id !== ownerId && !n.isDeleted && n.nodeType !== "article"
+      (n) => n.parentId === ownerId && !n.isDeleted
+    )
+  } else if (owner.parentId === null) {
+    // Root canvas: all other non-article, non-deleted nodes in the same roadmap.
+    memberNodes = nodes.filter(
+      (n) =>
+        n.roadmapId === roadmapId &&
+        n.id !== ownerId &&
+        !n.isDeleted &&
+        n.nodeType !== "article"
     )
   } else {
-    // Sub-canvas: shows only descendants of the owner
+    // Sub-canvas: only descendants of the owner (blocks, never articles).
     const descendants = getDescendants(ownerId, nodes)
     memberNodes = nodes.filter(
       (n) => descendants.has(n.id) && !n.isDeleted && n.nodeType !== "article"

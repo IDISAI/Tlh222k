@@ -259,23 +259,26 @@ export class RoadmapService implements OnModuleInit {
     slug: string,
     user: CurrentUser | null
   ): Promise<GraphDto | null> {
+    const isAdmin = user?.role === "admin" || user?.role === "super-admin"
     const roadmap = await this.prisma.roadmap.findUnique({ where: { slug } })
 
-    if (roadmap) {
-      // Non-admin users (viewers/guests) must not see unpublished roadmaps.
-      const isAdmin = user?.role === "admin" || user?.role === "super-admin"
-      if (!roadmap.isPublished && !isAdmin) return null
-
+    // Use the container Roadmap only when it is visible AND still has nodes. An
+    // orphaned/unpublished record (e.g. a block spun out of the table then
+    // dragged into another canvas, leaving an empty same-slug roadmap) must NOT
+    // shadow the real block node — fall through to the node lookup below.
+    if (roadmap && (roadmap.isPublished || isAdmin)) {
       const nodes = await this.activeNodesOf(roadmap.id)
-      return this.buildGraph(
-        this.toRoadmapDto(roadmap, nodes.length),
-        nodes,
-        await this.progressMap(user, nodes)
-      )
+      if (nodes.length > 0) {
+        return this.buildGraph(
+          this.toRoadmapDto(roadmap, nodes.length),
+          nodes,
+          await this.progressMap(user, nodes)
+        )
+      }
     }
 
     // Node-slug navigation: role/skill/chapter slug → node + its subtree
-    // (chapter → its article children).
+    // (chapter → its article children). A block IS a roadmap (LEGO).
     const node = await this.prisma.node.findFirst({
       where: {
         slug,
@@ -285,13 +288,12 @@ export class RoadmapService implements OnModuleInit {
     })
     if (!node) return null
 
-    // The parent roadmap must be published for non-admin viewers.
-    const isAdmin = user?.role === "admin" || user?.role === "super-admin"
+    // The block (or its parent roadmap) must be published for non-admin viewers.
     if (!isAdmin) {
       const parentRoadmap = await this.prisma.roadmap.findUnique({
         where: { id: node.roadmapId },
       })
-      if (!parentRoadmap?.isPublished) return null
+      if (!node.isPublished && !parentRoadmap?.isPublished) return null
     }
 
     const subtree = await this.subtreeOf(node)
@@ -341,6 +343,66 @@ export class RoadmapService implements OnModuleInit {
     assertCanWrite(user)
     const nodes = await this.prisma.node.findMany({ orderBy: { order: "asc" } })
     return this.attachComputed(nodes, {})
+  }
+
+  /**
+   * PUBLIC LEGO inventory: every published role/skill block. A block IS a
+   * roadmap (LEGO — independent + reusable), so the web home lists all of them,
+   * not just top-level ones. No auth; only published, non-deleted blocks leak.
+   * childrenCount is the direct-child count across the whole tree (card "N chủ đề").
+   */
+  async publicBlocks(): Promise<NodeDto[]> {
+    const all = await this.prisma.node.findMany({
+      where: { isDeleted: false },
+      orderBy: { order: "asc" },
+    })
+    const childCount = new Map<string, number>()
+    for (const n of all) {
+      if (n.parentId) {
+        childCount.set(n.parentId, (childCount.get(n.parentId) ?? 0) + 1)
+      }
+    }
+    return all
+      .filter(
+        (n) =>
+          n.isPublished && (n.nodeType === "role" || n.nodeType === "skill")
+      )
+      .map((n) => this.toNodeDto(n, "locked", childCount.get(n.id) ?? 0))
+  }
+
+  /**
+   * PUBLIC per-block composition (viewer ⇄ builder sync). Returns ONE block
+   * (by node id) plus its DIRECT children — the same single-level canvas the
+   * admin builder shows: block blocks render on the canvas, article children
+   * feed the detail panel. Drilling into a member fetches ITS block graph.
+   * No auth; the block (or its container roadmap) must be published.
+   */
+  async publicBlockGraph(id: string): Promise<GraphDto | null> {
+    const node = await this.prisma.node.findUnique({ where: { id } })
+    if (!node || node.isDeleted || node.nodeType === "article") return null
+    if (!node.isPublished) {
+      const parent = await this.prisma.roadmap.findUnique({
+        where: { id: node.roadmapId },
+      })
+      if (!parent?.isPublished) return null
+    }
+    // Return the WHOLE roadmap's nodes so the web viewer derives the exact same
+    // composition (deriveCompositionFromNodes) the admin builder renders — one
+    // shared derive keeps viewer ⇄ builder in sync.
+    const roadmapNodes = await this.prisma.node.findMany({
+      where: { roadmapId: node.roadmapId, isDeleted: false },
+      orderBy: { order: "asc" },
+    })
+    const synthetic: RoadmapDto = {
+      id: node.id,
+      slug: node.slug,
+      title: node.title,
+      description: node.description,
+      thumbnailUrl: null,
+      isPublished: true,
+      nodeCount: roadmapNodes.length,
+    }
+    return this.buildGraph(synthetic, roadmapNodes, {})
   }
 
   async myProgress(user: CurrentUser | null): Promise<

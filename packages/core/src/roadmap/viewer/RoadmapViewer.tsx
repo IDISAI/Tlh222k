@@ -55,8 +55,12 @@ export function RoadmapViewer({
   const [loading, setLoading] = useState(initialGraph === null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
 
+  // LEGO per-block viewer: `slug` is the block NODE id from the home card.
+  // Resolve its single-level composition; fall back to the legacy slug graph.
   const refetch = useCallback(
-    () => service.graphBySlug(slug, { authenticated: false }),
+    async () =>
+      (await service.publicBlockGraph(slug)) ??
+      (await service.graphBySlug(slug, { authenticated: false })),
     [slug]
   )
 
@@ -94,9 +98,23 @@ export function RoadmapViewer({
 
   const nodes = useMemo<RoadmapNode[]>(() => graph?.nodes ?? [], [graph])
   const selectedNode = nodes.find((n) => n.id === selectedId) ?? null
+  const ownerId = graph?.roadmap.id
 
   const handleNodeClick = useCallback(
     (node: RoadmapNode) => {
+      // LEGO drill: clicking a MEMBER block (not the owner) opens ITS per-block
+      // viewer — the same drill the admin builder does, keeping viewer ⇄ builder
+      // in sync. The owner and articles fall through to the detail panel.
+      if (
+        node.id !== ownerId &&
+        (node.nodeType === "role" ||
+          node.nodeType === "skill" ||
+          node.nodeType === "chapter")
+      ) {
+        const base = window.location.pathname.replace(/\/[^/]+\/?$/, "")
+        window.location.assign(`${base}/${node.id}`)
+        return
+      }
       // notion-article-node Req 6.1/6.2: a LINKED notion article navigates
       // straight into the read-only workspace; an unlinked one is inert.
       if (node.nodeType === "article" && node.articleType === "notion") {
@@ -113,7 +131,7 @@ export function RoadmapViewer({
       }
       setSelectedId(node.id)
     },
-    [nodes, notionBasePath]
+    [nodes, notionBasePath, ownerId]
   )
 
   return (

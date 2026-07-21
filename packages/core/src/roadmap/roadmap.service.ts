@@ -71,10 +71,34 @@ const clone = <T>(value: T): T =>
  * swapped for Apollo calls without touching callers.
  */
 export class RoadmapService {
-  // ponytail: → `roadmaps` query
+  // ponytail: → `publicBlocks` query
   async list(): Promise<Roadmap[]> {
     await delay()
-    return getStore().roadmaps.filter((r) => r.isPublished)
+    // LEGO: a role/skill block IS a roadmap (independent + reusable), so the
+    // public home lists EVERY published block — not container Roadmap records.
+    const nodes = getStore().nodes
+    const childCount = new Map<string, number>()
+    for (const n of nodes) {
+      if (n.parentId && !n.isDeleted) {
+        childCount.set(n.parentId, (childCount.get(n.parentId) ?? 0) + 1)
+      }
+    }
+    return nodes
+      .filter(
+        (n) =>
+          !n.isDeleted &&
+          n.isPublished === true &&
+          (n.nodeType === "role" || n.nodeType === "skill")
+      )
+      .map((n) => ({
+        id: n.id,
+        slug: n.slug,
+        title: n.title,
+        description: n.description,
+        thumbnailUrl: null,
+        isPublished: true,
+        nodeCount: childCount.get(n.id) ?? 0,
+      }))
   }
 
   // ponytail: → `roadmaps(includeUnpublished: true)` query — admin list (Req 1.1)
@@ -152,6 +176,36 @@ export class RoadmapService {
       status: opts.authenticated ? (opts.progress?.[n.id] ?? "locked") : "locked",
     }))
     return { roadmap: base.roadmap, nodes }
+  }
+
+  /**
+   * PUBLIC per-block composition (viewer ⇄ builder sync): one block + its DIRECT
+   * children (blocks render on the canvas, articles feed the detail panel).
+   * Drilling into a member fetches ITS block graph. Mirrors svc-api
+   * `publicBlockGraph`. ponytail: → `publicBlockGraph(id)` query.
+   */
+  async publicBlockGraph(id: string): Promise<RoadmapGraph | null> {
+    await delay()
+    const store = getStore()
+    const node = store.nodes.find((n) => n.id === id && !n.isDeleted)
+    if (!node || node.nodeType === "article" || !node.isPublished) return null
+    // Whole roadmap's nodes so the web viewer derives the same composition the
+    // admin builder renders (shared deriveCompositionFromNodes).
+    const roadmapNodes = store.nodes.filter(
+      (n) => n.roadmapId === node.roadmapId && !n.isDeleted
+    )
+    return {
+      roadmap: {
+        id: node.id,
+        slug: node.slug,
+        title: node.title,
+        description: node.description,
+        thumbnailUrl: null,
+        isPublished: true,
+        nodeCount: roadmapNodes.length,
+      },
+      nodes: roadmapNodes.map((n) => ({ ...n, status: "locked" as const })),
+    }
   }
 
   /**

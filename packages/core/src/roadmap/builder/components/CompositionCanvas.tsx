@@ -123,7 +123,7 @@ function CompositionCanvasInner({
         type: "builderNode",
         position: prevById.get(owner.id)?.position ?? { x: owner.positionX, y: owner.positionY },
         data: { node: owner },
-        draggable: false,
+        draggable: true,
         selectable: true,
       })
       for (const m of canvas.memberNodes) {
@@ -159,8 +159,16 @@ function CompositionCanvasInner({
       setIsDragging(false)
       const moved = dragged.length > 0 ? dragged : [node]
       for (const n of moved) {
-        // The owner is pinned — only member positions persist.
-        if (n.id !== ownerId) canvas.moveMember(n.id, n.position)
+        if (n.id === ownerId) {
+          // Owner movement: update the owner node's position
+          void canvas.updateNodeMeta(ownerId, {
+            positionX: n.position.x,
+            positionY: n.position.y,
+          })
+        } else {
+          // Member movement: update composition member position
+          canvas.moveMember(n.id, n.position)
+        }
       }
     },
     [canvas, ownerId]

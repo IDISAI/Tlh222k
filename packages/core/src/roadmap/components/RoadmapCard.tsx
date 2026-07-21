@@ -3,11 +3,15 @@ import type { FC } from "react"
 import type { Roadmap } from "../types"
 import { truncateDescription } from "../utils/truncate-description"
 
-/** Bento card for a roadmap. Root-absolute <a> so it works from any zone. */
+/**
+ * Bento card for a roadmap block. LEGO: a card IS a block, so it links by the
+ * block's NODE id (`roadmap.id`) to the per-block viewer — not the slug, which
+ * an orphaned container roadmap can shadow. Root-absolute <a> works from any zone.
+ */
 export const RoadmapCard: FC<{ roadmap: Roadmap }> = ({ roadmap }) => {
   return (
     <a
-      href={`/roadmap/${roadmap.slug}`}
+      href={`/roadmap/${roadmap.id}`}
       className="block overflow-hidden rounded-xl border-4 border-black bg-white shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] transition-all duration-300 hover:-translate-y-1 dark:border-zinc-800 dark:bg-zinc-900 dark:shadow-[6px_6px_0px_0px_rgba(255,255,255,0.1)]"
     >
       <div className="flex aspect-video w-full items-center justify-center overflow-hidden border-b-4 border-black bg-muted dark:border-zinc-800">
