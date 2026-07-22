@@ -166,6 +166,30 @@ describe("useVisualization", () => {
     expect(state()).toBe("closed")
   })
 
+  it("drops a result that arrives after the host unmounted", async () => {
+    let settle: ((value: typeof FIXTURE_TRACE) => void) | undefined
+    const createTrace = vi
+      .fn<TraceFactory>()
+      .mockImplementation(() => new Promise((resolve) => (settle = resolve)))
+    const errors: unknown[] = []
+    const original = console.error
+    console.error = (...args: unknown[]) => errors.push(args)
+    try {
+      const { unmount } = render(
+        <Harness cells={{ a: READY }} createTrace={createTrace} />
+      )
+      fireEvent.click(screen.getByText("open"))
+      unmount()
+      settle!(FIXTURE_TRACE)
+      await Promise.resolve()
+      await Promise.resolve()
+    } finally {
+      console.error = original
+    }
+
+    expect(errors).toEqual([])
+  })
+
   it("drops a late result from a superseded request", async () => {
     let settle: ((value: typeof FIXTURE_TRACE) => void) | undefined
     const createTrace = vi

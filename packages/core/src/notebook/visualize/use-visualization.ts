@@ -81,11 +81,21 @@ export function useVisualization<Cell extends VisualizationCellState>({
   // request the user is waiting on (open A, open B, A resolves afterwards).
   // Only ever written from callbacks, never during render.
   const token = useRef(0)
+  // Navigating away mid-trace resolves the promise after unmount; landing it
+  // then is a React warning and a pointless render.
+  const mounted = useRef(true)
+  useEffect(() => {
+    mounted.current = true
+    return () => {
+      mounted.current = false
+    }
+  }, [])
 
   const request = useCallback(
     (cellId: string, source: string, runId: number | null) => {
       const engineLanguage = traceLanguage(language)
       const issued = ++token.current
+      const landed = () => mounted.current && token.current === issued
       if (!createTrace || !engineLanguage) {
         setActive({ cellId, source, runId, trace: null, loading: false })
         return
@@ -93,11 +103,11 @@ export function useVisualization<Cell extends VisualizationCellState>({
       setActive({ cellId, source, runId, trace: null, loading: true })
       createTrace({ language: engineLanguage, source }).then(
         (trace) => {
-          if (token.current === issued)
+          if (landed())
             setActive({ cellId, source, runId, trace, loading: false })
         },
         (error: unknown) => {
-          if (token.current === issued)
+          if (landed())
             setActive({
               cellId,
               source,
