@@ -7,6 +7,7 @@ import { useAuth } from "@clerk/nextjs"
 import { Globe, Plus, Trash2 } from "lucide-react"
 
 import { HttpNotebookStore, type NotebookSummary } from "@workspace/core"
+import { devAuthRole } from "@workspace/core/navigation/role"
 import { slugify } from "@workspace/core/notebook/utils/slugify"
 import { Button } from "@workspace/ui/components/button"
 import { Input } from "@workspace/ui/components/input"
@@ -19,7 +20,28 @@ const KERNEL_SERVER_URL = process.env.NEXT_PUBLIC_KERNEL_SERVER_URL
  * resolved at runtime for the web-host multi-zone case.
  */
 export function NotebooksIndexClient() {
+  // The dev bypass skips <ClerkProvider> (see app/layout.tsx), so useAuth would
+  // throw. Route around Clerk entirely in that mode, like the editor client.
+  const isDev =
+    devAuthRole(process.env.NODE_ENV, process.env.NEXT_PUBLIC_DEV_AUTH_ROLE) !==
+    null
+  return isDev ? (
+    <NotebooksIndex getToken={async () => "dev-token"} />
+  ) : (
+    <ClerkNotebooksIndex />
+  )
+}
+
+function ClerkNotebooksIndex() {
   const { getToken } = useAuth()
+  return <NotebooksIndex getToken={getToken} />
+}
+
+function NotebooksIndex({
+  getToken,
+}: {
+  getToken: () => Promise<string | null>
+}) {
   const router = useRouter()
   const store = useMemo(() => {
     if (KERNEL_SERVER_URL) return new HttpNotebookStore(KERNEL_SERVER_URL, getToken)
