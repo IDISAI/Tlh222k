@@ -71,14 +71,96 @@ describe("createPythonTraceBootstrap", () => {
     }
   )
 
+  pythonIt("bounds int subclasses that lie about their own magnitude", () => {
+    const result = runTrace(
+      [
+        "class Sneaky(int):",
+        "    def __le__(self, other):",
+        "        return True",
+        "    def __ge__(self, other):",
+        "        return True",
+        "    def __str__(self):",
+        '        return "1"',
+        "value = Sneaky(9007199254740993)",
+        "marker = 1",
+      ].join("\n")
+    )
+
+    expect(result.error).toBeUndefined()
+    expect(
+      result.steps[result.steps.length - 1]?.frames[0]?.locals.value
+    ).toEqual({ kind: "truncated", preview: "9007199254740993" })
+  })
+
+  pythonIt("keeps tracing after the cell mutates the json module", () => {
+    const result = runTrace(
+      [
+        "import json",
+        'json.dumps = lambda *args, **kwargs: "hijacked"',
+        'json.loads = lambda *args, **kwargs: {"source": "raise SystemExit()"}',
+        "value = 41 + 1",
+      ].join("\n")
+    )
+
+    expect(result.error).toBeUndefined()
+    expect(
+      result.steps[result.steps.length - 1]?.frames[0]?.locals.value
+    ).toEqual({ kind: "primitive", value: 42 })
+  })
+
+  pythonIt("keeps tracing when a metaclass blocks __name__ access", () => {
+    const sourceLines = [
+      "class Meta(type):",
+      "    def __getattribute__(cls, name):",
+      '        if name == "__name__":',
+      '            raise RuntimeError("blocked")',
+      "        return type.__getattribute__(cls, name)",
+      "class Hostile(metaclass=Meta):",
+      "    pass",
+      "value = Hostile()",
+      "marker = 1",
+    ]
+    const result = runTrace(sourceLines.join("\n"))
+
+    expect(result.error).toBeUndefined()
+    expect(result.steps.some((step) => step.line === sourceLines.length)).toBe(
+      true
+    )
+    const finalStep = result.steps[result.steps.length - 1]
+    expect(finalStep?.frames[0]?.locals.marker).toEqual({
+      kind: "primitive",
+      value: 1,
+    })
+    const local = finalStep?.frames[0]?.locals.value
+    expect(local).toMatchObject({ kind: "reference" })
+    const id = local?.kind === "reference" ? local.id : undefined
+    expect(finalStep?.heap.find((node) => node.id === id)?.type).toBe("object")
+    expect(JSON.stringify(result)).not.toContain("blocked")
+  })
+
   pythonIt(
-    "aborts an infinite cell at the exact step limit",
+    "caps captured steps without injecting an exception into user code",
     () => {
-      const result = runTrace("while True:\n    pass", 10_000)
+      const result = runTrace(
+        [
+          "caught = False",
+          "try:",
+          `    for index in range(${TRACE_LIMITS.maxSteps * 2}):`,
+          "        value = index",
+          "except:",
+          "    caught = True",
+          'print("caught=" + str(caught))',
+          "done = True",
+        ].join("\n"),
+        10_000
+      )
 
       expect(result.truncated).toBe(true)
       expect(result.steps).toHaveLength(TRACE_LIMITS.maxSteps)
       expect(result.error).toBeUndefined()
+      expect(result.steps[result.steps.length - 1]?.stdout).toEqual([
+        "caught=False",
+      ])
     },
     15_000
   )
@@ -134,16 +216,24 @@ describe("createPythonTraceBootstrap", () => {
   )
 
   pythonIt(
-    "keeps frame and heap identities stable across object lifecycles",
+    "keeps observable identities stable without retaining returned frames",
     () => {
       const callCount = 12
       const result = runTrace(
         [
+          "collected = 0",
+          "class Ephemeral:",
+          "    def __del__(self):",
+          "        global collected",
+          "        collected += 1",
           "def build(value):",
-          '    current = {"value": value}',
+          "    current = Ephemeral()",
           "    marker = value",
+          "    return None",
           `for index in range(${callCount}):`,
           "    build(index)",
+          "    marker = index",
+          "observed = collected",
         ].join("\n")
       )
 
@@ -156,17 +246,9 @@ describe("createPythonTraceBootstrap", () => {
         )
       )
       expect(frameIds.size).toBe(callCount)
-
-      const finalHeap = result.steps[result.steps.length - 1]?.heap ?? []
-      const objectValues = finalHeap
-        .filter((node) => node.type === "dict")
-        .map((node) => node.fields.value)
-        .filter((value) => value?.kind === "primitive")
-        .map((value) => value.value)
-        .sort((left, right) => Number(left) - Number(right))
-      expect(objectValues).toEqual(
-        Array.from({ length: callCount }, (_, index) => index)
-      )
+      expect(
+        result.steps[result.steps.length - 1]?.frames[0]?.locals.observed
+      ).toEqual({ kind: "primitive", value: callCount })
     }
   )
 
@@ -358,6 +440,50 @@ describe("createPythonTraceBootstrap", () => {
     }
   )
 
+  pythonIt(
+    "marks public-name scans that exhaust their inspection budget",
+    () => {
+      const hiddenCount = TRACE_LIMITS.maxCollectionEntries * 5
+      const result = runTrace(
+        [
+          "class Bag:",
+          "    pass",
+          "value = Bag()",
+          `for index in range(${hiddenCount}):`,
+          '    setattr(value, f"_hidden_{index}", index)',
+          '    globals()[f"_global_hidden_{index}"] = index',
+          'value.public_after_limit = "unscanned"',
+          'visible_after_limit = "unscanned"',
+        ].join("\n")
+      )
+
+      const step = result.steps[result.steps.length - 1]
+      expect(step?.frames[0]?.locals["<truncated>"]).toEqual({
+        kind: "truncated",
+        preview: "local scan limit",
+      })
+      const local = step?.frames[0]?.locals.value
+      const id = local?.kind === "reference" ? local.id : undefined
+      const node = step?.heap.find((candidate) => candidate.id === id)
+      expect(node?.fields["<truncated>"]).toEqual({
+        kind: "truncated",
+        preview: "attribute scan limit",
+      })
+
+      const publicResult = runTrace(
+        [
+          `for index in range(${TRACE_LIMITS.maxCollectionEntries + 5}):`,
+          '    globals()[f"visible_{index}"] = index',
+        ].join("\n")
+      )
+      expect(
+        publicResult.steps[publicResult.steps.length - 1]?.frames[0]?.locals[
+          "<truncated>"
+        ]
+      ).toEqual({ kind: "truncated", preview: "local scan limit" })
+    }
+  )
+
   pythonIt("serializes syntax and runtime errors as trace results", () => {
     const syntax = runTrace("if True print('broken')")
     const runtime = runTrace("raise ValueError('boom')")
@@ -431,28 +557,44 @@ describe("createPythonTraceBootstrap", () => {
   })
 
   pythonIt("guards sys reached through builtins and importlib", () => {
-    const result = runTrace(
-      [
-        "import builtins",
-        'direct = builtins.__import__("sys")',
-        "direct.settrace(None)",
-        "direct.stdout = None",
-        'via_modules = direct.modules["sys"]',
-        "via_modules.settrace(None)",
-        "via_modules.stdout = None",
-        "import importlib",
-        'indirect = importlib.import_module("sys")',
-        "indirect.settrace(None)",
-        "indirect.stdout = None",
-        "before = 1",
-        'print("guarded")',
-        "after = 2",
-      ].join("\n")
-    )
+    const sourceLines = [
+      "import builtins",
+      'direct = builtins.__import__("sys")',
+      "try:",
+      '    backing = object.__getattribute__(direct, "_module")',
+      "except AttributeError:",
+      "    backing = None",
+      'reflected = getattr(direct, "_module", None)',
+      'dictionary_backing = vars(direct).get("_module")',
+      "reflection_safe = backing is None and reflected is None and dictionary_backing is None",
+      "if backing is not None:",
+      "    backing.settrace(None)",
+      "    backing.stdout = None",
+      "direct.settrace(None)",
+      "direct.stdout = None",
+      'via_modules = direct.modules["sys"]',
+      "via_modules.settrace(None)",
+      "via_modules.stdout = None",
+      "import importlib",
+      'indirect = importlib.import_module("sys")',
+      "indirect.settrace(None)",
+      "indirect.stdout = None",
+      "before = 1",
+      'print("guarded")',
+      "after = 2",
+    ]
+    const result = runTrace(sourceLines.join("\n"))
 
     expect(result.error).toBeUndefined()
-    expect(result.steps.some((step) => step.line === 14)).toBe(true)
-    expect(result.steps[result.steps.length - 1]?.stdout).toEqual(["guarded"])
+    expect(result.steps.some((step) => step.line === sourceLines.length)).toBe(
+      true
+    )
+    const finalStep = result.steps[result.steps.length - 1]
+    expect(finalStep?.stdout).toEqual(["guarded"])
+    expect(finalStep?.frames[0]?.locals.reflection_safe).toEqual({
+      kind: "primitive",
+      value: true,
+    })
   })
 
   it("installs a bounded tracer with guaranteed cleanup", () => {
@@ -477,14 +619,19 @@ describe("createPythonTraceBootstrap", () => {
   it("serializes bounded, cycle-safe JSON state without private locals", () => {
     const bootstrap = createPythonTraceBootstrap("items = []")
 
-    expect(bootstrap).toContain("__codex_object_ids")
+    expect(bootstrap).toContain("__codex_current_objects")
+    expect(bootstrap).toContain("__codex_previous_objects")
+    expect(bootstrap).toContain("__codex_active_frames")
+    expect(bootstrap).not.toContain("__codex_retained_objects")
+    expect(bootstrap).not.toContain("__codex_retained_frames")
     expect(bootstrap).toContain("isinstance(__codex_value, list)")
     expect(bootstrap).toContain("isinstance(__codex_value, tuple)")
     expect(bootstrap).toContain("isinstance(__codex_value, dict)")
     expect(bootstrap).toContain("isinstance(__codex_value, set)")
     expect(bootstrap).toContain("vars(__codex_value)")
     expect(bootstrap).toContain('startswith("_")')
-    expect(bootstrap).toContain("json.dumps(__codex_result")
+    expect(bootstrap).toContain("__codex_json_dumps(__codex_result")
+    expect(bootstrap).toContain("__codex_json_dumps = json.dumps")
     expect(bootstrap).toContain('"language": "python"')
     expect(bootstrap).toContain('"frames"')
     expect(bootstrap).toContain('"heap"')
@@ -497,6 +644,6 @@ describe("createPythonTraceBootstrap", () => {
 
     expect(bootstrap).toContain(JSON.stringify(JSON.stringify({ source })))
     expect(bootstrap).not.toContain(`exec(${source})`)
-    expect(bootstrap).toContain('json.loads(__codex_payload)["source"]')
+    expect(bootstrap).toContain('__codex_json_loads(__codex_payload)["source"]')
   })
 })

@@ -16,6 +16,12 @@ import math
 import sys
 import types
 
+# Bound before user code runs: a traced cell may mutate the real json/math
+# modules, and the tracer must keep working on the originals.
+__codex_json_dumps = json.dumps
+__codex_json_loads = json.loads
+__codex_isfinite = math.isfinite
+
 __codex_payload = ${payload}
 
 def __codex_run():
@@ -27,22 +33,18 @@ def __codex_run():
     MAX_HEAP_NODES = ${TRACE_LIMITS.maxHeapNodes}
     MAX_OUTPUT_LINES = ${TRACE_LIMITS.maxOutputLines}
     MAX_OUTPUT_BYTES = ${TRACE_LIMITS.maxOutputBytes}
-    MAX_SAFE_INTEGER = 9007199254740991
-    __codex_source = json.loads(__codex_payload)["source"]
+    MAX_SAFE_INTEGER_BITS = 53
+    __codex_source = __codex_json_loads(__codex_payload)["source"]
     __codex_steps = []
     __codex_heap_by_id = {}
-    __codex_object_ids = {}
-    __codex_retained_objects = {}
+    __codex_current_objects = {}
+    __codex_previous_objects = {}
     __codex_expanded_ids = set()
-    __codex_frame_ids = {}
-    __codex_retained_frames = {}
+    __codex_active_frames = {}
     __codex_next_object_id = 1
     __codex_next_frame_id = 1
     __codex_result = {"language": "python", "steps": __codex_steps, "truncated": False}
     __codex_original_stdout = sys.stdout
-
-    class __codex_TraceLimit(BaseException):
-        pass
 
     class __codex_OutputCapture:
         def __init__(self):
@@ -84,79 +86,71 @@ def __codex_run():
 
     __codex_stdout = __codex_OutputCapture()
 
-    class __codex_ModuleProxy(types.ModuleType):
-        def __init__(self, __codex_name, __codex_module, __codex_overrides):
-            types.ModuleType.__init__(self, __codex_name)
-            types.ModuleType.__setattr__(self, "_module", __codex_module)
-            types.ModuleType.__setattr__(self, "_overrides", __codex_overrides)
-
-        def __getattr__(self, __codex_name):
-            __codex_overrides = types.ModuleType.__getattribute__(self, "_overrides")
-            if __codex_name in __codex_overrides:
-                return __codex_overrides[__codex_name]
-            __codex_module = types.ModuleType.__getattribute__(self, "_module")
-            return getattr(__codex_module, __codex_name)
-
-        def __setattr__(self, __codex_name, __codex_value):
-            __codex_overrides = types.ModuleType.__getattribute__(self, "_overrides")
-            if __codex_name in __codex_overrides:
-                return
-            __codex_module = types.ModuleType.__getattribute__(self, "_module")
-            setattr(__codex_module, __codex_name, __codex_value)
-
     __codex_real_import = builtins.__import__
+    __codex_safe_builtins = types.ModuleType("builtins")
+    vars(__codex_safe_builtins).update(vars(builtins))
+    __codex_safe_builtins.__import__ = __codex_real_import
 
-    def __codex_ignore_settrace(__codex_trace_fn):
-        return None
+    __codex_helper_globals = {"__builtins__": {"__import__": __codex_real_import}}
+    exec(
+        "def import_module(name, package=None):\n"
+        "    if package is not None and name.startswith('.'):\n"
+        "        raise ImportError('relative imports are unavailable in traced cells')\n"
+        "    return __import__(name, fromlist=['*'])\n"
+        "def ignore_settrace(trace_fn):\n"
+        "    return None\n",
+        __codex_helper_globals,
+    )
 
-    def __codex_import(__codex_name, __codex_globals=None, __codex_locals=None, __codex_fromlist=(), __codex_level=0):
-        __codex_module = __codex_real_import(
-            __codex_name,
-            __codex_globals,
-            __codex_locals,
-            __codex_fromlist,
-            __codex_level,
-        )
-        __codex_root = __codex_name.split(".", 1)[0]
-        if __codex_root == "sys":
-            return __codex_sys_proxy
-        if __codex_root == "builtins":
-            return __codex_builtins_proxy
-        if __codex_root == "importlib":
-            return __codex_importlib_proxy
-        return __codex_module
+    __codex_safe_importlib = types.ModuleType("importlib")
+    __codex_safe_importlib.import_module = __codex_helper_globals["import_module"]
 
-    def __codex_import_module(__codex_name, __codex_package=None):
-        __codex_module = importlib.import_module(__codex_name, __codex_package)
-        __codex_root = __codex_name.split(".", 1)[0]
-        if __codex_root == "sys":
-            return __codex_sys_proxy
-        if __codex_root == "builtins":
-            return __codex_builtins_proxy
-        if __codex_root == "importlib":
-            return __codex_importlib_proxy
-        return __codex_module
-
-    __codex_sys_overrides = {
-        "settrace": __codex_ignore_settrace,
-        "stdout": __codex_stdout,
+    __codex_safe_sys = types.ModuleType("sys")
+    for __codex_name in (
+        "api_version",
+        "base_exec_prefix",
+        "base_prefix",
+        "byteorder",
+        "dont_write_bytecode",
+        "exec_prefix",
+        "executable",
+        "flags",
+        "float_info",
+        "hash_info",
+        "hexversion",
+        "implementation",
+        "int_info",
+        "maxsize",
+        "path",
+        "platform",
+        "prefix",
+        "pycache_prefix",
+        "thread_info",
+        "version",
+        "version_info",
+        "warnoptions",
+    ):
+        if hasattr(sys, __codex_name):
+            __codex_value = getattr(sys, __codex_name)
+            if isinstance(__codex_value, list):
+                __codex_value = list(__codex_value)
+            setattr(__codex_safe_sys, __codex_name, __codex_value)
+    __codex_safe_sys.settrace = __codex_helper_globals["ignore_settrace"]
+    __codex_safe_sys.stdout = __codex_stdout
+    __codex_safe_sys.modules = {
+        "builtins": __codex_safe_builtins,
+        "importlib": __codex_safe_importlib,
+        "sys": __codex_safe_sys,
     }
-    __codex_sys_proxy = __codex_ModuleProxy("sys", sys, __codex_sys_overrides)
-    __codex_builtins_proxy = __codex_ModuleProxy(
-        "builtins",
-        builtins,
-        {"__import__": __codex_import},
-    )
-    __codex_importlib_proxy = __codex_ModuleProxy(
-        "importlib",
-        importlib,
-        {"import_module": __codex_import_module},
-    )
-    __codex_modules = dict(sys.modules)
-    __codex_modules["sys"] = __codex_sys_proxy
-    __codex_modules["builtins"] = __codex_builtins_proxy
-    __codex_modules["importlib"] = __codex_importlib_proxy
-    __codex_sys_overrides["modules"] = __codex_modules
+    __codex_guarded_modules = {
+        "builtins": __codex_safe_builtins,
+        "importlib": __codex_safe_importlib,
+        "sys": __codex_safe_sys,
+    }
+    __codex_original_modules = {
+        __codex_name: sys.modules.get(__codex_name)
+        for __codex_name in __codex_guarded_modules
+    }
 
     def __codex_clip(__codex_value, __codex_fallback="<unavailable>"):
         try:
@@ -167,6 +161,14 @@ def __codex_run():
             return __codex_text
         return __codex_text[:MAX_STRING_LENGTH - 3] + "..."
 
+    def __codex_type_name(__codex_value):
+        # A hostile metaclass can make type(x).__name__ raise. Tracing must
+        # never propagate that into the user's own execution.
+        try:
+            return __codex_clip(type(__codex_value).__name__)
+        except BaseException:
+            return "object"
+
     def __codex_attributes(__codex_value):
         try:
             __codex_attrs = vars(__codex_value)
@@ -176,6 +178,12 @@ def __codex_run():
 
     def __codex_truncated(__codex_value):
         return {"kind": "truncated", "preview": __codex_clip(__codex_value)}
+
+    def __codex_mark_scan_limit(__codex_fields, __codex_label):
+        if len(__codex_fields) >= MAX_COLLECTION_ENTRIES:
+            __codex_fields.popitem()
+        __codex_field = __codex_unique_key(__codex_fields, "<truncated>")
+        __codex_fields[__codex_field] = __codex_truncated(__codex_label)
 
     def __codex_key(__codex_value, __codex_index):
         if isinstance(__codex_value, str):
@@ -253,14 +261,16 @@ def __codex_run():
         if __codex_value is None or isinstance(__codex_value, bool):
             return {"kind": "primitive", "value": __codex_value}
         if isinstance(__codex_value, int):
-            if -MAX_SAFE_INTEGER <= __codex_value <= MAX_SAFE_INTEGER:
+            # Unbound int methods only: an int subclass may override comparison
+            # operators, __str__, and __int__ to lie about its magnitude.
+            __codex_bits = int.bit_length(__codex_value)
+            if __codex_bits <= MAX_SAFE_INTEGER_BITS:
                 return {"kind": "primitive", "value": __codex_value}
-            __codex_bits = int.bit_length(abs(__codex_value))
             if __codex_bits > MAX_STRING_LENGTH * 4:
                 return __codex_truncated("<int " + str(__codex_bits) + " bits>")
-            return __codex_truncated(__codex_value)
+            return __codex_truncated(int.__repr__(__codex_value))
         if isinstance(__codex_value, float):
-            if math.isfinite(__codex_value):
+            if __codex_isfinite(__codex_value):
                 return {"kind": "primitive", "value": __codex_value}
             return __codex_truncated("float(" + str(__codex_value) + ")")
         if isinstance(__codex_value, str):
@@ -268,14 +278,21 @@ def __codex_run():
                 return {"kind": "primitive", "value": __codex_value}
             return __codex_truncated(__codex_value)
         if isinstance(__codex_value, (types.ModuleType, type)) or callable(__codex_value):
-            return __codex_truncated("<" + __codex_clip(type(__codex_value).__name__) + ">")
+            return __codex_truncated("<" + __codex_type_name(__codex_value) + ">")
         if __codex_depth >= MAX_DEPTH:
-            return __codex_truncated("<" + __codex_clip(type(__codex_value).__name__) + ">")
+            return __codex_truncated("<" + __codex_type_name(__codex_value) + ">")
 
         __codex_identity = id(__codex_value)
-        __codex_existing = __codex_object_ids.get(__codex_identity)
+        __codex_entry = __codex_current_objects.get(__codex_identity)
+        if __codex_entry is None or __codex_entry[0] is not __codex_value:
+            __codex_entry = __codex_previous_objects.get(__codex_identity)
+        __codex_existing = (
+            __codex_entry[1]
+            if __codex_entry is not None and __codex_entry[0] is __codex_value
+            else None
+        )
         if __codex_existing in __codex_expanded_ids:
-            return {"kind": "reference", "id": __codex_existing, "label": __codex_clip(type(__codex_value).__name__)}
+            return {"kind": "reference", "id": __codex_existing, "label": __codex_type_name(__codex_value)}
 
         if isinstance(__codex_value, list):
             __codex_type = "list"
@@ -288,18 +305,17 @@ def __codex_run():
         else:
             __codex_attrs = __codex_attributes(__codex_value)
             if __codex_attrs is None:
-                return __codex_truncated("<" + __codex_clip(type(__codex_value).__name__) + ">")
-            __codex_type = __codex_clip(type(__codex_value).__name__)
+                return __codex_truncated("<" + __codex_type_name(__codex_value) + ">")
+            __codex_type = __codex_type_name(__codex_value)
 
         if __codex_existing is None:
-            if len(__codex_object_ids) >= MAX_HEAP_NODES:
+            if len(__codex_heap_by_id) >= MAX_HEAP_NODES:
                 return __codex_truncated("<heap limit>")
             __codex_id = "heap-" + str(__codex_next_object_id)
             __codex_next_object_id += 1
-            __codex_object_ids[__codex_identity] = __codex_id
-            __codex_retained_objects[__codex_identity] = __codex_value
         else:
             __codex_id = __codex_existing
+        __codex_current_objects[__codex_identity] = (__codex_value, __codex_id)
         __codex_expanded_ids.add(__codex_id)
         __codex_node = {"id": __codex_id, "type": __codex_type, "fields": {}}
         __codex_heap_by_id[__codex_id] = __codex_node
@@ -345,14 +361,22 @@ def __codex_run():
                     for __codex_index, (_, __codex_item) in enumerate(__codex_items):
                         __codex_node["fields"][str(__codex_index)] = __codex_serialize_value(__codex_item, __codex_depth + 1)
         else:
+            __codex_scan_truncated = False
             for __codex_index, (__codex_name, __codex_item) in enumerate(dict.items(__codex_attrs)):
                 if __codex_index >= MAX_INSPECTED_ENTRIES:
+                    __codex_scan_truncated = True
                     break
                 if isinstance(__codex_name, str) and not __codex_name.startswith("_"):
                     if len(__codex_node["fields"]) >= MAX_COLLECTION_ENTRIES:
+                        __codex_scan_truncated = True
                         break
                     __codex_field = __codex_unique_key(__codex_node["fields"], __codex_name)
                     __codex_node["fields"][__codex_field] = __codex_serialize_value(__codex_item, __codex_depth + 1)
+            if __codex_scan_truncated:
+                __codex_mark_scan_limit(
+                    __codex_node["fields"],
+                    "attribute scan limit",
+                )
 
         return {"kind": "reference", "id": __codex_id, "label": __codex_type}
 
@@ -362,21 +386,30 @@ def __codex_run():
         while __codex_frame is not None and len(__codex_frames) < MAX_DEPTH:
             if __codex_frame.f_code.co_filename == "<cell>":
                 __codex_frame_identity = id(__codex_frame)
-                __codex_frame_id = __codex_frame_ids.get(__codex_frame_identity)
-                if __codex_frame_id is None:
+                __codex_frame_entry = __codex_active_frames.get(__codex_frame_identity)
+                if __codex_frame_entry is None or __codex_frame_entry[0] is not __codex_frame:
                     __codex_frame_id = "frame-" + str(__codex_next_frame_id)
                     __codex_next_frame_id += 1
-                    __codex_frame_ids[__codex_frame_identity] = __codex_frame_id
-                    __codex_retained_frames[__codex_frame_identity] = __codex_frame
+                    __codex_active_frames[__codex_frame_identity] = (
+                        __codex_frame,
+                        __codex_frame_id,
+                    )
+                else:
+                    __codex_frame_id = __codex_frame_entry[1]
                 __codex_locals = {}
+                __codex_scan_truncated = False
                 for __codex_index, (__codex_name, __codex_local) in enumerate(__codex_frame.f_locals.items()):
                     if __codex_index >= MAX_INSPECTED_ENTRIES:
+                        __codex_scan_truncated = True
                         break
                     if isinstance(__codex_name, str) and not __codex_name.startswith("_"):
                         if len(__codex_locals) >= MAX_COLLECTION_ENTRIES:
+                            __codex_scan_truncated = True
                             break
                         __codex_local_name = __codex_unique_key(__codex_locals, __codex_name)
                         __codex_locals[__codex_local_name] = __codex_serialize_value(__codex_local, 0)
+                if __codex_scan_truncated:
+                    __codex_mark_scan_limit(__codex_locals, "local scan limit")
                 __codex_frames.append({
                     "id": __codex_frame_id,
                     "name": __codex_frame.f_code.co_name,
@@ -394,9 +427,12 @@ def __codex_run():
         ]
 
     def __codex_append_step(__codex_frame, __codex_event, __codex_line):
+        nonlocal __codex_current_objects, __codex_previous_objects
         if len(__codex_steps) >= MAX_STEPS:
             __codex_result["truncated"] = True
-            raise __codex_TraceLimit()
+            return False
+        __codex_previous_objects = __codex_current_objects
+        __codex_current_objects = {}
         __codex_expanded_ids.clear()
         __codex_steps.append({
             "index": len(__codex_steps),
@@ -408,13 +444,38 @@ def __codex_run():
         })
         return True
 
+    def __codex_stop_tracing():
+        __codex_result["truncated"] = True
+        try:
+            sys.settrace(None)
+        except BaseException:
+            pass
+        __codex_active_frames.clear()
+
     def __codex_trace(__codex_frame, __codex_event, __codex_arg):
-        if __codex_frame.f_code.co_filename != "<cell>":
-            return __codex_trace
-        if __codex_event not in ("call", "line", "return", "exception"):
-            return __codex_trace
-        sys.stdout = __codex_stdout
-        __codex_append_step(__codex_frame, __codex_event, __codex_frame.f_lineno)
+        try:
+            if __codex_frame.f_code.co_filename != "<cell>":
+                return __codex_trace
+            if __codex_event not in ("call", "line", "return", "exception"):
+                return __codex_trace
+            if len(__codex_steps) >= MAX_STEPS:
+                # Capture cap reached. Stop tracing instead of raising, so a
+                # bare except in the cell cannot fabricate a trace, and the
+                # rest of the cell still runs at full speed.
+                __codex_stop_tracing()
+                return None
+            sys.stdout = __codex_stdout
+            __codex_append_step(__codex_frame, __codex_event, __codex_frame.f_lineno)
+            if __codex_event == "return":
+                __codex_frame_identity = id(__codex_frame)
+                __codex_frame_entry = __codex_active_frames.get(__codex_frame_identity)
+                if __codex_frame_entry is not None and __codex_frame_entry[0] is __codex_frame:
+                    __codex_active_frames.pop(__codex_frame_identity, None)
+        except BaseException:
+            # A tracer failure must degrade to a truncated trace, never surface
+            # inside the user's cell as their own exception.
+            __codex_stop_tracing()
+            return None
         return __codex_trace
 
     def __codex_error_line(__codex_exc):
@@ -437,20 +498,19 @@ def __codex_run():
     try:
         sys.stdout = __codex_stdout
         __codex_globals = {"__name__": "__main__"}
-        __codex_user_builtins = dict(vars(builtins))
-        __codex_user_builtins["__import__"] = __codex_import
+        __codex_user_builtins = dict(vars(__codex_safe_builtins))
         __codex_globals["__builtins__"] = __codex_user_builtins
+        for __codex_name, __codex_module in __codex_guarded_modules.items():
+            sys.modules[__codex_name] = __codex_module
         sys.settrace(__codex_trace)
         exec(compile(__codex_source, "<cell>", "exec"), __codex_globals, __codex_globals)
-    except __codex_TraceLimit:
-        __codex_result["truncated"] = True
     except BaseException as __codex_exc:
         __codex_line = __codex_error_line(__codex_exc)
         __codex_result["error"] = {
-            "name": __codex_clip(type(__codex_exc).__name__),
+            "name": __codex_type_name(__codex_exc),
             "message": __codex_clip(
                 __codex_exc,
-                "<unprintable " + __codex_clip(type(__codex_exc).__name__) + ">",
+                "<unprintable " + __codex_type_name(__codex_exc) + ">",
             ),
         }
         if __codex_line is not None:
@@ -459,9 +519,16 @@ def __codex_run():
             __codex_append_step(None, "exception", __codex_line or 1)
     finally:
         sys.settrace(None)
+        if __codex_result["truncated"] and __codex_steps:
+            __codex_steps[-1]["stdout"] = __codex_stdout.snapshot()
         sys.stdout = __codex_original_stdout
+        for __codex_name, __codex_module in __codex_original_modules.items():
+            if __codex_module is None:
+                sys.modules.pop(__codex_name, None)
+            else:
+                sys.modules[__codex_name] = __codex_module
 
-    return json.dumps(__codex_result, ensure_ascii=False, separators=(",", ":"))
+    return __codex_json_dumps(__codex_result, ensure_ascii=False, separators=(",", ":"))
 
 __codex_trace_result_json = __codex_run()
 __codex_trace_result_json
