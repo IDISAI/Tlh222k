@@ -41,6 +41,19 @@ describe("traceJavaScript", () => {
     expect(lastStep(result)?.stdout).toEqual(["total 3"])
   })
 
+  it("keeps interpreter builtins out of variables and the heap", () => {
+    const result = traceJavaScript(
+      ['console.log("hi")', "const mine = [1]"].join("\n")
+    )
+
+    expect(Object.keys(locals(result))).toEqual(["mine"])
+    for (const name of ["console", "Math", "JSON", "Object", "Array"]) {
+      expect(locals(result)[name]).toBeUndefined()
+    }
+    // Only the user's own array occupies the heap budget.
+    expect(lastStep(result)?.heap).toHaveLength(1)
+  })
+
   it("reports a call stack with per-frame locals", () => {
     const result = traceJavaScript(
       [

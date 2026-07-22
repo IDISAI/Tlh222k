@@ -54,7 +54,9 @@ class Scope {
   constructor(
     readonly parent: Scope | null,
     /** True for the scope a `var` declaration hoists to. */
-    readonly isFunctionScope: boolean
+    readonly isFunctionScope: boolean,
+    /** The interpreter's own globals; never reported as user variables. */
+    readonly isBuiltins = false
   ) {}
 
   declare(name: string, value: unknown, kind: "var" | "let" | "const"): void {
@@ -272,19 +274,23 @@ class Interpreter {
       return result
     }
 
-    const globalScope = new Scope(null, true)
-    installGlobals(globalScope, this.stdout)
+    // Builtins live in a scope *above* the module scope. Locals stop climbing
+    // at the frame root, so console/Math/JSON stay out of the variables panel
+    // and never consume heap-node budget the user's own data needs.
+    const builtinScope = new Scope(null, true, true)
+    installGlobals(builtinScope, this.stdout)
+    const moduleScope = new Scope(builtinScope, true)
     this.frames.push({
       id: `frame-${this.nextFrameId++}`,
       name: "<module>",
-      root: globalScope,
-      current: globalScope,
+      root: moduleScope,
+      current: moduleScope,
       line: 1,
     })
 
     try {
-      this.hoist(program.body as AnyNode[], globalScope)
-      this.execBlockBody(program.body as AnyNode[], globalScope)
+      this.hoist(program.body as AnyNode[], moduleScope)
+      this.execBlockBody(program.body as AnyNode[], moduleScope)
       // Final state: every `line` step is captured before its statement runs,
       // so without this the last statement's effect would never be visible.
       this.pushStep(this.currentLine(), "return")
@@ -1096,8 +1102,10 @@ class Interpreter {
 function collectLocals(frame: Frame): [string, unknown][] {
   const entries: [string, unknown][] = []
   const seen = new Set<string>()
+  // Walks the block scopes the frame opened, stops at the frame's own root, and
+  // never reaches the interpreter's builtins.
   let scope: Scope | null = frame.current
-  while (scope) {
+  while (scope && !scope.isBuiltins) {
     for (const [name, value] of scope.ownEntries()) {
       if (!seen.has(name)) {
         seen.add(name)
