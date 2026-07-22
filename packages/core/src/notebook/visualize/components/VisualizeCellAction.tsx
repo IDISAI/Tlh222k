@@ -27,10 +27,17 @@ export function VisualizeCellAction({
         size="sm"
         variant="outline"
         disabled={comingSoon}
-        title={comingSoon ? "Coming soon for this language" : undefined}
+        // Stable English name for tests and QA automation; the visible label is
+        // the one a Vietnamese ten-year-old actually reads.
+        aria-label="Visualize execution"
+        title={
+          comingSoon
+            ? "Coming soon for this language — Ngôn ngữ này sắp có"
+            : "Xem máy tính chạy từng dòng một"
+        }
         onClick={onVisualize}
       >
-        <Eye className="size-3.5" /> Visualize execution
+        <Eye className="size-3.5" /> Xem chương trình chạy
       </Button>
     </div>
   )

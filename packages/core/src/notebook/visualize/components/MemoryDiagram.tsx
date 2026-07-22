@@ -9,6 +9,7 @@ import { useCallback, useLayoutEffect, useRef, useState } from "react"
 
 import { cn } from "@workspace/ui/lib/utils"
 
+import { heapBadge, typeName, valueText } from "../explain"
 import type { TraceStep, TraceValue } from "../types"
 
 /** One slot → one heap object. `slot` is unique within a step. */
@@ -135,11 +136,14 @@ export function MemoryDiagram({ step }: { step: TraceStep }) {
           the container's overflow-x would otherwise clip. */}
       <div className="relative flex min-w-max gap-8 pr-10">
         <section aria-label="Frames" className="flex flex-col gap-2">
-          <ColumnTitle>Frames</ColumnTitle>
+          <ColumnTitle hint="Mỗi hộp chứa các biến của một phần chương trình.">
+            Hộp biến
+          </ColumnTitle>
           {step.frames.map((frame, index) => (
             <Box
               key={frame.id}
-              title={`${frame.name} · line ${frame.line}`}
+              title={frame.name}
+              subtitle={`dòng ${frame.line}`}
               current={index === step.frames.length - 1}
             >
               {Object.entries(frame.locals).map(([name, value]) => (
@@ -156,13 +160,16 @@ export function MemoryDiagram({ step }: { step: TraceStep }) {
         </section>
 
         <section aria-label="Objects" className="flex flex-col gap-2">
-          <ColumnTitle>Objects</ColumnTitle>
+          <ColumnTitle hint="Những thứ lớn như danh sách được cất ở đây; mũi tên cho biết biến nào đang trỏ tới.">
+            Bộ nhớ
+          </ColumnTitle>
           {step.heap.map((node) => (
             <Box
               key={node.id}
               ref={registerBox(node.id)}
-              title={node.type}
-              subtitle={node.id}
+              badge={heapBadge(node.id)}
+              title={typeName(node.type)}
+              subtitle={node.type}
             >
               {Object.entries(node.fields).map(([field, value]) => (
                 <Slot
@@ -176,7 +183,9 @@ export function MemoryDiagram({ step }: { step: TraceStep }) {
             </Box>
           ))}
           {step.heap.length === 0 && (
-            <p className="text-xs text-muted-foreground">No objects yet.</p>
+            <p className="text-xs text-muted-foreground">
+              Chưa có gì trong bộ nhớ.
+            </p>
           )}
         </section>
       </div>
@@ -184,9 +193,19 @@ export function MemoryDiagram({ step }: { step: TraceStep }) {
   )
 }
 
-function ColumnTitle({ children }: { children: React.ReactNode }) {
+function ColumnTitle({
+  children,
+  hint,
+}: {
+  children: React.ReactNode
+  /** One sentence a ten-year-old can read on hover/long-press. */
+  hint: string
+}) {
   return (
-    <h3 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+    <h3
+      title={hint}
+      className="text-xs font-semibold text-muted-foreground uppercase"
+    >
       {children}
     </h3>
   )
@@ -194,12 +213,15 @@ function ColumnTitle({ children }: { children: React.ReactNode }) {
 
 function Box({
   ref,
+  badge,
   title,
   subtitle,
   current,
   children,
 }: {
   ref?: (el: HTMLElement | null) => void
+  /** Circled number so a child can match an arrow to its box by shape. */
+  badge?: string
   title: string
   subtitle?: string
   /** The innermost frame — where execution is right now. */
@@ -210,13 +232,20 @@ function Box({
     <div
       ref={ref}
       className={cn(
-        "min-w-36 rounded-md border bg-background",
-        current ? "border-primary/60 ring-1 ring-primary/20" : "bg-muted/30"
+        "min-w-36 rounded-lg border-2 bg-background",
+        current
+          ? "border-primary/60 ring-2 ring-primary/15"
+          : "border-border bg-muted/30"
       )}
     >
-      <div className="flex items-baseline gap-1 border-b px-2 py-1 font-mono text-xs">
+      <div className="flex items-baseline gap-1 border-b px-2 py-1 text-xs">
+        {badge && <span className="text-sm text-primary">{badge}</span>}
         <span className="font-semibold">{title}</span>
-        {subtitle && <span className="text-muted-foreground">{subtitle}</span>}
+        {subtitle && (
+          <span className="font-mono text-[0.65rem] text-muted-foreground">
+            {subtitle}
+          </span>
+        )}
       </div>
       <dl className="divide-y">{children}</dl>
     </div>
@@ -234,20 +263,22 @@ function Slot({
 }) {
   const isReference = value.kind === "reference"
   return (
-    <div className="flex items-center gap-2 px-2 py-0.5 font-mono text-xs">
+    <div className="flex items-center gap-2 px-2 py-1 font-mono text-xs">
       <dt className="text-muted-foreground">{label}</dt>
       <dd ref={anchor} className="ml-auto flex items-center gap-1">
         {isReference ? (
           <>
-            <span className="text-muted-foreground">{value.label}</span>
+            <span className="text-muted-foreground">
+              {typeName(value.label)} {heapBadge(value.id)}
+            </span>
             {/* Arrow tail: the SVG path starts at this element's right edge. */}
             <span
               aria-label={`points to ${value.id}`}
-              className="size-1.5 rounded-full bg-primary"
+              className="size-2 rounded-full bg-primary"
             />
           </>
         ) : (
-          <span>{renderValue(value)}</span>
+          <span className="font-semibold">{valueText(value)}</span>
         )}
       </dd>
     </div>
@@ -256,7 +287,7 @@ function Slot({
 
 function EmptyRow() {
   return (
-    <p className="px-2 py-0.5 font-mono text-xs text-muted-foreground">empty</p>
+    <p className="px-2 py-1 text-xs text-muted-foreground">chưa có biến nào</p>
   )
 }
 
@@ -294,18 +325,4 @@ function sweep(start: Point, end: Point): string {
 /** Arrow that loops around the right-hand side; also covers self-references. */
 function loop(start: Point, end: Point, detour: number): string {
   return `M ${start.x} ${start.y} C ${detour} ${start.y}, ${detour} ${end.y}, ${end.x} ${end.y}`
-}
-
-/** Non-reference values render inline; references become arrows instead. */
-export function renderValue(value: TraceValue): string {
-  switch (value.kind) {
-    case "primitive":
-      return typeof value.value === "string"
-        ? JSON.stringify(value.value)
-        : String(value.value)
-    case "reference":
-      return `${value.label} → ${value.id}`
-    case "truncated":
-      return value.preview
-  }
 }

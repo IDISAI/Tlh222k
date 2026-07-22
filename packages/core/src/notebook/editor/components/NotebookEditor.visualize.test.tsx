@@ -162,7 +162,7 @@ describe("NotebookEditor visualization", () => {
     expect(within(panel).getByLabelText("Source lines").textContent).toContain(
       "x = 1"
     )
-    await waitFor(() => expect(panel.textContent).toContain("Step 1 of 3"))
+    await waitFor(() => expect(panel.textContent).toContain("Bước 1 / 3"))
 
     // Cells column first, panel aside last.
     const row = panel.closest("aside")!.parentElement!
@@ -196,7 +196,7 @@ describe("NotebookEditor visualization", () => {
     expect(panel.textContent).not.toContain("not available yet")
 
     fireEvent.click(screen.getByRole("button", { name: "Retry" }))
-    await waitFor(() => expect(panel.textContent).toContain("Step 1 of 3"))
+    await waitFor(() => expect(panel.textContent).toContain("Bước 1 / 3"))
   })
 
   it("closes the panel when the traced source is edited", async () => {

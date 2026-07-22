@@ -60,9 +60,23 @@ describe("VisualizePanel", () => {
     expect(frames.textContent).toContain("3")
 
     const objects = screen.getByLabelText("Objects")
-    expect(objects.textContent).toContain("heap-1")
+    // Numbered badge + Vietnamese type, with the raw type kept for reference.
+    expect(objects.textContent).toContain("①")
+    expect(objects.textContent).toContain("danh sách")
     expect(objects.textContent).toContain("list")
     expect(screen.getByLabelText("Output").textContent).toContain("total 3")
+  })
+
+  it("narrates each step in plain Vietnamese", async () => {
+    const user = userEvent.setup()
+    renderPanel()
+
+    const story = () => screen.getByLabelText("Step explanation").textContent
+    expect(story()).toContain("Chương trình bắt đầu chạy.")
+    expect(story()).toContain("Sắp chạy dòng 1")
+
+    await user.click(screen.getByRole("button", { name: "Last step" }))
+    expect(story()).toContain("Tạo biến total")
   })
 
   it("draws one pointer arrow per reference, including the frame slot", async () => {
@@ -99,7 +113,7 @@ describe("VisualizePanel", () => {
 
     expect(container.querySelectorAll("path[data-to]")).toHaveLength(0)
     expect(screen.getByLabelText("Objects").textContent).toContain(
-      "No objects yet."
+      "Chưa có gì trong bộ nhớ."
     )
   })
 
@@ -116,7 +130,7 @@ describe("VisualizePanel", () => {
     expect(button("Next step").disabled).toBe(true)
     expect(button("Last step").disabled).toBe(true)
     expect(button("First step").disabled).toBe(false)
-    expect(screen.getByText("Step 3 of 3")).toBeDefined()
+    expect(screen.getByText("Bước 3 / 3")).toBeDefined()
   })
 
   describe("with fake timers", () => {
@@ -129,13 +143,13 @@ describe("VisualizePanel", () => {
       fireEvent.click(screen.getByRole("button", { name: "Play" }))
 
       act(() => void vi.advanceTimersByTime(600))
-      expect(screen.getByText("Step 2 of 3")).toBeDefined()
+      expect(screen.getByText("Bước 2 / 3")).toBeDefined()
       act(() => void vi.advanceTimersByTime(600))
-      expect(screen.getByText("Step 3 of 3")).toBeDefined()
+      expect(screen.getByText("Bước 3 / 3")).toBeDefined()
       // Stopped: button back to Play, further time does nothing.
       expect(screen.getByRole("button", { name: "Play" })).toBeDefined()
       act(() => void vi.advanceTimersByTime(2000))
-      expect(screen.getByText("Step 3 of 3")).toBeDefined()
+      expect(screen.getByText("Bước 3 / 3")).toBeDefined()
     })
 
     it("speed selector changes the tick interval", () => {
@@ -144,7 +158,7 @@ describe("VisualizePanel", () => {
       fireEvent.click(screen.getByRole("button", { name: "Play" }))
 
       act(() => void vi.advanceTimersByTime(300))
-      expect(screen.getByText("Step 2 of 3")).toBeDefined()
+      expect(screen.getByText("Bước 2 / 3")).toBeDefined()
     })
   })
 

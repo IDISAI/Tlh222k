@@ -179,7 +179,7 @@ describe("InteractiveNotebook visualization", () => {
 
     fireEvent.click(visualizeButtons()[0]!)
     const panel = () => screen.getByLabelText("Execution visualization")
-    await waitFor(() => expect(panel().textContent).toContain("Step 1 of 3"))
+    await waitFor(() => expect(panel().textContent).toContain("Bước 1 / 3"))
     expect(screen.getAllByLabelText("Execution visualization")).toHaveLength(1)
     expect(
       within(panel()).getByLabelText("Source lines").textContent
@@ -248,7 +248,7 @@ describe("InteractiveNotebook visualization", () => {
     expect(panel().textContent).not.toContain("not available yet")
 
     fireEvent.click(screen.getByRole("button", { name: "Retry" }))
-    await waitFor(() => expect(panel().textContent).toContain("Step 1 of 3"))
+    await waitFor(() => expect(panel().textContent).toContain("Bước 1 / 3"))
     expect(createTrace).toHaveBeenCalledTimes(2)
   })
 
