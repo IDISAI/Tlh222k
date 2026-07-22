@@ -142,6 +142,55 @@ func TestDockerRuntimeStartUsesLockedDownRunArguments(t *testing.T) {
 	}
 }
 
+func TestDockerRuntimeStartGivesOnlyRustAnExecScratchMount(t *testing.T) {
+	const rustMount = "/home/jovyan/.evcxr:rw,exec,nosuid,size=512m,mode=0700,uid=1000,gid=100"
+
+	for _, testCase := range []struct {
+		profile string
+		wantRun bool
+	}{
+		{profile: "rust", wantRun: true},
+		{profile: "data-science"},
+		{profile: "cpp"},
+		{profile: "java"},
+		{profile: "go"},
+		{profile: "julia"},
+		{profile: "javascript"},
+	} {
+		t.Run(testCase.profile, func(t *testing.T) {
+			runner := &recordingRunner{output: []byte("container-1\n")}
+			runtime := NewDockerRuntime(runner, DefaultImages(),
+				WithReadyCheck(func(context.Context, string, string) error { return nil }))
+
+			if _, err := runtime.Start(context.Background(), sessions.StartRequest{
+				SessionID: "session-1",
+				Profile:   testCase.profile,
+				CPU:       "1",
+				Memory:    "2g",
+				Pids:      128,
+				Network:   "notebook-internal",
+			}); err != nil {
+				t.Fatalf("start runtime: %v", err)
+			}
+
+			args := runner.commands[0].args
+			if got := slices.Contains(args, rustMount); got != testCase.wantRun {
+				t.Fatalf("exec scratch mount present = %v, want %v: %#v", got, testCase.wantRun, args)
+			}
+			// The exec mount must never widen /tmp for anybody.
+			if !slices.Contains(args, "/tmp:rw,noexec,nosuid,size=256m,mode=1777") {
+				t.Fatalf("/tmp lost its noexec mount: %#v", args)
+			}
+			for _, arg := range args {
+				if strings.Contains(arg, "exec") && strings.HasPrefix(arg, "/") &&
+					!strings.Contains(arg, "noexec") && arg != rustMount {
+					t.Fatalf("unexpected exec-capable mount %q", arg)
+				}
+			}
+		})
+	}
+}
+
 func TestDockerRuntimeStartRejectsUnknownProfile(t *testing.T) {
 	runner := &recordingRunner{}
 	runtime := NewDockerRuntime(runner, Images{"data-science": "data-image", "ml-cpu": "ml-image"})

@@ -92,6 +92,14 @@ kernels = pathlib.Path("/opt/notebook-env/share/jupyter/kernels");\
         tar -xzf "/tmp/${evcxr_archive}" -C /tmp; \
         install -m 0755 "/tmp/evcxr_jupyter-v${EVCXR_VERSION}-${evcxr_target}/evcxr_jupyter" /opt/rust/cargo/bin/evcxr_jupyter; \
         JUPYTER_PATH=/opt/notebook-env/share/jupyter RUSTUP_HOME=/opt/rust/rustup /opt/rust/cargo/bin/evcxr_jupyter --install; \
+        # evcxr compiles each cell into a shared object and dlopen()s it, so its
+        # scratch space must be exec-capable. The sandbox mounts /tmp noexec and
+        # gives the rust profile one exec tmpfs at /home/jovyan/.evcxr.
+        /opt/notebook-env/bin/python -c 'import json, pathlib, sys;\
+p = pathlib.Path("/opt/notebook-env/share/jupyter/kernels/rust/kernel.json");\
+spec = json.loads(p.read_text());\
+p.write_text(json.dumps({**spec, "env": {**spec.get("env", {}), "TMPDIR": sys.argv[1]}}, indent=2))' \
+          /home/jovyan/.evcxr; \
         expected_kernel=rust \
         ;; \
       go) \
@@ -140,7 +148,7 @@ kernels = pathlib.Path("/opt/notebook-env/share/jupyter/kernels");\
 
 COPY runtime/course_grading.py /opt/course/course_grading.py
 RUN chmod 0444 /opt/course/course_grading.py \
-    && mkdir -p /home/jovyan/.cache /home/jovyan/.cargo /home/jovyan/.config /home/jovyan/.ipython /home/jovyan/.ivy2 /home/jovyan/.julia /home/jovyan/.jupyter /home/jovyan/.local /home/jovyan/go /home/jovyan/work \
+    && mkdir -p /home/jovyan/.cache /home/jovyan/.cargo /home/jovyan/.config /home/jovyan/.evcxr /home/jovyan/.ipython /home/jovyan/.ivy2 /home/jovyan/.julia /home/jovyan/.jupyter /home/jovyan/.local /home/jovyan/go /home/jovyan/work \
     && chown -R 1000:100 /home/jovyan
 
 ENV PYTHONPATH=/opt/course
