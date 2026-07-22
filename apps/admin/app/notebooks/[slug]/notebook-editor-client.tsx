@@ -20,10 +20,9 @@ type NotebookEditorClientProps = {
  * a trace timeout never terminates the editor's live kernel.
  */
 function createTraceWorker(language: TraceLanguage): Worker {
-  if (language === "python") {
-    return new Worker(new URL("./pyodide.worker.ts", import.meta.url))
-  }
-  throw new Error(`No trace worker is registered for ${language}.`)
+  return language === "python"
+    ? new Worker(new URL("./pyodide.worker.ts", import.meta.url))
+    : new Worker(new URL("./javascript-trace.worker.ts", import.meta.url))
 }
 
 /** Browser auth boundary. Core stays Clerk-independent. */

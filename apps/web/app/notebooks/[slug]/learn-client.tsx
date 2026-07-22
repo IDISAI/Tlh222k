@@ -61,10 +61,9 @@ function createNotebookAdapter(
  * "Visualize execution" click.
  */
 function createTraceWorker(language: TraceLanguage): Worker {
-  if (language === "python") {
-    return new Worker(new URL("./pyodide.worker.ts", import.meta.url))
-  }
-  throw new Error(`No trace worker is registered for ${language}.`)
+  return language === "python"
+    ? new Worker(new URL("./pyodide.worker.ts", import.meta.url))
+    : new Worker(new URL("./javascript-trace.worker.ts", import.meta.url))
 }
 
 interface LearnClientProps {

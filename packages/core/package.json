@@ -44,6 +44,7 @@
     "@workspace/db": "workspace:*",
     "@workspace/ui": "workspace:*",
     "@xyflow/react": "^12",
+    "acorn": "8.16.0",
     "codemirror": "^6.0.2",
     "graphql": "^16.10.0",
     "lucide-react": "^1.23.0",
