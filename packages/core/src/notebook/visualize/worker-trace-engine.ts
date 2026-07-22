@@ -28,7 +28,7 @@ export class WorkerTraceEngine implements TraceEngine {
     private readonly timeoutMs = DEFAULT_TIMEOUT_MS
   ) {}
 
-  trace(request: TraceRequest): Promise<TraceResult> {
+  async trace(request: TraceRequest): Promise<TraceResult> {
     if (this.disposed) return Promise.reject(new Error("Trace engine disposed"))
 
     const id = `trace-${this.nextRequestId++}`
@@ -67,8 +67,10 @@ export class WorkerTraceEngine implements TraceEngine {
     const worker = this.createWorker()
     worker.onmessage = (event: MessageEvent<WorkerResponse>) =>
       this.handleMessage(event.data)
-    worker.onerror = (event) =>
+    worker.onerror = (event) => {
+      if (this.worker !== worker) return
       this.resetWorker(new Error(event.message || "Trace worker crashed"))
+    }
     this.worker = worker
     return worker
   }

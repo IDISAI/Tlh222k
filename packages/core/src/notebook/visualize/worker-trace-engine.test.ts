@@ -49,6 +49,16 @@ afterEach(() => {
 })
 
 describe("WorkerTraceEngine", () => {
+  it("returns a rejected promise when its worker factory throws", async () => {
+    const engine = new WorkerTraceEngine(() => {
+      throw new Error("Worker factory failed")
+    })
+
+    await expect(
+      engine.trace({ language: "python", source: "x = 1" })
+    ).rejects.toThrow("Worker factory failed")
+  })
+
   it("correlates concurrent trace results by request ID", async () => {
     const worker = new FakeWorker()
     const engine = new WorkerTraceEngine(() => worker as unknown as Worker)
@@ -105,6 +115,36 @@ describe("WorkerTraceEngine", () => {
 
     expect(worker.terminated).toBe(true)
     await rejected
+  })
+
+  it("ignores an error from a worker replaced after timeout", async () => {
+    vi.useFakeTimers()
+    const firstWorker = new FakeWorker()
+    const secondWorker = new FakeWorker()
+    const workers = [firstWorker, secondWorker]
+    const engine = new WorkerTraceEngine(
+      () => workers.shift() as unknown as Worker,
+      100
+    )
+    const first = engine.trace({ language: "python", source: "first" })
+    const firstRejected = expect(first).rejects.toThrow(
+      "Trace timed out after 0.1s"
+    )
+
+    await vi.advanceTimersByTimeAsync(100)
+    await firstRejected
+
+    const second = engine.trace({ language: "python", source: "second" })
+    void second.catch(() => {})
+    firstWorker.crash("stale worker crashed")
+
+    expect(secondWorker.terminated).toBe(false)
+    secondWorker.respond({
+      type: "trace-result",
+      id: requestId(secondWorker, 0),
+      result: trace("python", 2),
+    })
+    await expect(second).resolves.toEqual(trace("python", 2))
   })
 
   it("terminates its dedicated worker after the default 10 second timeout", async () => {
