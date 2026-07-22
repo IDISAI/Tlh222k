@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -58,13 +59,45 @@ func TestSessionRouteReturns403ForDifferentOwner(t *testing.T) {
 	}
 }
 
-func TestCreateSessionReturns429WhenOwnerQuotaIsFull(t *testing.T) {
-	manager, _ := routeManager(t, "dev:admin")
+// Switching a notebook's language reuses the learner's single sandbox slot.
+func TestCreateSessionSwapsTheOwnersProfileInPlace(t *testing.T) {
+	manager, first := routeManager(t, "dev:admin")
 	mux := http.NewServeMux()
 	NewWithSessions(nil, manager, proxy.NewTickets([]byte("secret"), time.Now), nil).Register(mux)
 	handler := auth.New(auth.Options{DevRole: "admin"}).Middleware(mux)
 	recorder := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodPost, "/api/sessions", strings.NewReader(`{"profile":"ml-cpu"}`))
+	request := httptest.NewRequest(http.MethodPost, "/api/sessions", strings.NewReader(`{"profile":"javascript"}`))
+	handler.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", recorder.Code, recorder.Body.String())
+	}
+	var body struct {
+		ID      string `json:"id"`
+		Profile string `json:"profile"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode session: %v", err)
+	}
+	if body.Profile != "javascript" || body.ID == first.ID {
+		t.Fatalf("session = %+v, want a new javascript session", body)
+	}
+}
+
+// The global cap still refuses work; only the per-owner slot is reclaimable.
+func TestCreateSessionReturns429WhenTheServerIsFull(t *testing.T) {
+	manager := sessions.NewManager(
+		sessions.Options{MaxSessions: 1, IdleTimeout: 15 * time.Minute},
+		routeRuntime{}, sessions.SystemClock{},
+	)
+	if _, err := manager.CreateOrResume(context.Background(), "someone-else", "data-science"); err != nil {
+		t.Fatalf("create other owner's session: %v", err)
+	}
+	mux := http.NewServeMux()
+	NewWithSessions(nil, manager, proxy.NewTickets([]byte("secret"), time.Now), nil).Register(mux)
+	handler := auth.New(auth.Options{DevRole: "admin"}).Middleware(mux)
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/api/sessions", strings.NewReader(`{"profile":"data-science"}`))
 	handler.ServeHTTP(recorder, request)
 
 	if recorder.Code != http.StatusTooManyRequests {
