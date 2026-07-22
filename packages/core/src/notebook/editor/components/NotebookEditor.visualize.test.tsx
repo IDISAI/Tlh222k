@@ -111,7 +111,11 @@ class FakeKernelWorker {
   }
 }
 
-function renderEditor(language: string, createTrace?: TraceFactory) {
+function renderEditor(
+  language: string,
+  createTrace?: TraceFactory,
+  onPublishChange?: (slug: string, published: boolean) => void
+) {
   const initial = record(language)
   return render(
     <NotebookEditor
@@ -120,12 +124,49 @@ function renderEditor(language: string, createTrace?: TraceFactory) {
       initial={initial}
       createKernelWorker={() => new FakeKernelWorker() as unknown as Worker}
       createTrace={createTrace}
+      onPublishChange={onPublishChange}
     />
   )
 }
 
 const visualizeButtons = () =>
   screen.queryAllByRole("button", { name: /Visualize execution/ })
+
+/** Publish lives behind a popover: open the trigger, then confirm inside it. */
+async function publish(action: string) {
+  fireEvent.click(
+    screen.getByRole("button", { name: /^(Xuất bản|Đã xuất bản)$/ })
+  )
+  const confirm = await screen.findByRole("button", { name: action })
+  fireEvent.click(confirm)
+}
+
+describe("NotebookEditor publishing", () => {
+  it("reports the publish so a linked roadmap article can follow", async () => {
+    const changes: [string, boolean][] = []
+    renderEditor("python", undefined, (slug, published) =>
+      changes.push([slug, published])
+    )
+    await screen.findByLabelText("Cell source")
+
+    await publish("Xuất bản ngay")
+
+    await waitFor(() => expect(changes).toEqual([["qa", true]]))
+  })
+
+  it("keeps the notebook published when the roadmap sync fails", async () => {
+    renderEditor("python", undefined, () => {
+      throw new Error("roadmap unreachable")
+    })
+    await screen.findByLabelText("Cell source")
+
+    await publish("Xuất bản ngay")
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Đã xuất bản" })).toBeDefined()
+    )
+  })
+})
 
 describe("NotebookEditor visualization", () => {
   it("hides the action until the cell has run unchanged", async () => {

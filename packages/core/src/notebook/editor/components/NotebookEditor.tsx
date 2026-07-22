@@ -59,6 +59,12 @@ interface NotebookEditorProps {
    * bundler owns the trace worker entrypoint.
    */
   createTrace?: TraceFactory
+  /**
+   * Fired after the author publishes or unpublishes. A notebook that is linked
+   * from a roadmap has a second, separate publish flag on its article node;
+   * the host uses this to keep the two in step so one button means one thing.
+   */
+  onPublishChange?: (slug: string, published: boolean) => void | Promise<void>
 }
 
 const service = new NotebookService()
@@ -83,6 +89,7 @@ export function NotebookEditor({
   apiBaseUrl,
   createKernelWorker,
   createTrace,
+  onPublishChange,
 }: NotebookEditorProps) {
   const notebookStore = useMemo<NotebookStore>(
     () =>
@@ -206,7 +213,17 @@ export function NotebookEditor({
         }
         onDownload={handleDownload}
         published={editor.meta.published}
-        onTogglePublish={() => editor.setPublished(!editor.meta.published)}
+        onTogglePublish={() => {
+          const published = !editor.meta.published
+          editor.setPublished(published)
+          // Best-effort: the notebook's own publish state is already saved, so
+          // a failed roadmap sync must not undo it. The async wrapper also
+          // turns a host that throws synchronously into a rejection, instead
+          // of letting it escape the click handler.
+          void (async () => onPublishChange?.(slug, published))().catch(
+            () => undefined
+          )
+        }}
         learnUrl={`${WEB_URL}/notebooks/${slug}`}
         onUndo={editor.undo}
         onRedo={editor.redo}
