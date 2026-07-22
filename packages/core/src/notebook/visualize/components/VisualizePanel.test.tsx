@@ -1,5 +1,11 @@
 import { act } from "react"
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react"
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
@@ -42,28 +48,66 @@ describe("VisualizePanel", () => {
     expect(currentLine().textContent).toContain("→")
   })
 
-  it("renders variables, stack, heap, and output from the current step", async () => {
+  it("renders frames, objects, and output from the current step", async () => {
     const user = userEvent.setup()
     renderPanel()
     await user.click(screen.getByRole("button", { name: "Last step" }))
 
-    const variables = screen.getByLabelText("Variables")
-    expect(variables.textContent).toContain("items")
-    expect(variables.textContent).toContain("list → heap-1")
-    expect(variables.textContent).toContain("total")
-    expect(variables.textContent).toContain("3")
+    const frames = screen.getByLabelText("Frames")
+    expect(frames.textContent).toContain("<module>")
+    expect(frames.textContent).toContain("items")
+    expect(frames.textContent).toContain("total")
+    expect(frames.textContent).toContain("3")
 
-    expect(screen.getByLabelText("Stack").textContent).toContain("<module>")
-    const heap = screen.getByLabelText("Heap")
-    expect(heap.textContent).toContain("heap-1")
-    expect(heap.textContent).toContain("list")
+    const objects = screen.getByLabelText("Objects")
+    expect(objects.textContent).toContain("heap-1")
+    expect(objects.textContent).toContain("list")
     expect(screen.getByLabelText("Output").textContent).toContain("total 3")
+  })
+
+  it("draws one pointer arrow per reference, including the frame slot", async () => {
+    const user = userEvent.setup()
+    const { container } = renderPanel()
+    await user.click(screen.getByRole("button", { name: "Last step" }))
+
+    const arrows = [...container.querySelectorAll("path[data-to]")].map(
+      (path) => [path.getAttribute("data-from"), path.getAttribute("data-to")]
+    )
+    // `items` points at heap-1; heap-1's slot 0 points back at heap-1 (a cycle).
+    expect(arrows).toEqual(
+      expect.arrayContaining([["frame:frame-module:items", "heap-1"]])
+    )
+    for (const [, target] of arrows) expect(target).toBe("heap-1")
+    // A reference renders as an arrow tail, not as "list → heap-1" text.
+    expect(screen.getByLabelText("Frames").textContent).not.toContain(
+      "→ heap-1"
+    )
+    expect(screen.getByLabelText("points to heap-1")).toBeDefined()
+  })
+
+  it("draws no arrow for a reference whose object left the heap", () => {
+    const orphan = {
+      ...FIXTURE_TRACE,
+      steps: [
+        {
+          ...FIXTURE_TRACE.steps[1]!,
+          heap: [],
+        },
+      ],
+    }
+    const { container } = renderPanel({ trace: orphan })
+
+    expect(container.querySelectorAll("path[data-to]")).toHaveLength(0)
+    expect(screen.getByLabelText("Objects").textContent).toContain(
+      "No objects yet."
+    )
   })
 
   it("disables first/previous at start, next/last at end", async () => {
     const user = userEvent.setup()
     renderPanel()
-    const button = (name: string) => screen.getByRole("button", { name }) as HTMLButtonElement
+    const button = (name: string) =>
+      screen.getByRole("button", { name }) as HTMLButtonElement
     expect(button("First step").disabled).toBe(true)
     expect(button("Previous step").disabled).toBe(true)
     expect(button("Next step").disabled).toBe(false)
@@ -107,7 +151,9 @@ describe("VisualizePanel", () => {
   it("fires onClose", async () => {
     const user = userEvent.setup()
     const { onClose } = renderPanel()
-    await user.click(screen.getByRole("button", { name: "Close visualization" }))
+    await user.click(
+      screen.getByRole("button", { name: "Close visualization" })
+    )
     expect(onClose).toHaveBeenCalledTimes(1)
   })
 
@@ -116,13 +162,17 @@ describe("VisualizePanel", () => {
     expect(
       screen
         .getAllByRole("status")
-        .some((el) => el.textContent?.includes("ZeroDivisionError: division by zero"))
+        .some((el) =>
+          el.textContent?.includes("ZeroDivisionError: division by zero")
+        )
     ).toBe(true)
     cleanup()
 
     renderPanel({ trace: FIXTURE_TRUNCATED_TRACE })
     expect(
-      screen.getAllByRole("status").some((el) => el.textContent?.includes("Trace truncated"))
+      screen
+        .getAllByRole("status")
+        .some((el) => el.textContent?.includes("Trace truncated"))
     ).toBe(true)
   })
 
@@ -132,6 +182,8 @@ describe("VisualizePanel", () => {
     cleanup()
 
     renderPanel({ trace: null })
-    expect(screen.getByRole("status").textContent).toContain("not available yet")
+    expect(screen.getByRole("status").textContent).toContain(
+      "not available yet"
+    )
   })
 })

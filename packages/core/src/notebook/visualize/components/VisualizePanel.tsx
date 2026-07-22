@@ -20,7 +20,8 @@ import {
   playbackReducer,
   type PlaybackSpeed,
 } from "../playback"
-import type { TraceResult, TraceValue } from "../types"
+import type { TraceResult } from "../types"
+import { MemoryDiagram } from "./MemoryDiagram"
 
 export interface VisualizePanelProps {
   /** Source that produced the trace; rendered as the annotated line list. */
@@ -34,9 +35,9 @@ export interface VisualizePanelProps {
 }
 
 /**
- * Language-agnostic trace playback shell (C2): annotated source, step
- * controls, variables/stack/heap/output sections. Engines feed it a
- * `TraceResult`; it never executes code itself.
+ * Language-agnostic trace playback shell: annotated source, step controls, a
+ * frames/objects memory diagram with pointer arrows, and captured output.
+ * Engines feed it a `TraceResult`; it never executes code itself.
  */
 export function VisualizePanel({
   source,
@@ -70,8 +71,6 @@ export function VisualizePanel({
   const step = steps[playback.cursor]
   const atStart = playback.cursor === 0
   const atEnd = steps.length === 0 || playback.cursor === steps.length - 1
-  // Innermost frame carries the "current" locals.
-  const currentFrame = step?.frames[step.frames.length - 1]
 
   return (
     <section
@@ -255,65 +254,7 @@ export function VisualizePanel({
             </p>
           ) : (
             <>
-              <PanelSection title="Variables">
-                {currentFrame && Object.keys(currentFrame.locals).length > 0 ? (
-                  <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 font-mono text-xs">
-                    {Object.entries(currentFrame.locals).map(
-                      ([name, value]) => (
-                        <div key={name} className="contents">
-                          <dt className="text-muted-foreground">{name}</dt>
-                          <dd>{renderValue(value)}</dd>
-                        </div>
-                      )
-                    )}
-                  </dl>
-                ) : (
-                  <p className="text-xs text-muted-foreground">
-                    No variables yet.
-                  </p>
-                )}
-              </PanelSection>
-
-              <PanelSection title="Stack">
-                <ol className="space-y-0.5 font-mono text-xs">
-                  {step!.frames.map((frame) => (
-                    <li key={frame.id}>
-                      {frame.name}{" "}
-                      <span className="text-muted-foreground">
-                        line {frame.line}
-                      </span>
-                    </li>
-                  ))}
-                </ol>
-              </PanelSection>
-
-              <PanelSection title="Heap">
-                {step!.heap.length > 0 ? (
-                  <ul className="space-y-1 font-mono text-xs">
-                    {step!.heap.map((node) => (
-                      <li
-                        key={node.id}
-                        className="rounded-md border bg-muted/40 px-2 py-1"
-                      >
-                        <span className="text-muted-foreground">{node.id}</span>{" "}
-                        {node.type}
-                        <dl className="grid grid-cols-[auto_1fr] gap-x-3">
-                          {Object.entries(node.fields).map(([field, value]) => (
-                            <div key={field} className="contents">
-                              <dt className="text-muted-foreground">{field}</dt>
-                              <dd>{renderValue(value)}</dd>
-                            </div>
-                          ))}
-                        </dl>
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="text-xs text-muted-foreground">
-                    Heap is empty.
-                  </p>
-                )}
-              </PanelSection>
+              <MemoryDiagram step={step!} />
 
               <PanelSection title="Output">
                 {step!.stdout.length > 0 ? (
@@ -349,18 +290,4 @@ function PanelSection({
       {children}
     </section>
   )
-}
-
-function renderValue(value: TraceValue): string {
-  switch (value.kind) {
-    case "primitive":
-      return typeof value.value === "string"
-        ? JSON.stringify(value.value)
-        : String(value.value)
-    case "reference":
-      // Textual reference for C2; SVG arrows arrive with the C3 heap renderer.
-      return `${value.label} → ${value.id}`
-    case "truncated":
-      return value.preview
-  }
 }

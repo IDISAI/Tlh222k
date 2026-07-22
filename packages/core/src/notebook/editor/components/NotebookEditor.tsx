@@ -308,7 +308,7 @@ export function NotebookEditor({
         </div>
 
         {activeVisualization && (
-          <aside className="fixed inset-0 z-50 overflow-y-auto bg-background p-4 lg:static lg:z-auto lg:w-96 lg:shrink-0 lg:border-l lg:p-3">
+          <aside className="fixed inset-0 z-50 overflow-y-auto bg-background p-4 lg:static lg:z-auto lg:w-[30rem] lg:shrink-0 lg:overflow-y-auto lg:border-l lg:p-3">
             <VisualizePanel
               source={activeVisualization.source}
               trace={activeVisualization.trace}

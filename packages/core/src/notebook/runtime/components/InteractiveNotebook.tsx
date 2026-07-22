@@ -167,7 +167,7 @@ export function InteractiveNotebook({
 
       {/* Visualization panel — right column at lg, full-screen overlay below */}
       {active && (
-        <aside className="fixed inset-0 z-50 overflow-y-auto bg-background p-4 lg:sticky lg:top-24 lg:z-auto lg:max-h-[calc(100svh-8rem)] lg:w-96 lg:shrink-0 lg:self-start lg:overflow-visible lg:p-0">
+        <aside className="fixed inset-0 z-50 overflow-y-auto bg-background p-4 lg:sticky lg:top-24 lg:z-auto lg:max-h-[calc(100svh-8rem)] lg:w-[30rem] lg:shrink-0 lg:self-start lg:overflow-visible lg:p-0">
           <VisualizePanel
             source={active.source}
             trace={active.trace}
