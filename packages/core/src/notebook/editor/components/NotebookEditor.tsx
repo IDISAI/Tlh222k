@@ -13,7 +13,9 @@ import {
   SandboxSessionClient,
   profileForNotebook,
 } from "../../kernel"
+import { KernelActions, KernelBar, NotebookWorkspace } from "../../layout"
 import { useNotebookRuntime } from "../../runtime/use-notebook-runtime"
+import { useActiveHeading } from "../../viewer/hooks/useActiveHeading"
 import {
   HttpNotebookStore,
   LocalNotebookStore,
@@ -121,6 +123,11 @@ export function NotebookEditor({
     createTrace,
   })
   const activeVisualization = visualization.active
+  // Same scroll-spy TOC the viewer shows, built from the cells being edited.
+  const toc = useMemo(() => service.extractToc(snapshot), [snapshot])
+  const activeSlug = useActiveHeading(
+    useMemo(() => toc.map((entry) => entry.slug), [toc])
+  )
   const runUnavailableReason =
     profile === null
       ? `Unsupported notebook language: ${editor.language}`
@@ -198,12 +205,6 @@ export function NotebookEditor({
           editor.insert(editor.selectedId, "below", "markdown")
         }
         onDownload={handleDownload}
-        onRunAll={
-          adapter
-            ? () => void runtime.runAll().catch(() => undefined)
-            : undefined
-        }
-        running={runtime.status === "busy" || runtime.status === "starting"}
         published={editor.meta.published}
         onTogglePublish={() => editor.setPublished(!editor.meta.published)}
         learnUrl={`${WEB_URL}/notebooks/${slug}`}
@@ -211,17 +212,6 @@ export function NotebookEditor({
         onRedo={editor.redo}
         canUndo={editor.canUndo}
         canRedo={editor.canRedo}
-        kernelStatus={adapter ? runtime.status : undefined}
-        onInterrupt={
-          adapter
-            ? () => void runtime.interrupt().catch(() => undefined)
-            : undefined
-        }
-        onRestart={
-          adapter
-            ? () => void runtime.restart().catch(() => undefined)
-            : undefined
-        }
       />
 
       {editor.error && (
@@ -230,21 +220,50 @@ export function NotebookEditor({
         </p>
       )}
 
-      {runtime.error && (
-        <p role="alert" className="px-4 text-sm text-destructive">
-          {runtime.error}
-        </p>
-      )}
+      {/* Same frame as the web viewer: TOC left, notebook centre, panel right. */}
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <NotebookWorkspace
+          toc={toc}
+          activeSlug={activeSlug}
+          stickyClassName="top-4"
+          panel={
+            activeVisualization && (
+              <VisualizePanel
+                source={activeVisualization.source}
+                trace={activeVisualization.trace}
+                loading={activeVisualization.loading}
+                onClose={visualization.close}
+                onRetry={visualization.retry}
+              />
+            )
+          }
+        >
+          <KernelBar status={runtime.status}>
+            {runUnavailableReason ? (
+              <span className="text-xs text-muted-foreground">
+                {runUnavailableReason}
+              </span>
+            ) : (
+              <KernelActions
+                busy={
+                  runtime.status === "busy" || runtime.status === "starting"
+                }
+                disabled={!adapter}
+                onRunAll={() => void runtime.runAll().catch(() => undefined)}
+                onInterrupt={() =>
+                  void runtime.interrupt().catch(() => undefined)
+                }
+                onRestart={() => void runtime.restart().catch(() => undefined)}
+              />
+            )}
+          </KernelBar>
 
-      {runUnavailableReason && (
-        <p role="status" className="px-4 text-sm text-muted-foreground">
-          {runUnavailableReason}
-        </p>
-      )}
+          {runtime.error && (
+            <p role="alert" className="mb-4 text-sm text-destructive">
+              {runtime.error}
+            </p>
+          )}
 
-      {/* Cells left, visualization panel right (full-screen overlay below lg). */}
-      <div className="flex min-h-0 flex-1">
-        <div className="mx-auto w-full max-w-4xl flex-1 overflow-y-auto p-4">
           {editor.cells.map((cell, index) => (
             <Fragment key={cell.id}>
               <EditableCell
@@ -305,19 +324,7 @@ export function NotebookEditor({
               </Button>
             </div>
           )}
-        </div>
-
-        {activeVisualization && (
-          <aside className="fixed inset-0 z-50 overflow-y-auto bg-background p-4 lg:static lg:z-auto lg:w-[30rem] lg:shrink-0 lg:overflow-y-auto lg:border-l lg:p-3">
-            <VisualizePanel
-              source={activeVisualization.source}
-              trace={activeVisualization.trace}
-              loading={activeVisualization.loading}
-              onClose={visualization.close}
-              onRetry={visualization.retry}
-            />
-          </aside>
-        )}
+        </NotebookWorkspace>
       </div>
     </div>
   )

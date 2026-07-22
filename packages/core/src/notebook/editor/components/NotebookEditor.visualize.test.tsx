@@ -164,10 +164,11 @@ describe("NotebookEditor visualization", () => {
     )
     await waitFor(() => expect(panel.textContent).toContain("Bước 1 / 3"))
 
-    // Cells column first, panel aside last.
+    // Same frame as the viewer: notebook column, panel aside last.
     const row = panel.closest("aside")!.parentElement!
     expect(row.lastElementChild!.tagName).toBe("ASIDE")
     expect(row.firstElementChild!.tagName).not.toBe("ASIDE")
+    expect(row.className).toContain("max-w-7xl")
 
     fireEvent.click(screen.getByRole("button", { name: "Close visualization" }))
     expect(screen.queryByLabelText("Execution visualization")).toBeNull()

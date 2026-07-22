@@ -71,13 +71,14 @@ export function EditableCell({
       </div>
 
       <div className="min-w-0 flex-1">
+        {/* Frame matches the web viewer's code cell; selection is the one
+            editor-only addition on top of it. */}
         <div
           className={cn(
-            "relative overflow-hidden rounded-md border transition-all",
-            selected
-              ? "border-primary/50 shadow-md ring-2 ring-primary/15"
-              : "border-transparent group-hover:border-border group-hover:shadow-sm",
-            isCode && "bg-muted/40"
+            "relative overflow-hidden rounded-md border transition-colors",
+            isCode &&
+              "bg-muted/40 focus-within:border-primary focus-within:ring-1 focus-within:ring-primary/30",
+            selected && "border-primary/50 ring-1 ring-primary/20"
           )}
         >
           {/* Colab-style accent bar on the active cell. */}

@@ -1,16 +1,14 @@
 "use client"
 
 import { useMemo } from "react"
-import { Play, RotateCcw, Square } from "lucide-react"
 import { Button } from "@workspace/ui/components/button"
-import { cn } from "@workspace/ui/lib/utils"
 
 import type { KernelAdapter } from "../../kernel"
+import { KernelActions, KernelBar, NotebookWorkspace } from "../../layout"
 import type { Notebook } from "../../types"
 import { NotebookService } from "../../notebook.service"
 import { MarkdownCell } from "../../viewer/components/MarkdownCell"
 import { StartExerciseCard } from "../../viewer/components/StartExerciseCard"
-import { TableOfContents } from "../../viewer/components/TableOfContents"
 import { useActiveHeading } from "../../viewer/hooks/useActiveHeading"
 import {
   useVisualization,
@@ -64,26 +62,31 @@ export function InteractiveNotebook({
   const active = visualization.active
 
   return (
-    <div
-      className={cn(
-        "mx-auto flex w-full gap-8 px-4 py-6",
-        active ? "max-w-7xl" : "max-w-6xl"
-      )}
+    <NotebookWorkspace
+      toc={toc}
+      activeSlug={activeSlug}
+      panel={
+        active && (
+          <VisualizePanel
+            source={active.source}
+            trace={active.trace}
+            loading={active.loading}
+            onClose={visualization.close}
+            onRetry={visualization.retry}
+          />
+        )
+      }
+      floating={
+        onStartExercise && exerciseTitle ? (
+          <StartExerciseCard
+            exerciseTitle={exerciseTitle}
+            onStart={onStartExercise}
+          />
+        ) : undefined
+      }
     >
-      {/* TOC sidebar — left column, scroll-spy, sticky, hidden on small screens */}
-      {toc.length > 0 && (
-        <aside className="sticky top-24 hidden max-h-[calc(100svh-8rem)] w-56 shrink-0 self-start overflow-y-auto lg:block">
-          <TableOfContents entries={toc} activeSlug={activeSlug} />
-        </aside>
-      )}
-
-      {/* Main content */}
-      <div className="min-w-0 flex-1">
-        {/* Kernel bar */}
-        <div className="mb-6 flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-muted/20 px-3 py-2">
-          <span className="text-sm text-muted-foreground">
-            Kernel: {runtime.status}
-          </span>
+      <>
+        <KernelBar status={runtime.status}>
           {runUnavailableReason ? (
             <span className="text-xs text-muted-foreground">
               {runUnavailableReason}
@@ -93,36 +96,15 @@ export function InteractiveNotebook({
               Sign in to run
             </Button>
           ) : (
-            <div className="flex gap-2">
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                disabled={busy || !adapter}
-                onClick={() => void runtime.runAll()}
-              >
-                <Play className="size-3.5" /> Run all
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                disabled={!busy}
-                onClick={() => void runtime.interrupt()}
-              >
-                <Square className="size-3.5" /> Interrupt
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                onClick={() => void runtime.restart()}
-              >
-                <RotateCcw className="size-3.5" /> Restart
-              </Button>
-            </div>
+            <KernelActions
+              busy={busy}
+              disabled={!adapter}
+              onRunAll={() => void runtime.runAll()}
+              onInterrupt={() => void runtime.interrupt()}
+              onRestart={() => void runtime.restart()}
+            />
           )}
-        </div>
+        </KernelBar>
 
         {runtime.error && (
           <p role="alert" className="mb-4 text-sm text-destructive">
@@ -163,28 +145,7 @@ export function InteractiveNotebook({
             )
           })}
         </div>
-      </div>
-
-      {/* Visualization panel — right column at lg, full-screen overlay below */}
-      {active && (
-        <aside className="fixed inset-0 z-50 overflow-y-auto bg-background p-4 lg:sticky lg:top-24 lg:z-auto lg:max-h-[calc(100svh-8rem)] lg:w-[30rem] lg:shrink-0 lg:self-start lg:overflow-visible lg:p-0">
-          <VisualizePanel
-            source={active.source}
-            trace={active.trace}
-            loading={active.loading}
-            onClose={visualization.close}
-            onRetry={visualization.retry}
-          />
-        </aside>
-      )}
-
-      {/* "Your turn" floating card at bottom-right */}
-      {onStartExercise && exerciseTitle && (
-        <StartExerciseCard
-          exerciseTitle={exerciseTitle}
-          onStart={onStartExercise}
-        />
-      )}
-    </div>
+      </>
+    </NotebookWorkspace>
   )
 }

@@ -1,6 +1,7 @@
 export * from "./types"
 export { NotebookService } from "./notebook.service"
 export * from "./viewer"
+export * from "./layout"
 export * from "./editor"
 export * from "./kernel"
 export * from "./exercise"
