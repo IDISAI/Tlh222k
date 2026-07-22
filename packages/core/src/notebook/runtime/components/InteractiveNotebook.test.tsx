@@ -1,7 +1,18 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
-import type { ExecuteCallbacks, ExecuteResult, KernelAdapter } from "../../kernel"
+import type {
+  ExecuteCallbacks,
+  ExecuteResult,
+  KernelAdapter,
+} from "../../kernel"
 import type { Notebook } from "../../types"
 import { FIXTURE_TRACE } from "../../visualize"
 import { InteractiveNotebook } from "./InteractiveNotebook"
@@ -26,7 +37,10 @@ vi.mock("../../editor/components/CodeCellEditor", () => ({
 
 afterEach(cleanup)
 
-function makeNotebook(language: string, cells: Array<{ id: string; source: string }>): Notebook {
+function makeNotebook(
+  language: string,
+  cells: Array<{ id: string; source: string }>
+): Notebook {
   return {
     title: "t",
     language,
@@ -48,9 +62,17 @@ function stubAdapter(): KernelAdapter {
     status: "idle",
     subscribeStatus: () => () => {},
     start: async () => {},
-    execute: async (code: string, callbacks?: ExecuteCallbacks): Promise<ExecuteResult> => {
+    execute: async (
+      code: string,
+      callbacks?: ExecuteCallbacks
+    ): Promise<ExecuteResult> => {
       if (code.includes("boom")) {
-        callbacks?.onOutput?.({ kind: "error", ename: "Boom", evalue: "boom", traceback: [] })
+        callbacks?.onOutput?.({
+          kind: "error",
+          ename: "Boom",
+          evalue: "boom",
+          traceback: [],
+        })
       } else {
         callbacks?.onStream?.("stdout", "ok\n")
       }
@@ -65,7 +87,8 @@ function stubAdapter(): KernelAdapter {
 const runCell = (index = 0) => {
   fireEvent.click(screen.getAllByRole("button", { name: "Run cell" })[index]!)
 }
-const visualizeButtons = () => screen.queryAllByRole("button", { name: /Visualize execution/ })
+const visualizeButtons = () =>
+  screen.queryAllByRole("button", { name: /Visualize execution/ })
 
 describe("InteractiveNotebook visualization", () => {
   it("hides the action before any successful execution", () => {
@@ -95,7 +118,9 @@ describe("InteractiveNotebook visualization", () => {
     runCell(1)
     // Cell b errored (error output rendered): still only cell a's action.
     await waitFor(() =>
-      expect(screen.getAllByText("Boom", { exact: false }).length).toBeGreaterThan(0)
+      expect(
+        screen.getAllByText("Boom", { exact: false }).length
+      ).toBeGreaterThan(0)
     )
     expect(visualizeButtons()).toHaveLength(1)
   })
@@ -122,7 +147,9 @@ describe("InteractiveNotebook visualization", () => {
     runCell()
     await waitFor(() => expect(visualizeButtons()).toHaveLength(1))
 
-    fireEvent.change(screen.getByLabelText("Cell source"), { target: { value: "x = 2" } })
+    fireEvent.change(screen.getByLabelText("Cell source"), {
+      target: { value: "x = 2" },
+    })
     expect(visualizeButtons()).toHaveLength(0)
 
     runCell()
@@ -154,19 +181,25 @@ describe("InteractiveNotebook visualization", () => {
     const panel = () => screen.getByLabelText("Execution visualization")
     await waitFor(() => expect(panel().textContent).toContain("Step 1 of 3"))
     expect(screen.getAllByLabelText("Execution visualization")).toHaveLength(1)
-    expect(within(panel()).getByLabelText("Source lines").textContent).toContain("x = 1")
+    expect(
+      within(panel()).getByLabelText("Source lines").textContent
+    ).toContain("x = 1")
 
     // Opening cell B replaces cell A's panel.
     fireEvent.click(visualizeButtons()[1]!)
     await waitFor(() =>
-      expect(within(panel()).getByLabelText("Source lines").textContent).toContain("y = 2")
+      expect(
+        within(panel()).getByLabelText("Source lines").textContent
+      ).toContain("y = 2")
     )
     expect(screen.getAllByLabelText("Execution visualization")).toHaveLength(1)
 
     // Closing leaves editors and outputs intact.
     fireEvent.click(screen.getByRole("button", { name: "Close visualization" }))
     expect(screen.queryByLabelText("Execution visualization")).toBeNull()
-    const sources = screen.getAllByLabelText("Cell source") as HTMLTextAreaElement[]
+    const sources = screen.getAllByLabelText(
+      "Cell source"
+    ) as HTMLTextAreaElement[]
     expect(sources.map((s) => s.value)).toEqual(["x = 1", "y = 2"])
     expect(screen.getAllByText("ok")).toHaveLength(2)
     expect(visualizeButtons()).toHaveLength(2)
@@ -185,6 +218,62 @@ describe("InteractiveNotebook visualization", () => {
     expect(
       screen.getByLabelText("Execution visualization").textContent
     ).toContain("not available yet")
+  })
+
+  it("shows a failing engine's real error and retries it", async () => {
+    const createTrace = vi
+      .fn()
+      .mockRejectedValueOnce(
+        Object.assign(new Error("Trace timed out after 10s"), {
+          name: "TimeoutError",
+        })
+      )
+      .mockResolvedValue(FIXTURE_TRACE)
+    render(
+      <InteractiveNotebook
+        notebook={makeNotebook("python", [{ id: "a", source: "x = 1" }])}
+        adapter={stubAdapter()}
+        createTrace={createTrace}
+      />
+    )
+    runCell()
+    await waitFor(() => expect(visualizeButtons()).toHaveLength(1))
+    fireEvent.click(visualizeButtons()[0]!)
+
+    const panel = () => screen.getByLabelText("Execution visualization")
+    await waitFor(() =>
+      expect(panel().textContent).toContain("Trace timed out after 10s")
+    )
+    // The failure must not be reported as a missing engine.
+    expect(panel().textContent).not.toContain("not available yet")
+
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }))
+    await waitFor(() => expect(panel().textContent).toContain("Step 1 of 3"))
+    expect(createTrace).toHaveBeenCalledTimes(2)
+  })
+
+  it("closes an open panel once its source is edited", async () => {
+    render(
+      <InteractiveNotebook
+        notebook={makeNotebook("python", [{ id: "a", source: "x = 1" }])}
+        adapter={stubAdapter()}
+        createTrace={async () => FIXTURE_TRACE}
+      />
+    )
+    runCell()
+    await waitFor(() => expect(visualizeButtons()).toHaveLength(1))
+    fireEvent.click(visualizeButtons()[0]!)
+    await waitFor(() =>
+      expect(screen.getByLabelText("Execution visualization")).toBeDefined()
+    )
+
+    fireEvent.change(screen.getByLabelText("Cell source"), {
+      target: { value: "x = 2" },
+    })
+
+    await waitFor(() =>
+      expect(screen.queryByLabelText("Execution visualization")).toBeNull()
+    )
   })
 
   it("keeps the TOC left of the notebook and the panel right of it", async () => {
@@ -211,6 +300,8 @@ describe("InteractiveNotebook visualization", () => {
     // Panel aside is the last region (right column at lg / overlay below).
     const panelHost = after[after.length - 1] as HTMLElement
     expect(panelHost.tagName).toBe("ASIDE")
-    expect(within(panelHost).getByLabelText("Execution visualization")).toBeDefined()
+    expect(
+      within(panelHost).getByLabelText("Execution visualization")
+    ).toBeDefined()
   })
 })

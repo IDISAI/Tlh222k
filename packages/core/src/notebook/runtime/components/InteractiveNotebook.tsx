@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useMemo, useRef, useState } from "react"
+import { useMemo } from "react"
 import { Play, RotateCcw, Square } from "lucide-react"
 import { Button } from "@workspace/ui/components/button"
 import { cn } from "@workspace/ui/lib/utils"
@@ -13,25 +13,15 @@ import { StartExerciseCard } from "../../viewer/components/StartExerciseCard"
 import { TableOfContents } from "../../viewer/components/TableOfContents"
 import { useActiveHeading } from "../../viewer/hooks/useActiveHeading"
 import {
-  traceLanguage,
+  useVisualization,
   visualizeAvailability,
   VisualizePanel,
   type TraceFactory,
-  type TraceResult,
 } from "../../visualize"
 import { useNotebookRuntime } from "../use-notebook-runtime"
 import { InteractiveCodeCell } from "./InteractiveCodeCell"
 
 const service = new NotebookService()
-
-/** One visualization panel per notebook; owned here, not by cells. */
-interface ActiveVisualization {
-  cellId: string
-  /** Source snapshot that ran (panel keeps showing it during later edits). */
-  source: string
-  trace: TraceResult | null
-  loading: boolean
-}
 
 export function InteractiveNotebook({
   notebook,
@@ -66,40 +56,12 @@ export function InteractiveNotebook({
   const slugs = useMemo(() => toc.map((e) => e.slug), [toc])
   const activeSlug = useActiveHeading(slugs)
 
-  const [active, setActive] = useState<ActiveVisualization | null>(null)
-  // Monotonic token: a resolving trace only lands while it is still the
-  // latest request (open A, open B, A's engine resolves late).
-  const traceToken = useRef(0)
-
-  const openVisualization = useCallback(
-    (cellId: string) => {
-      const cell = runtime.cells[cellId]
-      if (!cell) return
-      const source = cell.lastExecutedSource ?? cell.source
-      const language = traceLanguage(notebook.language)
-      const token = ++traceToken.current
-      if (!createTrace || !language) {
-        setActive({ cellId, source, trace: null, loading: false })
-        return
-      }
-      setActive({ cellId, source, trace: null, loading: true })
-      createTrace({ language, source }).then(
-        (trace) => {
-          if (traceToken.current === token)
-            setActive({ cellId, source, trace, loading: false })
-        },
-        () => {
-          if (traceToken.current === token)
-            setActive({ cellId, source, trace: null, loading: false })
-        }
-      )
-    },
-    [createTrace, notebook.language, runtime.cells]
-  )
-  const closeVisualization = useCallback(() => {
-    traceToken.current++
-    setActive(null)
-  }, [])
+  const visualization = useVisualization({
+    language: notebook.language,
+    cells: runtime.cells,
+    createTrace,
+  })
+  const active = visualization.active
 
   return (
     <div
@@ -184,22 +146,17 @@ export function InteractiveNotebook({
                   )}
                   onChange={(source) => runtime.updateSource(cell.id, source)}
                   onRun={() => void runtime.runCell(cell.id)}
-                  onVisualize={() => openVisualization(cell.id)}
+                  onVisualize={() => visualization.open(cell.id)}
                 />
               )
             }
             if (cell.cellType === "markdown") {
-              return (
-                <MarkdownCell
-                  key={cell.id}
-                  source={cell.source}
-                />
-              )
+              return <MarkdownCell key={cell.id} source={cell.source} />
             }
             return (
               <pre
                 key={cell.id}
-                className="whitespace-pre-wrap rounded-lg border p-4 text-sm"
+                className="rounded-lg border p-4 text-sm whitespace-pre-wrap"
               >
                 {cell.source}
               </pre>
@@ -215,7 +172,8 @@ export function InteractiveNotebook({
             source={active.source}
             trace={active.trace}
             loading={active.loading}
-            onClose={closeVisualization}
+            onClose={visualization.close}
+            onRetry={visualization.retry}
           />
         </aside>
       )}

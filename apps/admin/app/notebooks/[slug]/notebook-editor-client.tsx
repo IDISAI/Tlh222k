@@ -1,12 +1,29 @@
 "use client"
 
 import { useAuth } from "@clerk/nextjs"
-import { NotebookEditor } from "@workspace/core"
+import {
+  NotebookEditor,
+  useTraceEngines,
+  type TraceLanguage,
+} from "@workspace/core"
 import { devAuthRole } from "@workspace/core/navigation/role"
 
 type NotebookEditorClientProps = {
   slug: string
   defaultTitle?: string
+}
+
+/**
+ * Trace worker entrypoints. Static `new URL(..., import.meta.url)` so the app's
+ * bundler emits the chunk; the Worker itself is only constructed on the first
+ * "Visualize execution" click. Separate from the execution worker instance, so
+ * a trace timeout never terminates the editor's live kernel.
+ */
+function createTraceWorker(language: TraceLanguage): Worker {
+  if (language === "python") {
+    return new Worker(new URL("./pyodide.worker.ts", import.meta.url))
+  }
+  throw new Error(`No trace worker is registered for ${language}.`)
 }
 
 /** Browser auth boundary. Core stays Clerk-independent. */
@@ -43,6 +60,7 @@ function NotebookEditorInner({
     window.location.pathname.startsWith("/admin")
       ? "/admin"
       : ""
+  const createTrace = useTraceEngines(createTraceWorker)
 
   return (
     <NotebookEditor
@@ -53,6 +71,7 @@ function NotebookEditorInner({
       createKernelWorker={() =>
         new Worker(new URL("./pyodide.worker.ts", import.meta.url))
       }
+      createTrace={createTrace}
     />
   )
 }

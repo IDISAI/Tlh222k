@@ -9,8 +9,10 @@ import {
   PyodideKernelAdapter,
   SandboxSessionClient,
   profileForNotebook,
+  useTraceEngines,
   type KernelAdapter,
   type Notebook,
+  type TraceLanguage,
 } from "@workspace/core"
 import { devAuthRole } from "@workspace/core/navigation/role"
 import {
@@ -51,6 +53,18 @@ function createNotebookAdapter(
   return new PyodideKernelAdapter(
     () => new Worker(new URL("./pyodide.worker.ts", import.meta.url))
   )
+}
+
+/**
+ * Trace worker entrypoints. Static `new URL(..., import.meta.url)` so the app's
+ * bundler emits the chunk; the Worker itself is only constructed on the first
+ * "Visualize execution" click.
+ */
+function createTraceWorker(language: TraceLanguage): Worker {
+  if (language === "python") {
+    return new Worker(new URL("./pyodide.worker.ts", import.meta.url))
+  }
+  throw new Error(`No trace worker is registered for ${language}.`)
 }
 
 interface LearnClientProps {
@@ -97,6 +111,8 @@ function DevLearnClient({ slug, tutorial, exercise }: LearnClientProps) {
     () => (canRun && exercise ? makeAdapter(exercise) : null),
     [canRun, exercise, makeAdapter]
   )
+  // Tutorial only: Exercise-cell visualization is out of scope.
+  const createTrace = useTraceEngines(createTraceWorker)
 
   return (
     <Tabs value={tab} onValueChange={(value) => setTab(value as LearnTab)}>
@@ -119,6 +135,7 @@ function DevLearnClient({ slug, tutorial, exercise }: LearnClientProps) {
           onSignIn={() => {}}
           exerciseTitle={exercise?.title ?? "Exercise"}
           onStartExercise={() => setTab("exercise")}
+          createTrace={createTrace}
         />
       </TabsContent>
 
@@ -174,6 +191,8 @@ function ClerkLearnClient({ slug, tutorial, exercise }: LearnClientProps) {
     () => (canRun && exercise ? makeAdapter(exercise) : null),
     [canRun, exercise, makeAdapter]
   )
+  // Tutorial only: Exercise-cell visualization is out of scope.
+  const createTrace = useTraceEngines(createTraceWorker)
 
   return (
     <Tabs value={tab} onValueChange={(value) => setTab(value as LearnTab)}>
@@ -196,6 +215,7 @@ function ClerkLearnClient({ slug, tutorial, exercise }: LearnClientProps) {
           onSignIn={() => void clerk.openSignIn()}
           exerciseTitle={exercise?.title ?? "Exercise"}
           onStartExercise={() => setTab("exercise")}
+          createTrace={createTrace}
         />
       </TabsContent>
 

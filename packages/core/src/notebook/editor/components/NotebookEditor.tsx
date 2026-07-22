@@ -20,6 +20,12 @@ import {
   type NotebookStore,
 } from "../store"
 import { useNotebookEditor } from "../hooks/useNotebookEditor"
+import {
+  useVisualization,
+  visualizeAvailability,
+  VisualizePanel,
+  type TraceFactory,
+} from "../../visualize"
 import { EditableCell } from "./EditableCell"
 import { EditorToolbar } from "./EditorToolbar"
 
@@ -45,6 +51,12 @@ interface NotebookEditorProps {
    * run client-side via Pyodide — no execution backend needed.
    */
   createKernelWorker?: () => Worker
+  /**
+   * Trace engine seam for "Visualize execution". Absent, the panel reports that
+   * no engine is registered. Must be created in the app (browser-only) so its
+   * bundler owns the trace worker entrypoint.
+   */
+  createTrace?: TraceFactory
 }
 
 const service = new NotebookService()
@@ -68,6 +80,7 @@ export function NotebookEditor({
   defaultTitle,
   apiBaseUrl,
   createKernelWorker,
+  createTrace,
 }: NotebookEditorProps) {
   const notebookStore = useMemo<NotebookStore>(
     () =>
@@ -85,7 +98,10 @@ export function NotebookEditor({
     [editor.cells, editor.title, editor.language]
   )
   // Non-Python languages need the kernel-server; Pyodide only runs Python.
-  const profile = profileForNotebook(editor.language, editor.meta.runtimeProfile)
+  const profile = profileForNotebook(
+    editor.language,
+    editor.meta.runtimeProfile
+  )
   const adapter = useMemo(
     () =>
       KERNEL_SERVER_URL && getToken && profile
@@ -99,6 +115,12 @@ export function NotebookEditor({
     [getToken, createKernelWorker, profile, editor.language]
   )
   const runtime = useNotebookRuntime(snapshot, adapter)
+  const visualization = useVisualization({
+    language: editor.language,
+    cells: runtime.cells,
+    createTrace,
+  })
+  const activeVisualization = visualization.active
   const runUnavailableReason =
     profile === null
       ? `Unsupported notebook language: ${editor.language}`
@@ -177,7 +199,9 @@ export function NotebookEditor({
         }
         onDownload={handleDownload}
         onRunAll={
-          adapter ? () => void runtime.runAll().catch(() => undefined) : undefined
+          adapter
+            ? () => void runtime.runAll().catch(() => undefined)
+            : undefined
         }
         running={runtime.status === "busy" || runtime.status === "starting"}
         published={editor.meta.published}
@@ -189,10 +213,14 @@ export function NotebookEditor({
         canRedo={editor.canRedo}
         kernelStatus={adapter ? runtime.status : undefined}
         onInterrupt={
-          adapter ? () => void runtime.interrupt().catch(() => undefined) : undefined
+          adapter
+            ? () => void runtime.interrupt().catch(() => undefined)
+            : undefined
         }
         onRestart={
-          adapter ? () => void runtime.restart().catch(() => undefined) : undefined
+          adapter
+            ? () => void runtime.restart().catch(() => undefined)
+            : undefined
         }
       />
 
@@ -214,51 +242,81 @@ export function NotebookEditor({
         </p>
       )}
 
-      <div className="mx-auto w-full max-w-4xl flex-1 overflow-y-auto p-4">
-        {editor.cells.map((cell, index) => (
-          <Fragment key={cell.id}>
-            <EditableCell
-              cell={cell}
-              language={editor.language}
-              selected={editor.selectedId === cell.id}
-              onSelect={() => editor.select(cell.id)}
-              onDeselect={() => editor.select(null)}
-              onChange={(source) => editor.edit(cell.id, source)}
-              onToggleType={(type) => editor.setType(cell.id, type)}
-              onMove={(direction) => editor.move(cell.id, direction)}
-              onDuplicate={() => editor.duplicate(cell.id)}
-              onDelete={() => editor.remove(cell.id)}
-              runtime={runtime.cells[cell.id]}
-              onRun={cell.cellType === "code" && adapter
-                ? () => void runtime.runCell(cell.id).catch(() => undefined)
-                : undefined}
-              onRunAdvance={cell.cellType === "code" && adapter
-                ? () => {
-                    void runtime.runCell(cell.id).catch(() => undefined)
-                    const next = editor.cells[index + 1]
-                    if (next) editor.select(next.id)
-                    else editor.insert(cell.id, "below", "code")
-                  }
-                : undefined}
-            />
-            <CellInsertDivider
-              onAddCode={() => editor.insert(cell.id, "below", "code")}
-              onAddMarkdown={() => editor.insert(cell.id, "below", "markdown")}
-            />
-          </Fragment>
-        ))}
+      {/* Cells left, visualization panel right (full-screen overlay below lg). */}
+      <div className="flex min-h-0 flex-1">
+        <div className="mx-auto w-full max-w-4xl flex-1 overflow-y-auto p-4">
+          {editor.cells.map((cell, index) => (
+            <Fragment key={cell.id}>
+              <EditableCell
+                cell={cell}
+                language={editor.language}
+                selected={editor.selectedId === cell.id}
+                onSelect={() => editor.select(cell.id)}
+                onDeselect={() => editor.select(null)}
+                onChange={(source) => editor.edit(cell.id, source)}
+                onToggleType={(type) => editor.setType(cell.id, type)}
+                onMove={(direction) => editor.move(cell.id, direction)}
+                onDuplicate={() => editor.duplicate(cell.id)}
+                onDelete={() => editor.remove(cell.id)}
+                runtime={runtime.cells[cell.id]}
+                visualize={
+                  cell.cellType === "code" && runtime.cells[cell.id]
+                    ? visualizeAvailability(
+                        editor.language,
+                        runtime.cells[cell.id]!
+                      )
+                    : "hidden"
+                }
+                onVisualize={() => visualization.open(cell.id)}
+                onRun={
+                  cell.cellType === "code" && adapter
+                    ? () => void runtime.runCell(cell.id).catch(() => undefined)
+                    : undefined
+                }
+                onRunAdvance={
+                  cell.cellType === "code" && adapter
+                    ? () => {
+                        void runtime.runCell(cell.id).catch(() => undefined)
+                        const next = editor.cells[index + 1]
+                        if (next) editor.select(next.id)
+                        else editor.insert(cell.id, "below", "code")
+                      }
+                    : undefined
+                }
+              />
+              <CellInsertDivider
+                onAddCode={() => editor.insert(cell.id, "below", "code")}
+                onAddMarkdown={() =>
+                  editor.insert(cell.id, "below", "markdown")
+                }
+              />
+            </Fragment>
+          ))}
 
-        {editor.cells.length === 0 && (
-          <div className="flex justify-center pt-2">
-            <Button
-              type="button"
-              size="sm"
-              variant="ghost"
-              onClick={() => editor.insert(null, "below", "code")}
-            >
-              <Plus className="size-4" /> Thêm cell
-            </Button>
-          </div>
+          {editor.cells.length === 0 && (
+            <div className="flex justify-center pt-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                onClick={() => editor.insert(null, "below", "code")}
+              >
+                <Plus className="size-4" /> Thêm cell
+              </Button>
+            </div>
+          )}
+        </div>
+
+        {activeVisualization && (
+          <aside className="fixed inset-0 z-50 overflow-y-auto bg-background p-4 lg:static lg:z-auto lg:w-96 lg:shrink-0 lg:border-l lg:p-3">
+            <VisualizePanel
+              source={activeVisualization.source}
+              trace={activeVisualization.trace}
+              loading={activeVisualization.loading}
+              onClose={visualization.close}
+              onRetry={visualization.retry}
+            />
+          </aside>
         )}
       </div>
     </div>

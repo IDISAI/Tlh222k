@@ -29,6 +29,8 @@ export interface VisualizePanelProps {
   trace: TraceResult | null
   loading?: boolean
   onClose: () => void
+  /** Re-issues the trace; shown when the engine failed before any step. */
+  onRetry?: () => void
 }
 
 /**
@@ -36,9 +38,18 @@ export interface VisualizePanelProps {
  * controls, variables/stack/heap/output sections. Engines feed it a
  * `TraceResult`; it never executes code itself.
  */
-export function VisualizePanel({ source, trace, loading, onClose }: VisualizePanelProps) {
+export function VisualizePanel({
+  source,
+  trace,
+  loading,
+  onClose,
+  onRetry,
+}: VisualizePanelProps) {
   const steps = trace?.steps ?? []
-  const [playback, dispatch] = useReducer(playbackReducer, initialPlayback(steps.length))
+  const [playback, dispatch] = useReducer(
+    playbackReducer,
+    initialPlayback(steps.length)
+  )
 
   // New trace: reset cursor/playback to its first step.
   useEffect(() => {
@@ -91,13 +102,28 @@ export function VisualizePanel({ source, trace, loading, onClose }: VisualizePan
       ) : (
         <>
           {trace.error && (
-            <p
+            <div
               role="status"
-              className="rounded-md border border-destructive/40 bg-destructive/10 px-2 py-1 text-destructive"
+              className="flex flex-wrap items-center gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-2 py-1 text-destructive"
             >
-              {trace.error.name}: {trace.error.message}
-              {trace.error.line !== undefined && ` (line ${trace.error.line})`}
-            </p>
+              <span className="min-w-0 flex-1 break-words">
+                {trace.error.name}: {trace.error.message}
+                {trace.error.line !== undefined &&
+                  ` (line ${trace.error.line})`}
+              </span>
+              {/* Steps present = the cell itself raised; only an engine failure
+                  (no steps at all) is worth retrying. */}
+              {onRetry && trace.steps.length === 0 && (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={onRetry}
+                >
+                  Retry
+                </Button>
+              )}
+            </div>
           )}
           {trace.truncated && (
             <p
@@ -109,7 +135,10 @@ export function VisualizePanel({ source, trace, loading, onClose }: VisualizePan
           )}
 
           {/* Annotated source: full-width highlight + arrow on current line */}
-          <ol aria-label="Source lines" className="rounded-md border bg-muted/40 py-1 font-mono text-xs">
+          <ol
+            aria-label="Source lines"
+            className="rounded-md border bg-muted/40 py-1 font-mono text-xs"
+          >
             {source.split("\n").map((text, i) => {
               const current = step !== undefined && step.line === i + 1
               return (
@@ -117,17 +146,19 @@ export function VisualizePanel({ source, trace, loading, onClose }: VisualizePan
                   key={i}
                   aria-current={current ? "step" : undefined}
                   className={cn(
-                    "flex gap-2 whitespace-pre px-2",
+                    "flex gap-2 px-2 whitespace-pre",
                     current && "bg-primary/15 text-foreground"
                   )}
                 >
                   <span aria-hidden className="w-3 shrink-0 text-primary">
                     {current ? "→" : ""}
                   </span>
-                  <span className="w-6 shrink-0 select-none text-right text-muted-foreground">
+                  <span className="w-6 shrink-0 text-right text-muted-foreground select-none">
                     {i + 1}
                   </span>
-                  <span className="min-w-0 flex-1 overflow-x-auto">{text || " "}</span>
+                  <span className="min-w-0 flex-1 overflow-x-auto">
+                    {text || " "}
+                  </span>
                 </li>
               )
             })}
@@ -163,7 +194,11 @@ export function VisualizePanel({ source, trace, loading, onClose }: VisualizePan
               disabled={steps.length < 2}
               onClick={() => dispatch({ type: "toggle" })}
             >
-              {playback.playing ? <Pause className="size-4" /> : <Play className="size-4" />}
+              {playback.playing ? (
+                <Pause className="size-4" />
+              ) : (
+                <Play className="size-4" />
+              )}
             </Button>
             <Button
               type="button"
@@ -204,7 +239,10 @@ export function VisualizePanel({ source, trace, loading, onClose }: VisualizePan
                 ))}
               </select>
             </label>
-            <span aria-live="polite" className="ml-auto text-xs text-muted-foreground">
+            <span
+              aria-live="polite"
+              className="ml-auto text-xs text-muted-foreground"
+            >
               {steps.length === 0
                 ? "No steps"
                 : `Step ${playback.cursor + 1} of ${steps.length}`}
@@ -220,15 +258,19 @@ export function VisualizePanel({ source, trace, loading, onClose }: VisualizePan
               <PanelSection title="Variables">
                 {currentFrame && Object.keys(currentFrame.locals).length > 0 ? (
                   <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 font-mono text-xs">
-                    {Object.entries(currentFrame.locals).map(([name, value]) => (
-                      <div key={name} className="contents">
-                        <dt className="text-muted-foreground">{name}</dt>
-                        <dd>{renderValue(value)}</dd>
-                      </div>
-                    ))}
+                    {Object.entries(currentFrame.locals).map(
+                      ([name, value]) => (
+                        <div key={name} className="contents">
+                          <dt className="text-muted-foreground">{name}</dt>
+                          <dd>{renderValue(value)}</dd>
+                        </div>
+                      )
+                    )}
                   </dl>
                 ) : (
-                  <p className="text-xs text-muted-foreground">No variables yet.</p>
+                  <p className="text-xs text-muted-foreground">
+                    No variables yet.
+                  </p>
                 )}
               </PanelSection>
 
@@ -237,7 +279,9 @@ export function VisualizePanel({ source, trace, loading, onClose }: VisualizePan
                   {step!.frames.map((frame) => (
                     <li key={frame.id}>
                       {frame.name}{" "}
-                      <span className="text-muted-foreground">line {frame.line}</span>
+                      <span className="text-muted-foreground">
+                        line {frame.line}
+                      </span>
                     </li>
                   ))}
                 </ol>
@@ -247,8 +291,12 @@ export function VisualizePanel({ source, trace, loading, onClose }: VisualizePan
                 {step!.heap.length > 0 ? (
                   <ul className="space-y-1 font-mono text-xs">
                     {step!.heap.map((node) => (
-                      <li key={node.id} className="rounded-md border bg-muted/40 px-2 py-1">
-                        <span className="text-muted-foreground">{node.id}</span> {node.type}
+                      <li
+                        key={node.id}
+                        className="rounded-md border bg-muted/40 px-2 py-1"
+                      >
+                        <span className="text-muted-foreground">{node.id}</span>{" "}
+                        {node.type}
                         <dl className="grid grid-cols-[auto_1fr] gap-x-3">
                           {Object.entries(node.fields).map(([field, value]) => (
                             <div key={field} className="contents">
@@ -261,7 +309,9 @@ export function VisualizePanel({ source, trace, loading, onClose }: VisualizePan
                     ))}
                   </ul>
                 ) : (
-                  <p className="text-xs text-muted-foreground">Heap is empty.</p>
+                  <p className="text-xs text-muted-foreground">
+                    Heap is empty.
+                  </p>
                 )}
               </PanelSection>
 
@@ -271,7 +321,9 @@ export function VisualizePanel({ source, trace, loading, onClose }: VisualizePan
                     {step!.stdout.join("\n")}
                   </pre>
                 ) : (
-                  <p className="text-xs text-muted-foreground">No output yet.</p>
+                  <p className="text-xs text-muted-foreground">
+                    No output yet.
+                  </p>
                 )}
               </PanelSection>
             </>
@@ -282,10 +334,16 @@ export function VisualizePanel({ source, trace, loading, onClose }: VisualizePan
   )
 }
 
-function PanelSection({ title, children }: { title: string; children: React.ReactNode }) {
+function PanelSection({
+  title,
+  children,
+}: {
+  title: string
+  children: React.ReactNode
+}) {
   return (
     <section aria-label={title}>
-      <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+      <h3 className="mb-1 text-xs font-semibold tracking-wide text-muted-foreground uppercase">
         {title}
       </h3>
       {children}
@@ -296,7 +354,9 @@ function PanelSection({ title, children }: { title: string; children: React.Reac
 function renderValue(value: TraceValue): string {
   switch (value.kind) {
     case "primitive":
-      return typeof value.value === "string" ? JSON.stringify(value.value) : String(value.value)
+      return typeof value.value === "string"
+        ? JSON.stringify(value.value)
+        : String(value.value)
     case "reference":
       // Textual reference for C2; SVG arrows arrive with the C3 heap renderer.
       return `${value.label} → ${value.id}`

@@ -11,6 +11,10 @@ import { CodeCellEditor } from "./CodeCellEditor"
 import { MarkdownCellEditor } from "./MarkdownCellEditor"
 import { OutputRenderer } from "../../viewer/components/OutputRenderer"
 import type { RuntimeCellState } from "../../runtime/use-notebook-runtime"
+import {
+  VisualizeCellAction,
+  type VisualizeAvailability,
+} from "../../visualize"
 
 interface EditableCellProps {
   cell: NotebookCell
@@ -28,6 +32,9 @@ interface EditableCellProps {
   onRun?: () => void
   /** Shift+Enter: run then focus the next cell (Colab behavior). */
   onRunAdvance?: () => void
+  /** "ready" = clickable action, "coming-soon" = disabled action, "hidden" = none. */
+  visualize?: VisualizeAvailability
+  onVisualize?: () => void
 }
 
 /** One editable cell, Colab-style: run gutter + editor + hover toolbar. */
@@ -45,6 +52,8 @@ export function EditableCell({
   runtime,
   onRun,
   onRunAdvance,
+  visualize = "hidden",
+  onVisualize,
 }: EditableCellProps) {
   const isCode = cell.cellType === "code"
 
@@ -98,6 +107,13 @@ export function EditableCell({
           )}
         </div>
 
+        {isCode && (
+          <VisualizeCellAction
+            availability={visualize}
+            onVisualize={onVisualize}
+          />
+        )}
+
         {isCode && runtime && runtime.outputs.length > 0 && (
           <div className="space-y-2 px-3 py-2">
             {runtime.outputs.map((output, index) => (
@@ -110,11 +126,7 @@ export function EditableCell({
       <div
         className={cn(
           "absolute right-2 bottom-full z-10 mb-1 items-center gap-0.5 rounded-md border bg-background p-0.5 shadow-sm",
-          !selected
-              ? "hidden group-hover:flex"
-              : isCode
-                ? "flex"
-                : "hidden" // markdown editing — never show, prevents overlap
+          !selected ? "hidden group-hover:flex" : isCode ? "flex" : "hidden" // markdown editing — never show, prevents overlap
         )}
         onClick={(e) => e.stopPropagation()}
       >
