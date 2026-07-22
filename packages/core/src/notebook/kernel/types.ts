@@ -1,4 +1,5 @@
 import type { CellOutput, Notebook } from "../types"
+import type { TraceLanguage, TraceResult } from "../visualize/types"
 
 export type RuntimeProfile =
   | "data-science" // python (existing)
@@ -87,9 +88,15 @@ export interface KernelAdapter {
 export type WorkerRequest =
   | { type: "init" }
   | { type: "execute"; execId: number; code: string }
+  | {
+      type: "trace"
+      id: string
+      language: TraceLanguage
+      code: string
+    }
 
 /** worker → main */
-export type WorkerResponse =
+type ExistingWorkerResponse =
   | { type: "ready" }
   | { type: "status"; status: "starting" | "idle" | "busy" | "error" }
   | { type: "stream"; execId: number; name: "stdout" | "stderr"; text: string }
@@ -97,3 +104,14 @@ export type WorkerResponse =
   | { type: "grades"; execId: number; grades: GradeMap }
   | { type: "done"; execId: number; executionCount: number }
   | { type: "fatal"; message: string }
+
+export interface SerializedTraceError {
+  name: string
+  message: string
+  line?: number
+}
+
+export type WorkerResponse =
+  | ExistingWorkerResponse
+  | { type: "trace-result"; id: string; result: TraceResult }
+  | { type: "trace-error"; id: string; error: SerializedTraceError }
