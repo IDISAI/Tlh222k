@@ -11,6 +11,10 @@ export const TRACE_LIMITS = {
   maxSteps: 3000,
   maxDepth: 3,
   maxStringLength: 100,
+  maxCollectionEntries: 50,
+  maxHeapNodes: 50,
+  maxOutputLines: 100,
+  maxOutputBytes: 10_000,
 } as const
 
 export type TracePrimitive = string | number | boolean | null
