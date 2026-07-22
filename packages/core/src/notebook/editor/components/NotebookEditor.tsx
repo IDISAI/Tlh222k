@@ -9,8 +9,8 @@ import { NotebookService } from "../../notebook.service"
 import type { NotebookRecord } from "../../kernel/types"
 import {
   JupyterSandboxAdapter,
-  PyodideKernelAdapter,
   SandboxSessionClient,
+  WorkerKernelAdapter,
   profileForNotebook,
 } from "../../kernel"
 import { KernelActions, KernelBar, NotebookWorkspace } from "../../layout"
@@ -52,7 +52,7 @@ interface NotebookEditorProps {
    * bundler builds the worker). When provided and no kernel-server is set, cells
    * run client-side via Pyodide — no execution backend needed.
    */
-  createKernelWorker?: () => Worker
+  createKernelWorker?: (language: string) => Worker
   /**
    * Trace engine seam for "Visualize execution". Absent, the panel reports that
    * no engine is registered. Must be created in the app (browser-only) so its
@@ -68,6 +68,9 @@ interface NotebookEditorProps {
 }
 
 const service = new NotebookService()
+
+/** Languages that run entirely in the browser when there is no kernel server. */
+const BROWSER_LANGUAGES = new Set(["python", "javascript"])
 
 // Shared with the web viewer: when set, notebooks live on kernel-server so the
 // admin editor and the web /learn viewer read/write the same store.
@@ -118,8 +121,11 @@ export function NotebookEditor({
             new SandboxSessionClient(KERNEL_SERVER_URL, getToken),
             profile
           )
-        : createKernelWorker && editor.language === "python"
-          ? new PyodideKernelAdapter(createKernelWorker)
+        : // No kernel server (the deployed default): Python runs on Pyodide and
+          // JavaScript on the bundled interpreter, so both stay runnable — and
+          // their visualize gate, which needs a successful run, still opens.
+          createKernelWorker && BROWSER_LANGUAGES.has(editor.language)
+          ? new WorkerKernelAdapter(() => createKernelWorker(editor.language))
           : null,
     [getToken, createKernelWorker, profile, editor.language]
   )
@@ -139,9 +145,9 @@ export function NotebookEditor({
     profile === null
       ? `Unsupported notebook language: ${editor.language}`
       : adapter === null
-        ? editor.language === "python"
-          ? "Python execution worker is not configured."
-          : "This language requires the kernel server."
+        ? BROWSER_LANGUAGES.has(editor.language)
+          ? `Chưa cấu hình worker để chạy ${editor.language}.`
+          : "Ngôn ngữ này cần kernel server để chạy (Python và JavaScript chạy được ngay trên trình duyệt)."
         : null
 
   const handleDownload = () => {

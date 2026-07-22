@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest"
 
-import { handleJavaScriptTraceRequest } from "./javascript-worker-runtime"
+import {
+  handleJavaScriptExecuteRequest,
+  handleJavaScriptTraceRequest,
+} from "./javascript-worker-runtime"
 import type { TraceWorkerRequest } from "./trace-worker-protocol"
 
 function request(
@@ -57,4 +60,69 @@ describe("handleJavaScriptTraceRequest", () => {
 
     expect(JSON.parse(JSON.stringify(response))).toEqual(response)
   })
+})
+
+describe("handleJavaScriptExecuteRequest", () => {
+  it("streams output and closes the run like a kernel would", () => {
+    const messages = handleJavaScriptExecuteRequest(
+      7,
+      'console.log("hi")\nconsole.log(1 + 1)',
+      3
+    )
+
+    expect(messages.map((m) => m.type)).toEqual([
+      "status",
+      "stream",
+      "done",
+      "status",
+    ])
+    expect(messages[1]).toEqual({
+      type: "stream",
+      execId: 7,
+      name: "stdout",
+      text: "hi\n2\n",
+    })
+    expect(messages[2]).toEqual({ type: "done", execId: 7, executionCount: 3 })
+    expect(messages[3]).toEqual({ type: "status", status: "idle" })
+  })
+
+  it("reports a failing cell as an error output but still finishes", () => {
+    const messages = handleJavaScriptExecuteRequest(1, "missing()", 1)
+
+    expect(messages.map((m) => m.type)).toEqual([
+      "status",
+      "output",
+      "done",
+      "status",
+    ])
+    expect(messages[1]).toMatchObject({
+      type: "output",
+      output: { kind: "error", ename: "ReferenceError" },
+    })
+    // A cell that throws must not leave the kernel stuck on "busy".
+    expect(messages[3]).toEqual({ type: "status", status: "idle" })
+  })
+
+  it("emits no stream message when the cell prints nothing", () => {
+    const messages = handleJavaScriptExecuteRequest(1, "const x = 1", 1)
+
+    expect(messages.map((m) => m.type)).toEqual(["status", "done", "status"])
+  })
+
+  it("keeps whatever a runaway loop printed before its time limit", () => {
+    const messages = handleJavaScriptExecuteRequest(
+      1,
+      'console.log("before")\nwhile (true) {}',
+      1
+    )
+
+    expect(messages[1]).toMatchObject({
+      type: "stream",
+      text: "before\n",
+    })
+    expect(messages[2]).toMatchObject({
+      type: "output",
+      output: { kind: "error", ename: "TimeoutError" },
+    })
+  }, 20_000)
 })

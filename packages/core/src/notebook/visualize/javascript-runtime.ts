@@ -232,9 +232,39 @@ const FORBIDDEN_KEYS = new Set([
 // ── entry point ──────────────────────────────────────────────────────────────
 
 export function traceJavaScript(source: string): TraceResult {
-  const interpreter = new Interpreter()
-  return interpreter.run(source)
+  return new Interpreter().run(source)
 }
+
+export interface JavaScriptRunResult {
+  stdout: string[]
+  error?: TraceResult["error"]
+}
+
+/**
+ * Runs a cell for its output instead of its trace. Same interpreter, same
+ * sandbox — it just records no steps, so a loop is bounded by wall-clock time
+ * rather than the far smaller step cap. This is what lets JavaScript notebooks
+ * run in the browser wherever the kernel server is not reachable, the same way
+ * Python falls back to Pyodide.
+ */
+export function runJavaScript(
+  source: string,
+  options: { timeLimitMs?: number } = {}
+): JavaScriptRunResult {
+  const interpreter = new Interpreter({
+    capture: false,
+    timeLimitMs: options.timeLimitMs ?? DEFAULT_RUN_LIMIT_MS,
+  })
+  const result = interpreter.run(source)
+  const stdout = interpreter.output()
+  return result.error ? { stdout, error: result.error } : { stdout }
+}
+
+/** Wall-clock budget for an untraced run; the worker is the outer guard. */
+const DEFAULT_RUN_LIMIT_MS = 5_000
+
+/** Raised when an untraced run outlives its wall-clock budget. */
+class TimeLimitSignal {}
 
 class Interpreter {
   private readonly steps: TraceStep[] = []
@@ -246,8 +276,22 @@ class Interpreter {
   private nextHeapId = 1
   private nextFrameId = 1
   private depth = 0
+  private readonly capture: boolean
+  private readonly timeLimitMs: number
+  private deadline = Number.POSITIVE_INFINITY
+
+  constructor(options: { capture?: boolean; timeLimitMs?: number } = {}) {
+    this.capture = options.capture ?? true
+    this.timeLimitMs = options.timeLimitMs ?? DEFAULT_RUN_LIMIT_MS
+  }
+
+  /** Captured stdout, for callers that want the run rather than the trace. */
+  output(): string[] {
+    return this.stdout.snapshot()
+  }
 
   run(source: string): TraceResult {
+    this.deadline = Date.now() + this.timeLimitMs
     const result: TraceResult = {
       language: "javascript",
       steps: this.steps,
@@ -295,7 +339,12 @@ class Interpreter {
       // so without this the last statement's effect would never be visible.
       this.pushStep(this.currentLine(), "return")
     } catch (thrown) {
-      if (!(thrown instanceof TraceCapSignal)) {
+      if (thrown instanceof TimeLimitSignal) {
+        result.error = {
+          name: "TimeoutError",
+          message: `Chương trình chạy quá ${Math.round(this.timeLimitMs / 1000)} giây nên đã dừng lại.`,
+        }
+      } else if (!(thrown instanceof TraceCapSignal)) {
         const described = describeThrown(thrown)
         result.error = described
         if (
@@ -325,6 +374,12 @@ class Interpreter {
   }
 
   private pushStep(line: number, event: TraceStep["event"]): void {
+    // Untraced runs record nothing, so this is also the only regular heartbeat
+    // the interpreter has: it is where a runaway loop gets stopped.
+    if (!this.capture) {
+      if (Date.now() > this.deadline) throw new TimeLimitSignal()
+      return
+    }
     if (this.capped) throw new TraceCapSignal()
     if (this.steps.length >= TRACE_LIMITS.maxSteps) {
       this.capped = true
@@ -1409,7 +1464,8 @@ function isSignal(value: unknown): boolean {
     value instanceof BreakSignal ||
     value instanceof ContinueSignal ||
     value instanceof ReturnSignal ||
-    value instanceof TraceCapSignal
+    value instanceof TraceCapSignal ||
+    value instanceof TimeLimitSignal
   )
 }
 

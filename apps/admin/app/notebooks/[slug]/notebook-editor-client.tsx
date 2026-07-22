@@ -95,8 +95,10 @@ function NotebookEditorInner({
       getToken={getToken}
       defaultTitle={defaultTitle}
       apiBaseUrl={apiBaseUrl}
-      createKernelWorker={() =>
-        new Worker(new URL("./pyodide.worker.ts", import.meta.url))
+      createKernelWorker={(language) =>
+        language === "javascript"
+          ? new Worker(new URL("./javascript-trace.worker.ts", import.meta.url))
+          : new Worker(new URL("./pyodide.worker.ts", import.meta.url))
       }
       createTrace={createTrace}
       onPublishChange={syncArticlePublish}

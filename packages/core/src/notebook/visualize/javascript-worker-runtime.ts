@@ -1,9 +1,9 @@
-// Worker-side JavaScript trace runtime (C4). The tracer is synchronous and
+// Worker-side JavaScript runtime (C4). The interpreter is synchronous and
 // self-contained, so this layer only translates between the worker protocol and
-// `traceJavaScript`. Kept out of the package barrel: it belongs to the worker
-// graph, not the page bundle.
+// `traceJavaScript` / `runJavaScript`. Kept out of the package barrel: it
+// belongs to the worker graph, not the page bundle.
 
-import { traceJavaScript } from "./javascript-runtime"
+import { runJavaScript, traceJavaScript } from "./javascript-runtime"
 import {
   normalizeTraceResult,
   TraceProtocolError,
@@ -11,6 +11,8 @@ import {
   type TraceWorkerRequest,
   type TraceWorkerResponse,
 } from "./trace-worker-protocol"
+import type { CellOutput } from "../types"
+import type { WorkerResponse } from "../kernel/types"
 
 export type { TraceWorkerRequest, TraceWorkerResponse }
 
@@ -36,4 +38,42 @@ export function handleJavaScriptTraceRequest(
   } catch (error) {
     return traceErrorResponse(request.id, error)
   }
+}
+
+/**
+ * Runs one cell and returns the messages a kernel adapter expects. This is the
+ * browser-only execution path: it lets JavaScript notebooks run wherever the
+ * kernel server is unreachable, the way Python falls back to Pyodide.
+ */
+export function handleJavaScriptExecuteRequest(
+  execId: number,
+  code: string,
+  executionCount: number
+): WorkerResponse[] {
+  const messages: WorkerResponse[] = [{ type: "status", status: "busy" }]
+  const { stdout, error } = runJavaScript(code)
+
+  if (stdout.length > 0) {
+    messages.push({
+      type: "stream",
+      execId,
+      name: "stdout",
+      text: `${stdout.join("\n")}\n`,
+    })
+  }
+  if (error) {
+    const output: CellOutput = {
+      kind: "error",
+      ename: error.name,
+      evalue: error.message,
+      traceback:
+        error.line === undefined
+          ? [`${error.name}: ${error.message}`]
+          : [`${error.name}: ${error.message}`, `  tại dòng ${error.line}`],
+    }
+    messages.push({ type: "output", execId, output })
+  }
+  messages.push({ type: "done", execId, executionCount })
+  messages.push({ type: "status", status: "idle" })
+  return messages
 }

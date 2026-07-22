@@ -10,6 +10,7 @@ import {
   SandboxSessionClient,
   profileForNotebook,
   useTraceEngines,
+  WorkerKernelAdapter,
   type KernelAdapter,
   type Notebook,
   type TraceLanguage,
@@ -24,7 +25,9 @@ import {
 
 type LearnTab = "tutorial" | "exercise"
 
-// Pyodide (the no-kernel-server fallback) only runs Python.
+/** Languages that run entirely in the browser when there is no kernel server. */
+const BROWSER_LANGUAGES = new Set(["python", "javascript"])
+
 function runUnavailableReason(
   notebook: Notebook,
   kernelUrl: string | undefined
@@ -32,8 +35,8 @@ function runUnavailableReason(
   if (!profileForNotebook(notebook.language)) {
     return `Ngôn ngữ notebook "${notebook.language}" chưa được hỗ trợ.`
   }
-  if (kernelUrl || notebook.language === "python") return undefined
-  return "Notebook này cần kernel server để chạy (chỉ Python chạy được ngay trên trình duyệt)."
+  if (kernelUrl || BROWSER_LANGUAGES.has(notebook.language)) return undefined
+  return "Notebook này cần kernel server để chạy (Python và JavaScript chạy được ngay trên trình duyệt)."
 }
 
 function createNotebookAdapter(
@@ -49,10 +52,20 @@ function createNotebookAdapter(
       profile
     )
   }
-  if (notebook.language !== "python") return null
-  return new PyodideKernelAdapter(
-    () => new Worker(new URL("./pyodide.worker.ts", import.meta.url))
-  )
+  // No kernel server (the deployed default): Python runs on Pyodide and
+  // JavaScript on the bundled interpreter, so both stay usable — and their
+  // "Visualize execution" gate, which needs a successful run, still opens.
+  if (notebook.language === "python") {
+    return new PyodideKernelAdapter(
+      () => new Worker(new URL("./pyodide.worker.ts", import.meta.url))
+    )
+  }
+  if (notebook.language === "javascript") {
+    return new WorkerKernelAdapter(
+      () => new Worker(new URL("./javascript-trace.worker.ts", import.meta.url))
+    )
+  }
+  return null
 }
 
 /**
