@@ -10,6 +10,7 @@ export function createPythonTraceBootstrap(source: string): string {
   const payload = JSON.stringify(JSON.stringify({ source }))
 
   return String.raw`import builtins
+import importlib
 import json
 import math
 import sys
@@ -22,15 +23,19 @@ def __codex_run():
     MAX_DEPTH = ${TRACE_LIMITS.maxDepth}
     MAX_STRING_LENGTH = ${TRACE_LIMITS.maxStringLength}
     MAX_COLLECTION_ENTRIES = ${TRACE_LIMITS.maxCollectionEntries}
+    MAX_INSPECTED_ENTRIES = MAX_COLLECTION_ENTRIES * 4
     MAX_HEAP_NODES = ${TRACE_LIMITS.maxHeapNodes}
     MAX_OUTPUT_LINES = ${TRACE_LIMITS.maxOutputLines}
     MAX_OUTPUT_BYTES = ${TRACE_LIMITS.maxOutputBytes}
+    MAX_SAFE_INTEGER = 9007199254740991
     __codex_source = json.loads(__codex_payload)["source"]
     __codex_steps = []
     __codex_heap_by_id = {}
     __codex_object_ids = {}
+    __codex_retained_objects = {}
     __codex_expanded_ids = set()
     __codex_frame_ids = {}
+    __codex_retained_frames = {}
     __codex_next_object_id = 1
     __codex_next_frame_id = 1
     __codex_result = {"language": "python", "steps": __codex_steps, "truncated": False}
@@ -79,24 +84,30 @@ def __codex_run():
 
     __codex_stdout = __codex_OutputCapture()
 
-    class __codex_SysProxy:
-        def __init__(self, __codex_capture):
-            object.__setattr__(self, "_capture", __codex_capture)
+    class __codex_ModuleProxy(types.ModuleType):
+        def __init__(self, __codex_name, __codex_module, __codex_overrides):
+            types.ModuleType.__init__(self, __codex_name)
+            types.ModuleType.__setattr__(self, "_module", __codex_module)
+            types.ModuleType.__setattr__(self, "_overrides", __codex_overrides)
 
         def __getattr__(self, __codex_name):
-            if __codex_name == "settrace":
-                return lambda __codex_trace_fn: None
-            if __codex_name == "stdout":
-                return object.__getattribute__(self, "_capture")
-            return getattr(sys, __codex_name)
+            __codex_overrides = types.ModuleType.__getattribute__(self, "_overrides")
+            if __codex_name in __codex_overrides:
+                return __codex_overrides[__codex_name]
+            __codex_module = types.ModuleType.__getattribute__(self, "_module")
+            return getattr(__codex_module, __codex_name)
 
         def __setattr__(self, __codex_name, __codex_value):
-            if __codex_name in ("settrace", "stdout"):
+            __codex_overrides = types.ModuleType.__getattribute__(self, "_overrides")
+            if __codex_name in __codex_overrides:
                 return
-            setattr(sys, __codex_name, __codex_value)
+            __codex_module = types.ModuleType.__getattribute__(self, "_module")
+            setattr(__codex_module, __codex_name, __codex_value)
 
-    __codex_sys_proxy = __codex_SysProxy(__codex_stdout)
     __codex_real_import = builtins.__import__
+
+    def __codex_ignore_settrace(__codex_trace_fn):
+        return None
 
     def __codex_import(__codex_name, __codex_globals=None, __codex_locals=None, __codex_fromlist=(), __codex_level=0):
         __codex_module = __codex_real_import(
@@ -106,9 +117,46 @@ def __codex_run():
             __codex_fromlist,
             __codex_level,
         )
-        if __codex_name == "sys":
+        __codex_root = __codex_name.split(".", 1)[0]
+        if __codex_root == "sys":
             return __codex_sys_proxy
+        if __codex_root == "builtins":
+            return __codex_builtins_proxy
+        if __codex_root == "importlib":
+            return __codex_importlib_proxy
         return __codex_module
+
+    def __codex_import_module(__codex_name, __codex_package=None):
+        __codex_module = importlib.import_module(__codex_name, __codex_package)
+        __codex_root = __codex_name.split(".", 1)[0]
+        if __codex_root == "sys":
+            return __codex_sys_proxy
+        if __codex_root == "builtins":
+            return __codex_builtins_proxy
+        if __codex_root == "importlib":
+            return __codex_importlib_proxy
+        return __codex_module
+
+    __codex_sys_overrides = {
+        "settrace": __codex_ignore_settrace,
+        "stdout": __codex_stdout,
+    }
+    __codex_sys_proxy = __codex_ModuleProxy("sys", sys, __codex_sys_overrides)
+    __codex_builtins_proxy = __codex_ModuleProxy(
+        "builtins",
+        builtins,
+        {"__import__": __codex_import},
+    )
+    __codex_importlib_proxy = __codex_ModuleProxy(
+        "importlib",
+        importlib,
+        {"import_module": __codex_import_module},
+    )
+    __codex_modules = dict(sys.modules)
+    __codex_modules["sys"] = __codex_sys_proxy
+    __codex_modules["builtins"] = __codex_builtins_proxy
+    __codex_modules["importlib"] = __codex_importlib_proxy
+    __codex_sys_overrides["modules"] = __codex_modules
 
     def __codex_clip(__codex_value, __codex_fallback="<unavailable>"):
         try:
@@ -117,7 +165,7 @@ def __codex_run():
             __codex_text = __codex_fallback
         if len(__codex_text) <= MAX_STRING_LENGTH:
             return __codex_text
-        return __codex_text[:MAX_STRING_LENGTH - 1] + "…"
+        return __codex_text[:MAX_STRING_LENGTH - 3] + "..."
 
     def __codex_attributes(__codex_value):
         try:
@@ -151,27 +199,25 @@ def __codex_run():
     def __codex_order_key(__codex_value, __codex_depth=0):
         try:
             if __codex_value is None:
-                return ("none", "")
+                return ("none",)
             if isinstance(__codex_value, bool):
-                return ("bool", "1" if __codex_value else "0")
+                return ("bool", __codex_value)
             if isinstance(__codex_value, int):
-                return ("int", str(__codex_value))
+                return ("int", __codex_value)
             if isinstance(__codex_value, float):
-                return ("float", repr(__codex_value))
+                return ("float", float.hex(__codex_value))
             if isinstance(__codex_value, str):
-                return ("str", __codex_value[:MAX_STRING_LENGTH])
+                return ("str", __codex_value)
             if isinstance(__codex_value, bytes):
-                return ("bytes", __codex_value[:MAX_STRING_LENGTH].hex())
-            if isinstance(__codex_value, tuple) and __codex_depth < MAX_DEPTH:
+                return ("bytes", __codex_value)
+            if isinstance(__codex_value, tuple):
+                if __codex_depth >= MAX_DEPTH:
+                    return ("tuple", "<depth limit>")
                 return (
                     "tuple",
-                    json.dumps(
-                        [
-                            __codex_order_key(__codex_item, __codex_depth + 1)
-                            for __codex_item in __codex_value[:MAX_COLLECTION_ENTRIES]
-                        ],
-                        ensure_ascii=False,
-                        separators=(",", ":"),
+                    tuple(
+                        __codex_order_key(__codex_item, __codex_depth + 1)
+                        for __codex_item in __codex_value[:MAX_COLLECTION_ENTRIES]
                     ),
                 )
             __codex_type_key = (
@@ -184,29 +230,35 @@ def __codex_run():
                 return ("object", __codex_type_key)
             __codex_public_attrs = []
             for __codex_index, (__codex_name, __codex_item) in enumerate(dict.items(__codex_attrs)):
-                if __codex_index >= MAX_COLLECTION_ENTRIES:
+                if __codex_index >= MAX_INSPECTED_ENTRIES:
                     break
                 if isinstance(__codex_name, str) and not __codex_name.startswith("_"):
+                    if len(__codex_public_attrs) >= MAX_COLLECTION_ENTRIES:
+                        break
                     __codex_public_attrs.append((
-                        __codex_clip(__codex_name),
+                        __codex_name,
                         __codex_order_key(__codex_item, __codex_depth + 1),
                     ))
             __codex_public_attrs.sort(key=lambda __codex_item: __codex_item[0])
             return (
                 "object",
-                __codex_type_key + json.dumps(
-                    __codex_public_attrs,
-                    ensure_ascii=False,
-                    separators=(",", ":"),
-                ),
+                __codex_type_key,
+                tuple(__codex_public_attrs),
             )
         except BaseException:
-            return ("unavailable", "")
+            return ("unavailable",)
 
     def __codex_serialize_value(__codex_value, __codex_depth):
         nonlocal __codex_next_object_id
-        if __codex_value is None or isinstance(__codex_value, (bool, int)):
+        if __codex_value is None or isinstance(__codex_value, bool):
             return {"kind": "primitive", "value": __codex_value}
+        if isinstance(__codex_value, int):
+            if -MAX_SAFE_INTEGER <= __codex_value <= MAX_SAFE_INTEGER:
+                return {"kind": "primitive", "value": __codex_value}
+            __codex_bits = int.bit_length(abs(__codex_value))
+            if __codex_bits > MAX_STRING_LENGTH * 4:
+                return __codex_truncated("<int " + str(__codex_bits) + " bits>")
+            return __codex_truncated(__codex_value)
         if isinstance(__codex_value, float):
             if math.isfinite(__codex_value):
                 return {"kind": "primitive", "value": __codex_value}
@@ -245,6 +297,7 @@ def __codex_run():
             __codex_id = "heap-" + str(__codex_next_object_id)
             __codex_next_object_id += 1
             __codex_object_ids[__codex_identity] = __codex_id
+            __codex_retained_objects[__codex_identity] = __codex_value
         else:
             __codex_id = __codex_existing
         __codex_expanded_ids.add(__codex_id)
@@ -271,15 +324,33 @@ def __codex_run():
                 )
                 __codex_node["fields"][__codex_field] = __codex_serialize_value(__codex_item, __codex_depth + 1)
         elif isinstance(__codex_value, set):
-            if set.__len__(__codex_value) <= MAX_COLLECTION_ENTRIES:
-                __codex_items = sorted(set.__iter__(__codex_value), key=__codex_order_key)
-                for __codex_index, __codex_item in enumerate(__codex_items):
-                    __codex_node["fields"][str(__codex_index)] = __codex_serialize_value(__codex_item, __codex_depth + 1)
+            __codex_set_size = set.__len__(__codex_value)
+            if __codex_set_size > MAX_COLLECTION_ENTRIES:
+                __codex_node["fields"]["<truncated>"] = __codex_truncated(
+                    str(__codex_set_size) + " set items"
+                )
+            else:
+                __codex_items = [
+                    (__codex_order_key(__codex_item), __codex_item)
+                    for __codex_item in set.__iter__(__codex_value)
+                ]
+                __codex_items.sort(key=lambda __codex_pair: __codex_pair[0])
+                __codex_has_tie = any(
+                    __codex_items[__codex_index - 1][0] == __codex_items[__codex_index][0]
+                    for __codex_index in range(1, len(__codex_items))
+                )
+                if __codex_has_tie:
+                    __codex_node["fields"]["<truncated>"] = __codex_truncated("set ordering tie")
+                else:
+                    for __codex_index, (_, __codex_item) in enumerate(__codex_items):
+                        __codex_node["fields"][str(__codex_index)] = __codex_serialize_value(__codex_item, __codex_depth + 1)
         else:
             for __codex_index, (__codex_name, __codex_item) in enumerate(dict.items(__codex_attrs)):
-                if __codex_index >= MAX_COLLECTION_ENTRIES:
+                if __codex_index >= MAX_INSPECTED_ENTRIES:
                     break
                 if isinstance(__codex_name, str) and not __codex_name.startswith("_"):
+                    if len(__codex_node["fields"]) >= MAX_COLLECTION_ENTRIES:
+                        break
                     __codex_field = __codex_unique_key(__codex_node["fields"], __codex_name)
                     __codex_node["fields"][__codex_field] = __codex_serialize_value(__codex_item, __codex_depth + 1)
 
@@ -296,11 +367,14 @@ def __codex_run():
                     __codex_frame_id = "frame-" + str(__codex_next_frame_id)
                     __codex_next_frame_id += 1
                     __codex_frame_ids[__codex_frame_identity] = __codex_frame_id
+                    __codex_retained_frames[__codex_frame_identity] = __codex_frame
                 __codex_locals = {}
                 for __codex_index, (__codex_name, __codex_local) in enumerate(__codex_frame.f_locals.items()):
-                    if __codex_index >= MAX_COLLECTION_ENTRIES:
+                    if __codex_index >= MAX_INSPECTED_ENTRIES:
                         break
                     if isinstance(__codex_name, str) and not __codex_name.startswith("_"):
+                        if len(__codex_locals) >= MAX_COLLECTION_ENTRIES:
+                            break
                         __codex_local_name = __codex_unique_key(__codex_locals, __codex_name)
                         __codex_locals[__codex_local_name] = __codex_serialize_value(__codex_local, 0)
                 __codex_frames.append({
