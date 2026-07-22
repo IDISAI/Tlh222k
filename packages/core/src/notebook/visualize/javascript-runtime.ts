@@ -1360,9 +1360,7 @@ function installGlobals(scope: Scope, stdout: OutputCapture): void {
   arrayStatics.isArray = new NativeFunction("isArray", (args) =>
     Array.isArray(args[0])
   )
-  arrayStatics.from = new NativeFunction("from", (args) =>
-    iterableValues(args[0])
-  )
+  arrayStatics.from = new NativeFunction("from", (args) => arrayFrom(args[0]))
   scope.declare("Array", arrayStatics, "const")
 
   scope.declare(
@@ -1503,14 +1501,27 @@ function compare(left: unknown, right: unknown): number {
         : 0
 }
 
+/**
+ * `for...of` and array destructuring. Plain objects are deliberately NOT
+ * iterable: the visualizer has to fail exactly where the real runtime fails,
+ * or it teaches code that does not run.
+ */
 function iterableValues(value: unknown): unknown[] {
   if (Array.isArray(value)) return value
   if (typeof value === "string") return [...value]
-  if (isPlainRecord(value)) return Object.values(value)
   throw new TraceRuntimeError(
     "TypeError",
     `${describeValue(value)} is not iterable`
   )
+}
+
+/** `Array.from` additionally accepts array-likes such as `{ length: 3 }`. */
+function arrayFrom(value: unknown): unknown[] {
+  if (isPlainRecord(value) && typeof value.length === "number") {
+    const length = Math.max(0, Math.floor(value.length))
+    return Array.from({ length }, (_, index) => value[index])
+  }
+  return [...iterableValues(value)]
 }
 
 function enumerableKeys(value: unknown): string[] {

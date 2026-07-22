@@ -248,6 +248,40 @@ describe("traceJavaScript", () => {
     expect(["TypeError", "ReferenceError"]).toContain(result.error?.name)
   })
 
+  it("fails where the real runtime fails on a non-iterable", () => {
+    const result = traceJavaScript(
+      ["const counts = { a: 1 }", "for (const value of counts) { }"].join("\n")
+    )
+
+    expect(result.error).toMatchObject({
+      name: "TypeError",
+      message: "object is not iterable",
+    })
+  })
+
+  it("iterates objects with for-in and array-likes with Array.from", () => {
+    const result = traceJavaScript(
+      [
+        "const counts = { a: 1, b: 2 }",
+        "let keys = ''",
+        "for (const key in counts) { keys += key }",
+        "const blanks = Array.from({ length: 3 })",
+        "const letters = Array.from('hi')",
+      ].join("\n")
+    )
+
+    expect(result.error).toBeUndefined()
+    expect(primitive(locals(result).keys)).toBe("ab")
+    expect(
+      Object.keys(heapNode(result, locals(result).blanks)?.fields ?? {})
+    ).toHaveLength(3)
+    expect(
+      Object.values(heapNode(result, locals(result).letters)?.fields ?? {}).map(
+        primitive
+      )
+    ).toEqual(["h", "i"])
+  })
+
   it("names unsupported syntax instead of silently misbehaving", () => {
     const result = traceJavaScript("class Thing {}")
 
