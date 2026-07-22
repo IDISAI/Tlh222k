@@ -6,8 +6,9 @@ ARG DENO_VERSION=2.7.0
 ARG XEUS_CLING_VERSION=0.15.3
 ARG IJAVA_VERSION=1.3.0
 ARG IJAVA_SHA256=484cc62579cb77510b0f0c78283f043794396d8ae9d76a8f2ab5d7368ec246b2
-ARG RUST_TOOLCHAIN=1.85.1
+ARG RUST_TOOLCHAIN=1.88.0
 ARG EVCXR_VERSION=0.21.1
+ARG EVCXR_SHA256=8da8f7167a66ad70c17ec01c2c19924962987959b0ff6434bfaab14597d10a0b
 ARG GOPHERNOTES_VERSION=v0.7.5
 ARG JULIA_VERSION=1.12.6
 ARG IJULIA_VERSION=1.34.4
@@ -54,8 +55,14 @@ RUN set -eux; \
         ;; \
       cpp) \
         /opt/conda/bin/mamba create --yes --prefix /opt/xeus-cling --channel conda-forge "xeus-cling=${XEUS_CLING_VERSION}"; \
+        ln -s /opt/xeus-cling/bin/x86_64-conda-linux-gnu-gcc /usr/local/bin/x86_64-conda-linux-gnu-cc; \
+        ln -s /opt/xeus-cling/bin/x86_64-conda-linux-gnu-c++ /usr/local/bin/x86_64-conda-linux-gnu-c++; \
         mkdir -p /opt/notebook-env/share/jupyter/kernels; \
         cp -R /opt/xeus-cling/share/jupyter/kernels/xcpp* /opt/notebook-env/share/jupyter/kernels/; \
+        /opt/notebook-env/bin/python -c 'import json, pathlib, sys;\
+kernels = pathlib.Path("/opt/notebook-env/share/jupyter/kernels");\
+[p.write_text(json.dumps({**json.loads(p.read_text()), "env": {**json.loads(p.read_text()).get("env", {}), "CPLUS_INCLUDE_PATH": sys.argv[1]}}, indent=2)) for p in sorted(kernels.glob("xcpp*/kernel.json"))]' \
+          /opt/xeus-cling/x86_64-conda-linux-gnu/sysroot/usr/include; \
         /opt/conda/bin/mamba clean --all --yes; \
         expected_kernel=xcpp17 \
         ;; \
@@ -72,12 +79,19 @@ RUN set -eux; \
       rust) \
         apt-get update; \
         apt-get install -y --no-install-recommends build-essential ca-certificates curl; \
+        case "$TARGETARCH" in \
+          amd64) evcxr_target=x86_64-unknown-linux-gnu ;; \
+          *) echo "unsupported TARGETARCH for prebuilt evcxr: $TARGETARCH" >&2; exit 1 ;; \
+        esac; \
         curl --proto '=https' --tlsv1.2 -fsSL -o /tmp/rustup-init.sh https://sh.rustup.rs; \
         CARGO_HOME=/opt/rust/cargo RUSTUP_HOME=/opt/rust/rustup sh /tmp/rustup-init.sh -y --profile minimal --default-toolchain "$RUST_TOOLCHAIN"; \
         CARGO_HOME=/opt/rust/cargo RUSTUP_HOME=/opt/rust/rustup /opt/rust/cargo/bin/rustup component add rust-src; \
-        CARGO_HOME=/opt/rust/cargo RUSTUP_HOME=/opt/rust/rustup /opt/rust/cargo/bin/cargo install --locked --version "$EVCXR_VERSION" evcxr_jupyter; \
+        evcxr_archive="evcxr_jupyter-v${EVCXR_VERSION}-${evcxr_target}.tar.gz"; \
+        curl -fsSL -o "/tmp/${evcxr_archive}" "https://github.com/evcxr/evcxr/releases/download/v${EVCXR_VERSION}/${evcxr_archive}"; \
+        echo "${EVCXR_SHA256}  /tmp/${evcxr_archive}" | sha256sum --check -; \
+        tar -xzf "/tmp/${evcxr_archive}" -C /tmp; \
+        install -m 0755 "/tmp/evcxr_jupyter-v${EVCXR_VERSION}-${evcxr_target}/evcxr_jupyter" /opt/rust/cargo/bin/evcxr_jupyter; \
         JUPYTER_PATH=/opt/notebook-env/share/jupyter RUSTUP_HOME=/opt/rust/rustup /opt/rust/cargo/bin/evcxr_jupyter --install; \
-        rm -rf /opt/rust/cargo/registry /opt/rust/cargo/git; \
         expected_kernel=rust \
         ;; \
       go) \
@@ -106,7 +120,10 @@ RUN set -eux; \
         sha256sum --check julia-archive.sha256; \
         mkdir -p /opt/julia /opt/julia-depot; \
         tar -xzf "$julia_archive" -C /opt/julia --strip-components=1; \
-        IJULIA_VERSION="$IJULIA_VERSION" JULIA_DEPOT_PATH=/opt/julia-depot JUPYTER=/opt/notebook-env/bin/jupyter JUPYTER_DATA_DIR=/opt/notebook-env/share/jupyter /opt/julia/bin/julia --startup-file=no -e 'using Pkg; Pkg.add(Pkg.PackageSpec(name="IJulia", version=ENV["IJULIA_VERSION"])); Pkg.precompile()'; \
+        IJULIA_VERSION="$IJULIA_VERSION" JULIA_DEPOT_PATH=/opt/julia-depot JULIA_PKG_PRECOMPILE_AUTO=0 JUPYTER=/opt/notebook-env/bin/jupyter JUPYTER_DATA_DIR=/opt/notebook-env/share/jupyter /opt/julia/bin/julia --startup-file=no -e 'using Pkg; Pkg.add(Pkg.PackageSpec(name="IJulia", version=ENV["IJULIA_VERSION"]))'; \
+        # Precompile into the shared depot. Without this the first cell of every
+        # fresh container recompiles IJulia (>2 minutes) onto a read-only rootfs.
+        JULIA_DEPOT_PATH=/opt/julia-depot /opt/julia/bin/julia --startup-file=no -e 'using Pkg; Pkg.precompile(); using IJulia'; \
         julia_kernel="$(find /opt/notebook-env/share/jupyter/kernels -mindepth 1 -maxdepth 1 -type d -name 'julia-*' -print -quit)"; \
         test -n "$julia_kernel"; \
         cp -R "$julia_kernel" /opt/notebook-env/share/jupyter/kernels/julia; \
@@ -119,7 +136,7 @@ RUN set -eux; \
     esac; \
     /opt/notebook-env/bin/jupyter kernelspec list --json > /tmp/kernelspecs.json; \
     /opt/notebook-env/bin/python -c 'import json, pathlib, sys; kernels = json.loads(pathlib.Path(sys.argv[2]).read_text())["kernelspecs"]; expected = sys.argv[1]; assert expected in kernels, f"missing kernelspec {expected!r}: {sorted(kernels)}"' "$expected_kernel" /tmp/kernelspecs.json; \
-    rm -rf /var/lib/apt/lists/* /tmp/deno-* /tmp/go-build /tmp/ijava /tmp/ijava.zip /tmp/julia* /tmp/kernelspecs.json /tmp/rustup-init.sh
+    rm -rf /var/lib/apt/lists/* /tmp/deno-* /tmp/evcxr* /tmp/go-build /tmp/ijava /tmp/ijava.zip /tmp/julia* /tmp/kernelspecs.json /tmp/rustup-init.sh
 
 COPY runtime/course_grading.py /opt/course/course_grading.py
 RUN chmod 0444 /opt/course/course_grading.py \
