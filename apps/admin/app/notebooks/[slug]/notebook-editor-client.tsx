@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useMemo } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { useAuth } from "@clerk/nextjs"
 import {
   NotebookEditor,
@@ -10,6 +10,9 @@ import {
   type TraceLanguage,
 } from "@workspace/core"
 import { devAuthRole } from "@workspace/core/navigation/role"
+
+/** How long the editor waits on the roadmap for an article's title. */
+const SEED_TITLE_TIMEOUT_MS = 3_000
 
 type NotebookEditorClientProps = {
   slug: string
@@ -71,29 +74,72 @@ function NotebookEditorInner({
       : ""
   const createTrace = useTraceEngines(createTraceWorker)
 
-  // A notebook reached from a roadmap has two publish flags in two services:
-  // its own, and its article node's. Publishing here keeps them in step, so the
-  // article stops reading "Draft" the moment the notebook goes public.
+  // A notebook reached from a roadmap is described twice, in two services: by
+  // its own record, and by its article node. The two seams below keep them
+  // saying the same thing, so one publish button and one title mean one thing.
   const roadmap = useMemo(() => new RoadmapService(), [])
-  const syncArticlePublish = useCallback(
-    async (notebookSlug: string, published: boolean) => {
-      const article = (await roadmap.listNodes()).find(
+  const findArticle = useCallback(
+    async (notebookSlug: string) =>
+      (await roadmap.listNodes()).find(
         (node) =>
           node.slug === notebookSlug &&
           node.nodeType === "article" &&
           !node.isDeleted
-      )
+      ) ?? null,
+    [roadmap]
+  )
+  const syncArticlePublish = useCallback(
+    async (notebookSlug: string, published: boolean) => {
+      const article = await findArticle(notebookSlug)
       if (!article || article.isPublished === published) return
       await roadmap.updateNode(article.id, { isPublished: published }, role)
     },
-    [roadmap, role]
+    [findArticle, roadmap, role]
   )
+  const syncArticleTitle = useCallback(
+    async (notebookSlug: string, title: string) => {
+      const article = await findArticle(notebookSlug)
+      if (!article || article.title === title) return
+      await roadmap.updateNode(article.id, { title }, role)
+    },
+    [findArticle, roadmap, role]
+  )
+
+  // A brand-new notebook is named the moment it is opened, so the article's own
+  // title has to be in hand BEFORE the editor mounts — otherwise the notebook
+  // is born "Untitled notebook" and the card it came from disagrees with it.
+  // Time-boxed: a roadmap backend that never answers must not hold the editor
+  // hostage, so the wait gives up and the notebook opens unnamed instead.
+  const [seedTitle, setSeedTitle] = useState<string | undefined>(defaultTitle)
+  const [seeding, setSeeding] = useState(defaultTitle === undefined)
+  useEffect(() => {
+    if (defaultTitle !== undefined) return
+    let settled = false
+    const stopSeeding = () => {
+      if (settled) return
+      settled = true
+      setSeeding(false)
+    }
+    const giveUp = setTimeout(stopSeeding, SEED_TITLE_TIMEOUT_MS)
+    void findArticle(slug)
+      .then((article) => {
+        if (!settled && article) setSeedTitle(article.title)
+      })
+      .catch(() => undefined)
+      .finally(stopSeeding)
+    return () => {
+      settled = true
+      clearTimeout(giveUp)
+    }
+  }, [defaultTitle, findArticle, slug])
+
+  if (seeding) return null
 
   return (
     <NotebookEditor
       slug={slug}
       getToken={getToken}
-      defaultTitle={defaultTitle}
+      defaultTitle={seedTitle}
       apiBaseUrl={apiBaseUrl}
       createKernelWorker={(language) =>
         language === "javascript"
@@ -102,6 +148,7 @@ function NotebookEditorInner({
       }
       createTrace={createTrace}
       onPublishChange={syncArticlePublish}
+      onTitleChange={syncArticleTitle}
     />
   )
 }

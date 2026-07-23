@@ -18,7 +18,13 @@ export function newCellId(): string {
 }
 
 export function createCell(cellType: CellType, source = ""): NotebookCell {
-  return { id: newCellId(), cellType, source, executionCount: null, outputs: [] }
+  return {
+    id: newCellId(),
+    cellType,
+    source,
+    executionCount: null,
+    outputs: [],
+  }
 }
 
 /** A fresh, empty notebook (used when the editor opens an unknown slug). */
@@ -28,7 +34,11 @@ export function emptyNotebook(title = "Untitled notebook"): Notebook {
     language: "python",
     cells: [createCell("markdown", `# ${title}\n`), createCell("code")],
     metadata: {
-      kernelspec: { name: "python3", display_name: "Python 3", language: "python" },
+      kernelspec: {
+        name: "python3",
+        display_name: "Python 3",
+        language: "python",
+      },
       language_info: { name: "python" },
       title,
     },
@@ -61,6 +71,39 @@ export function emptyNotebookRecord(
 }
 
 export { isRuntimeProfile }
+
+/**
+ * A markdown cell holding nothing but one `# heading` — the notebook's visible
+ * title, which is also what the reader sees on web and what feeds the TOC.
+ */
+const TITLE_CELL = /^\s*#\s+(.*?)\s*#*\s*$/
+
+/**
+ * Rewrite the notebook's leading title cell so the heading in the body always
+ * reads the same as `notebook.title`. Without this the editor shows the title
+ * twice — once in its header input, once as a markdown cell — and the two drift
+ * apart the moment either is edited. Cells are returned untouched when the
+ * notebook does not open with a title cell (nothing to keep in step).
+ */
+export function retitleCells(
+  cells: NotebookCell[],
+  title: string
+): NotebookCell[] {
+  const first = cells[0]
+  if (!first || first.cellType !== "markdown") return cells
+  if (!TITLE_CELL.test(first.source)) return cells
+  const source = `# ${title}\n`
+  if (first.source === source) return cells
+  return [{ ...first, source }, ...cells.slice(1)]
+}
+
+/** The title a body heading implies, or null when the cells open without one. */
+export function titleFromCells(cells: NotebookCell[]): string | null {
+  const first = cells[0]
+  if (!first || first.cellType !== "markdown") return null
+  const match = TITLE_CELL.exec(first.source)
+  return match?.[1]?.trim() || null
+}
 
 const indexOf = (cells: NotebookCell[], id: string) =>
   cells.findIndex((c) => c.id === id)
@@ -102,10 +145,7 @@ export function insertCell(
   return { cells: next, newId: cell.id }
 }
 
-export function deleteCell(
-  cells: NotebookCell[],
-  id: string
-): NotebookCell[] {
+export function deleteCell(cells: NotebookCell[], id: string): NotebookCell[] {
   // A notebook always keeps at least one cell.
   if (cells.length <= 1) return cells
   return cells.filter((c) => c.id !== id)

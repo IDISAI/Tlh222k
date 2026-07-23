@@ -12,6 +12,8 @@ import {
   emptyNotebookRecord,
   insertCell,
   moveCell,
+  retitleCells,
+  titleFromCells,
   updateSource,
 } from "../editor.service"
 import type { NotebookStore } from "../store"
@@ -82,24 +84,29 @@ export function useNotebookEditor(
   useEffect(() => {
     if (initial !== undefined) return
     let cancelled = false
-    void store.load(slug).then((loaded) => {
-      if (cancelled) return
-      if (loaded) {
-        setRecord(loaded)
-      } else {
-        // New slug: seed with the create-form title and persist right away so
-        // the notebook shows up in the index before the first edit.
-        const fresh = emptyNotebookRecord(defaultTitle)
-        setRecord(fresh)
-        void store.save(slug, fresh).catch(() => undefined)
-      }
-      setLoading(false)
-    }).catch((cause: unknown) => {
-      if (cancelled) return
-      setError(errorMessage(cause))
-      setRecord(emptyNotebookRecord())
-      setLoading(false)
-    })
+    void store
+      .load(slug)
+      .then((loaded) => {
+        if (cancelled) return
+        if (loaded) {
+          setRecord(loaded)
+        } else {
+          // New slug: seed with the create-form title and persist right away so
+          // the notebook shows up in the index before the first edit.
+          const fresh = emptyNotebookRecord(defaultTitle)
+          setRecord(fresh)
+          void store.save(slug, fresh).catch(() => undefined)
+        }
+        setLoading(false)
+      })
+      .catch((cause: unknown) => {
+        if (cancelled) return
+        setError(errorMessage(cause))
+        // Still the caller's title: a store that is down says nothing about what
+        // this notebook is called, and "Untitled notebook" would be a worse guess.
+        setRecord(emptyNotebookRecord(defaultTitle))
+        setLoading(false)
+      })
     return () => {
       cancelled = true
     }
@@ -121,7 +128,8 @@ export function useNotebookEditor(
       if (timer.current) clearTimeout(timer.current)
       timer.current = setTimeout(() => {
         setSaveState("saving")
-        void store.save(slug, next)
+        void store
+          .save(slug, next)
           .then(() => setSaveState("saved"))
           .catch((cause: unknown) => {
             setError(errorMessage(cause))
@@ -186,8 +194,24 @@ export function useNotebookEditor(
   )
 
   const patchCells = useCallback(
-    (cells: NotebookCell[], editKey?: string) =>
-      markDirty({ ...record, notebook: { ...record.notebook, cells } }, editKey),
+    (cells: NotebookCell[], editKey?: string) => {
+      // The leading heading IS the title (that is what the web viewer renders),
+      // so editing it renames the notebook rather than leaving the header input
+      // showing a different name.
+      const title = titleFromCells(cells) ?? record.notebook.title
+      markDirty(
+        {
+          ...record,
+          notebook: {
+            ...record.notebook,
+            cells,
+            title,
+            metadata: { ...record.notebook.metadata, title },
+          },
+        },
+        editKey
+      )
+    },
     [record, markDirty]
   )
 
@@ -201,7 +225,17 @@ export function useNotebookEditor(
     error,
     setTitle: (title) =>
       markDirty(
-        { ...record, notebook: { ...record.notebook, title } },
+        {
+          ...record,
+          notebook: {
+            ...record.notebook,
+            title,
+            cells: retitleCells(record.notebook.cells, title),
+            // Keep nbformat metadata in step too, so no layer of the notebook
+            // is left holding a stale copy of the name.
+            metadata: { ...record.notebook.metadata, title },
+          },
+        },
         "edit:title"
       ),
     setLanguage: (language) => {
@@ -238,7 +272,12 @@ export function useNotebookEditor(
     setType: (id, type) =>
       patchCells(changeCellType(record.notebook.cells, id, type)),
     insert: (id, where, type) => {
-      const { cells, newId } = insertCell(record.notebook.cells, id, where, type)
+      const { cells, newId } = insertCell(
+        record.notebook.cells,
+        id,
+        where,
+        type
+      )
       patchCells(cells)
       setSelectedId(newId)
     },

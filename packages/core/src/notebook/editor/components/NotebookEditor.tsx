@@ -1,6 +1,6 @@
 "use client"
 
-import { Fragment, useMemo } from "react"
+import { Fragment, useEffect, useMemo, useRef } from "react"
 import { Code2, FileText, Plus } from "lucide-react"
 import { Button } from "@workspace/ui/components/button"
 import { Skeleton } from "@workspace/ui/components/skeleton"
@@ -65,6 +65,13 @@ interface NotebookEditorProps {
    * the host uses this to keep the two in step so one button means one thing.
    */
   onPublishChange?: (slug: string, published: boolean) => void | Promise<void>
+  /**
+   * Fired once the author stops typing a new title. A notebook linked from a
+   * roadmap is named twice — here and on its article node — so the host uses
+   * this to rename the node too, and the card stops disagreeing with the
+   * notebook it opens.
+   */
+  onTitleChange?: (slug: string, title: string) => void | Promise<void>
 }
 
 const service = new NotebookService()
@@ -93,6 +100,7 @@ export function NotebookEditor({
   createKernelWorker,
   createTrace,
   onPublishChange,
+  onTitleChange,
 }: NotebookEditorProps) {
   const notebookStore = useMemo<NotebookStore>(
     () =>
@@ -149,6 +157,26 @@ export function NotebookEditor({
           ? `Chưa cấu hình worker để chạy ${editor.language}.`
           : "Ngôn ngữ này cần kernel server để chạy (Python và JavaScript chạy được ngay trên trình duyệt)."
         : null
+
+  // Rename the article node once the title settles. Debounced, so holding down
+  // a key is one rename and not one per character; the loaded title is adopted
+  // rather than pushed, so merely opening a notebook renames nothing.
+  const syncedTitle = useRef<{ slug: string; title: string } | null>(null)
+  useEffect(() => {
+    if (editor.loading || !onTitleChange) return
+    const synced = syncedTitle.current
+    if (synced?.slug !== slug) {
+      syncedTitle.current = { slug, title: editor.title }
+      return
+    }
+    if (synced.title === editor.title) return
+    const title = editor.title
+    const timer = setTimeout(() => {
+      syncedTitle.current = { slug, title }
+      void (async () => onTitleChange(slug, title))().catch(() => undefined)
+    }, 700)
+    return () => clearTimeout(timer)
+  }, [editor.loading, editor.title, onTitleChange, slug])
 
   const handleDownload = () => {
     const raw = service.serialize(editor.snapshot())
