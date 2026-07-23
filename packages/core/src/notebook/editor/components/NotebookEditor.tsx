@@ -87,8 +87,23 @@ const service = new NotebookService()
 // admin editor and the web /learn viewer read/write the same store.
 const KERNEL_SERVER_URL = process.env.NEXT_PUBLIC_KERNEL_SERVER_URL
 
-// Public web zone origin — the copyable /learn link for published notebooks.
-const WEB_URL = process.env.NEXT_PUBLIC_WEB_URL ?? "http://localhost:3000"
+/**
+ * Origin of the public web zone, for the link an author copies after
+ * publishing. Multi-zone serves this editor under the web host's `/admin`
+ * prefix, so when that is how the page was reached the current origin already
+ * IS the web origin — and it is the only value that can be right on a preview
+ * deploy, whose web zone lives on a per-branch hostname no static setting can
+ * name. Otherwise fall back to the configured origin, then to the dev host.
+ */
+function webOrigin(): string {
+  if (
+    typeof window !== "undefined" &&
+    window.location.pathname.startsWith("/admin")
+  ) {
+    return window.location.origin
+  }
+  return process.env.NEXT_PUBLIC_WEB_URL ?? "http://localhost:3000"
+}
 
 /**
  * Colab-style notebook editor (Phase 2): edit markdown/code cells, restructure,
@@ -259,7 +274,7 @@ export function NotebookEditor({
             () => undefined
           )
         }}
-        learnUrl={`${WEB_URL}/notebooks/${slug}`}
+        learnUrl={`${webOrigin()}/notebooks/${slug}`}
         onUndo={editor.undo}
         onRedo={editor.redo}
         canUndo={editor.canUndo}
