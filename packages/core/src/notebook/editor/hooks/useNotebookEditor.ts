@@ -12,6 +12,7 @@ import {
   emptyNotebookRecord,
   insertCell,
   moveCell,
+  reseedForLanguage,
   retitleCells,
   titleFromCells,
   updateSource,
@@ -245,6 +246,9 @@ export function useNotebookEditor(
         notebook: {
           ...record.notebook,
           language: spec.language,
+          // A notebook nobody has written in yet follows its kernel, so the
+          // author lands on a cell that runs in the language they just picked.
+          cells: reseedForLanguage(record.notebook.cells, spec.language),
           metadata: {
             ...record.notebook.metadata,
             kernelspec: {

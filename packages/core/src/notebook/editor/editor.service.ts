@@ -4,7 +4,16 @@
 
 import type { CellType, Notebook, NotebookCell } from "../types"
 import type { NotebookMeta, NotebookRecord } from "../kernel/types"
-import { isRuntimeProfile } from "../kernel/languages"
+import {
+  isRuntimeProfile,
+  languageSpec,
+  type NotebookLanguage,
+} from "../kernel/languages"
+import {
+  isStarterNote,
+  isUntouchedSource,
+  starterFor,
+} from "../kernel/starters"
 
 let idCounter = 0
 
@@ -27,19 +36,33 @@ export function createCell(cellType: CellType, source = ""): NotebookCell {
   }
 }
 
-/** A fresh, empty notebook (used when the editor opens an unknown slug). */
-export function emptyNotebook(title = "Untitled notebook"): Notebook {
+/**
+ * A fresh notebook, seeded for `language`: the title, a line on how this kernel
+ * runs code, and a first cell that prints something. Five of the seven kernels
+ * are REPLs where the obvious `main`-shaped program runs and prints nothing, so
+ * a blank cell is a worse starting point than a correct one-liner.
+ */
+export function emptyNotebook(
+  title = "Untitled notebook",
+  language: NotebookLanguage = "python"
+): Notebook {
+  const spec = languageSpec(language) ?? languageSpec("python")!
+  const starter = starterFor(spec.language)
   return {
     title,
-    language: "python",
-    cells: [createCell("markdown", `# ${title}\n`), createCell("code")],
+    language: spec.language,
+    cells: [
+      createCell("markdown", `# ${title}\n`),
+      ...(starter ? [createCell("markdown", starter.note)] : []),
+      createCell("code", starter?.code ?? ""),
+    ],
     metadata: {
       kernelspec: {
-        name: "python3",
-        display_name: "Python 3",
-        language: "python",
+        name: spec.kernelName,
+        display_name: spec.displayName,
+        language: spec.language,
       },
-      language_info: { name: "python" },
+      language_info: { name: spec.language },
       title,
     },
   }
@@ -95,6 +118,37 @@ export function retitleCells(
   const source = `# ${title}\n`
   if (first.source === source) return cells
   return [{ ...first, source }, ...cells.slice(1)]
+}
+
+/**
+ * Re-seed a still-untouched notebook for a new language. Switching kernel on a
+ * notebook the author has not written in should hand them that language's
+ * starter, not leave C++ boilerplate in a Julia notebook — but a notebook with
+ * real work in it must never be rewritten, so this returns the cells unchanged
+ * unless every code cell is blank or is some language's starter.
+ */
+export function reseedForLanguage(
+  cells: NotebookCell[],
+  language: NotebookLanguage
+): NotebookCell[] {
+  const starter = starterFor(language)
+  if (!starter) return cells
+  const code = cells.filter((cell) => cell.cellType === "code")
+  const untouched =
+    code.length <= 1 &&
+    code.every(
+      (cell) => isUntouchedSource(cell.source) && cell.outputs.length === 0
+    )
+  if (!untouched) return cells
+
+  return cells.map((cell) => {
+    // A fresh id, not a rewritten one: the runtime keys per-cell output by id,
+    // so reusing it would leave the previous language's result sitting under
+    // code that can no longer produce it.
+    if (cell.cellType === "code") return createCell("code", starter.code)
+    if (isStarterNote(cell.source)) return { ...cell, source: starter.note }
+    return cell
+  })
 }
 
 /** The title a body heading implies, or null when the cells open without one. */
