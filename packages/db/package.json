@@ -12,6 +12,7 @@
     "db:push": "prisma db push --schema prisma/schema.prisma",
     "seed": "tsx prisma/seed.ts",
     "seed:ai": "tsx prisma/seed-ai-roadmap.ts",
+    "seed:catalog": "tsx prisma/seed-catalog.ts",
     "seed:jupyter": "tsx prisma/seed-jupyter-platform.ts",
     "seed:full": "tsx prisma/seed-full-flow.ts",
     "build": "prisma generate --schema prisma/schema.prisma",
