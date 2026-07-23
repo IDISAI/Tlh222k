@@ -276,6 +276,25 @@ export function NodeDetailDialog({
             </div>
           )}
 
+          {!isArticle && (node.fields?.length ?? 0) > 0 && (
+            <div className="space-y-1.5">
+              <Label>Lĩnh vực</Label>
+              {/* Read-only on purpose: this panel describes a node, it does not
+                  navigate. Making the chips clickable would need a destination
+                  decided first (filter the canvas? jump to /roadmaps?). */}
+              <div className="flex flex-wrap gap-1.5">
+                {node.fields?.map((field) => (
+                  <span
+                    key={field.id}
+                    className="rounded-full bg-secondary px-2.5 py-1 text-xs font-medium"
+                  >
+                    {field.name}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
           {isArticle && (
             <div className="space-y-1">
               <Label>Tài liệu</Label>

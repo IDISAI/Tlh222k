@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { PencilLine, Plus, Trash2, Check, X } from "lucide-react"
+import { PencilLine, Plus, Tags, Trash2, Check, X } from "lucide-react"
 import { Badge } from "@workspace/ui/components/badge"
 import { Button } from "@workspace/ui/components/button"
 import { Skeleton } from "@workspace/ui/components/skeleton"
@@ -20,6 +20,7 @@ import type { CallerRole, RoadmapNode } from "../../types"
 import { truncateDescription } from "../../utils"
 import { serviceErrorMessage } from "../utils/toast-messages"
 import { CreateRoadmapDialog } from "./CreateRoadmapDialog"
+import { FieldManagerDialog } from "./FieldManagerDialog"
 import { DeleteNodeDialog } from "./DeleteNodeDialog"
 
 interface RoadmapListAdminProps {
@@ -65,6 +66,7 @@ export function RoadmapListAdmin({ role }: RoadmapListAdminProps) {
   const service = useMemo(() => new RoadmapService(), [])
   const [rows, setRows] = useState<Row[] | null>(null)
   const [showCreate, setShowCreate] = useState(false)
+  const [showFields, setShowFields] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<Row | null>(null)
 
   // The list page IS the builder base, so derive builder links from the current
@@ -107,9 +109,18 @@ export function RoadmapListAdmin({ role }: RoadmapListAdminProps) {
         <h1 className="text-xl font-extrabold uppercase italic">
           Quản lý Roadmap
         </h1>
-        <Button type="button" onClick={() => setShowCreate(true)}>
-          <Plus className="size-4" /> Tạo roadmap mới
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => setShowFields(true)}
+          >
+            <Tags className="size-4" /> Lĩnh vực
+          </Button>
+          <Button type="button" onClick={() => setShowCreate(true)}>
+            <Plus className="size-4" /> Tạo roadmap mới
+          </Button>
+        </div>
       </div>
 
       {rows === null ? (
@@ -120,11 +131,12 @@ export function RoadmapListAdmin({ role }: RoadmapListAdminProps) {
         </div>
       ) : (
         <div className="rounded-xl border">
-          <Table className="min-w-[840px] table-fixed">
+          <Table className="min-w-[1000px] table-fixed">
             <colgroup>
               <col className="w-[240px]" />
               <col className="w-[92px]" />
-              <col className="w-[320px]" />
+              <col className="w-[170px]" />
+              <col className="w-[280px]" />
               <col className="w-[180px]" />
               <col className="w-[80px]" />
               <col className="w-[96px]" />
@@ -134,6 +146,7 @@ export function RoadmapListAdmin({ role }: RoadmapListAdminProps) {
               <TableRow>
                 <TableHead>Tên</TableHead>
                 <TableHead>Loại</TableHead>
+                <TableHead>Lĩnh vực</TableHead>
                 <TableHead>Mô tả</TableHead>
                 <TableHead>Slug</TableHead>
                 <TableHead className="text-right">Nodes</TableHead>
@@ -145,7 +158,7 @@ export function RoadmapListAdmin({ role }: RoadmapListAdminProps) {
               {rows.length === 0 && (
                 <TableRow>
                   <TableCell
-                    colSpan={7}
+                    colSpan={8}
                     className="text-center text-muted-foreground"
                   >
                     Chưa có roadmap nào — hãy tạo roadmap đầu tiên.
@@ -176,6 +189,22 @@ export function RoadmapListAdmin({ role }: RoadmapListAdminProps) {
                     >
                       {node.nodeType}
                     </Badge>
+                  </TableCell>
+                  <TableCell>
+                    {node.fields?.length ? (
+                      <div className="flex flex-wrap gap-1">
+                        {node.fields.map((field) => (
+                          <span
+                            key={field.id}
+                            className="rounded-full bg-secondary px-2 py-0.5 text-[11px] font-medium"
+                          >
+                            {field.name}
+                          </span>
+                        ))}
+                      </div>
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
                   </TableCell>
                   <TableCell className="text-muted-foreground">
                     <span
@@ -227,6 +256,15 @@ export function RoadmapListAdmin({ role }: RoadmapListAdminProps) {
             </TableBody>
           </Table>
         </div>
+      )}
+
+      {showFields && (
+        <FieldManagerDialog
+          role={role}
+          onClose={() => setShowFields(false)}
+          // A rename or delete changes the chips already on screen.
+          onChanged={() => void load()}
+        />
       )}
 
       {showCreate && (

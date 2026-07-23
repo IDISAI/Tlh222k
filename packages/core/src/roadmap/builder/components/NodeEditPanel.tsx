@@ -22,6 +22,7 @@ import {
   type RoadmapNode,
   type UpdateNodeInput,
 } from "../../types"
+import { FieldPicker } from "./FieldPicker"
 
 interface NodeEditPanelProps {
   node: RoadmapNode
@@ -52,6 +53,9 @@ export function NodeEditPanel({ node, onClose, onSave }: NodeEditPanelProps) {
   const [articleType, setArticleType] = useState<ArticleType | null>(
     node.articleType
   )
+  const [fieldIds, setFieldIds] = useState<string[]>(
+    () => node.fields?.map((f) => f.id) ?? []
+  )
   const [titleError, setTitleError] = useState("")
   const [saving, setSaving] = useState(false)
 
@@ -73,6 +77,10 @@ export function NodeEditPanel({ node, onClose, onSave }: NodeEditPanelProps) {
       title: title.trim(),
       description: description.trim(),
     }
+    // Articles never carry discovery labels (they don't reach the public card
+    // grid), so only send the key for block nodes. Omitting it entirely leaves
+    // whatever the server has untouched.
+    if (!isArticle) input.fieldIds = fieldIds
     if (isArticle && articleType) {
       input.articleType = articleType
       // Jupyter is always internal by slug — never persist an external URL.
@@ -137,6 +145,17 @@ export function NodeEditPanel({ node, onClose, onSave }: NodeEditPanelProps) {
               {description.length}/{MAX_DESCRIPTION_LENGTH}
             </p>
           </div>
+
+          {!isArticle && (
+            <div className="space-y-1.5">
+              <Label>Lĩnh vực (tùy chọn)</Label>
+              <FieldPicker
+                value={fieldIds}
+                onChange={setFieldIds}
+                disabled={saving}
+              />
+            </div>
+          )}
 
           {isArticle && (
             <div className="space-y-4 border-t pt-4">

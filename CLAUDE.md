@@ -88,8 +88,11 @@ rooted-view `?node=` tree). Confirmed with the product owner via Q&A: "block
   `{ ownerId, members: [{ nodeId, x, y }], edges: [{ id, source, target, kind }] }`.
   The owner renders pinned on top; `members` are other blocks placed on it.
   Membership REPLACES the parentId tree — a block can be a member of many
-  canvases (reusable LEGO). `article` is a leaf, never a block: it shows in the
-  right panel of its chapter (`NodeDetailDialog`), never on a canvas.
+  canvases (reusable LEGO). **Mock only** — the Apollo backend collapses
+  membership onto `parentId`, so reuse across canvases does NOT survive there;
+  see "the two backends model membership differently" below. `article` is a
+  leaf, never a block: it shows in the right panel of its chapter
+  (`NodeDetailDialog`), never on a canvas.
 - **Edges are a new entity** roadmap↔roadmap (`EdgeKind` = `solid | dashed`),
   independent of parentId. Right-click a wire → change kind / cut (`removeEdge`).
   `EdgeContextMenu`; draw by connecting handles (`addEdge`).
@@ -106,15 +109,26 @@ rooted-view `?node=` tree). Confirmed with the product owner via Q&A: "block
 - **Kho Roadmap sidebar = Quản lý Roadmap table.** `NodeSidebar` and
   `RoadmapListAdmin` list the same set (role/skill blocks), same store
   (`listNodes`). "Tạo roadmap mới" (table) and right-click-canvas both call
-  `createBlock` (role/skill/chapter) — no container `Roadmap`.
+  `createBlock` (role/skill/chapter) — no container `Roadmap`. **Mock only**:
+  `RoadmapApi.createBlock` with no `ownerId` DOES create a container `Roadmap`
+  plus its root node, because Postgres requires `Node.roadmapId`.
 - **Two deletes.** Canvas remove (`removeFromCanvas`, block context menu / right
   panel) drops only membership + that block's own edges — every other edge and
   the block itself survive. Sidebar/table delete (`deleteBlockPermanent`)
   soft-deletes and purges the block from every composition.
 - **Verified mock-first**: `composition.service.test.ts` + `roadmap-e2e.test.ts`
-  (core/admin/web typecheck clean). TODO before enabling the backend: Apollo
-  `RoadmapApi` has no composition methods yet (the env selector casts over the
-  gap, so it only breaks when `NEXT_PUBLIC_SVC_API_URL` is set).
+  (core/admin/web typecheck clean).
+- **The two backends model membership differently — this is the live gap.**
+  Apollo `RoadmapApi` DOES implement every composition method, but it maps them
+  onto `parentId` rather than storing a composition: `getComposition` is
+  `deriveCompositionFromNodes`, `addMember` is `updateNode({ parentId })` after
+  a `moveNode` into the owner's roadmap, and `createBlock({ ownerId })` is
+  `createNode({ parentId: ownerId })`. Postgres has no membership table — `Node`
+  has one `parentId`. So against the real backend (`NEXT_PUBLIC_SVC_API_URL`
+  set) **a block lives on exactly ONE canvas**, and adding it to a second
+  removes it from the first. The mock (localStorage) keeps a real composition
+  store and does allow a block on many canvases. Any feature that relies on
+  reuse-across-canvases works in the mock and silently degrades on the backend.
 
 ## Former Submodules
 
@@ -161,6 +175,21 @@ Rules:
   (`http://localhost:3005` in dev). If empty, `@workspace/core` uses the
   mock/localStorage roadmap service. `NEXT_PUBLIC_SVC_ROADMAP_URL` is the legacy
   name, still honored as a fallback after the `svc-roadmap` -> `svc-api` rename.
+- **The mock roadmap service is LOCAL-ONLY. It must never run on a deployed
+  environment** — not production, not a Vercel preview. The mock stores data in
+  each visitor's own `localStorage`, so on a deployed URL every user silently
+  gets a private, empty, non-shared database that looks like a working app.
+  This failure is invisible: no error, no empty state, just wrong data.
+  - The switch is `roadmapBackendEnabled()` in
+    `packages/core/src/roadmap/api/client.ts` — literally
+    `Boolean(svcApiUrl())`. A missing or empty `NEXT_PUBLIC_SVC_API_URL` in a
+    deploy therefore falls back to the mock **silently**, which is exactly the
+    outcome this rule forbids.
+  - So: any deployed environment MUST have `NEXT_PUBLIC_SVC_API_URL` set. Do not
+    treat "the page rendered" as proof the backend is wired — check that the
+    roadmap list actually hits `/graphql`.
+  - When adding a new env-flag seam, make the deployed path FAIL LOUDLY on a
+    missing backend URL rather than degrading to a fixture or a mock.
 - `NEXT_PUBLIC_KERNEL_SERVER_URL` points web and admin at the Go kernel-server
   (`http://localhost:3006` in dev). If empty, web falls back to committed
   `.ipynb` fixtures and the admin editor uses per-browser localStorage.
