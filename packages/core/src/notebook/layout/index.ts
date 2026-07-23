@@ -1,2 +1,2 @@
 export { NotebookWorkspace } from "./NotebookWorkspace"
-export { KernelBar, KernelActions } from "./KernelBar"
+export { KernelBar, KernelActions, RunUnavailableNotice } from "./KernelBar"

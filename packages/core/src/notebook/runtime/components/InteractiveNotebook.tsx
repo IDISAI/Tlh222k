@@ -3,8 +3,13 @@
 import { useMemo } from "react"
 import { Button } from "@workspace/ui/components/button"
 
-import type { KernelAdapter } from "../../kernel"
-import { KernelActions, KernelBar, NotebookWorkspace } from "../../layout"
+import type { KernelAdapter, RunAvailability } from "../../kernel"
+import {
+  KernelActions,
+  KernelBar,
+  NotebookWorkspace,
+  RunUnavailableNotice,
+} from "../../layout"
 import type { Notebook } from "../../types"
 import { NotebookService } from "../../notebook.service"
 import { MarkdownCell } from "../../viewer/components/MarkdownCell"
@@ -26,7 +31,7 @@ export function InteractiveNotebook({
   adapter,
   signedIn = true,
   onSignIn,
-  runUnavailableReason,
+  runAvailability,
   onStartExercise,
   exerciseTitle,
   createTrace,
@@ -35,8 +40,12 @@ export function InteractiveNotebook({
   adapter: KernelAdapter | null
   signedIn?: boolean
   onSignIn?: () => void
-  /** When set, execution is unavailable (e.g. language needs the kernel server); shown instead of the sign-in button. */
-  runUnavailableReason?: string
+  /**
+   * Why cells cannot run here. Unrunnable is the normal state of the deployed
+   * site for the five compiled languages, so it is explained above the cells
+   * rather than hidden behind a disabled button.
+   */
+  runAvailability?: RunAvailability
   /** Fires when user clicks "Start Exercise" in the floating card. */
   onStartExercise?: () => void
   /** Title of the companion exercise; triggers the floating card when set. */
@@ -86,12 +95,11 @@ export function InteractiveNotebook({
       }
     >
       <>
+        {runAvailability && !runAvailability.runnable && (
+          <RunUnavailableNotice availability={runAvailability} />
+        )}
         <KernelBar status={runtime.status}>
-          {runUnavailableReason ? (
-            <span className="text-xs text-muted-foreground">
-              {runUnavailableReason}
-            </span>
-          ) : !signedIn ? (
+          {runAvailability && !runAvailability.runnable ? null : !signedIn ? (
             <Button type="button" size="sm" onClick={onSignIn}>
               Sign in to run
             </Button>

@@ -8,6 +8,8 @@ export {
   profileForNotebook,
 } from "./languages"
 export type { LanguageSpec, NotebookLanguage } from "./languages"
+export { BROWSER_LANGUAGES, runAvailability } from "./run-availability"
+export type { RunAvailability } from "./run-availability"
 export { SandboxSessionClient } from "./session-client"
 export type { ClerkTokenGetter } from "./session-client"
 export { JupyterSandboxAdapter } from "./jupyter-sandbox-adapter"

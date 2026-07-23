@@ -8,12 +8,19 @@ import { Skeleton } from "@workspace/ui/components/skeleton"
 import { NotebookService } from "../../notebook.service"
 import type { NotebookRecord } from "../../kernel/types"
 import {
+  BROWSER_LANGUAGES,
   JupyterSandboxAdapter,
+  runAvailability,
   SandboxSessionClient,
   WorkerKernelAdapter,
   profileForNotebook,
 } from "../../kernel"
-import { KernelActions, KernelBar, NotebookWorkspace } from "../../layout"
+import {
+  KernelActions,
+  KernelBar,
+  NotebookWorkspace,
+  RunUnavailableNotice,
+} from "../../layout"
 import { useNotebookRuntime } from "../../runtime/use-notebook-runtime"
 import { useActiveHeading } from "../../viewer/hooks/useActiveHeading"
 import {
@@ -76,9 +83,6 @@ interface NotebookEditorProps {
 
 const service = new NotebookService()
 
-/** Languages that run entirely in the browser when there is no kernel server. */
-const BROWSER_LANGUAGES = new Set(["python", "javascript"])
-
 // Shared with the web viewer: when set, notebooks live on kernel-server so the
 // admin editor and the web /learn viewer read/write the same store.
 const KERNEL_SERVER_URL = process.env.NEXT_PUBLIC_KERNEL_SERVER_URL
@@ -132,7 +136,8 @@ export function NotebookEditor({
         : // No kernel server (the deployed default): Python runs on Pyodide and
           // JavaScript on the bundled interpreter, so both stay runnable — and
           // their visualize gate, which needs a successful run, still opens.
-          createKernelWorker && BROWSER_LANGUAGES.has(editor.language)
+          createKernelWorker &&
+            (BROWSER_LANGUAGES as readonly string[]).includes(editor.language)
           ? new WorkerKernelAdapter(() => createKernelWorker(editor.language))
           : null,
     [getToken, createKernelWorker, profile, editor.language]
@@ -149,14 +154,10 @@ export function NotebookEditor({
   const activeSlug = useActiveHeading(
     useMemo(() => toc.map((entry) => entry.slug), [toc])
   )
-  const runUnavailableReason =
-    profile === null
-      ? `Unsupported notebook language: ${editor.language}`
-      : adapter === null
-        ? BROWSER_LANGUAGES.has(editor.language)
-          ? `Chưa cấu hình worker để chạy ${editor.language}.`
-          : "Ngôn ngữ này cần kernel server để chạy (Python và JavaScript chạy được ngay trên trình duyệt)."
-        : null
+  const availability = runAvailability(editor.language, {
+    hasKernelServer: Boolean(KERNEL_SERVER_URL && getToken && profile),
+    hasBrowserWorker: Boolean(createKernelWorker),
+  })
 
   // Rename the article node once the title settles. Debounced, so holding down
   // a key is one rename and not one per character; the loaded title is adopted
@@ -289,12 +290,11 @@ export function NotebookEditor({
             )
           }
         >
+          {!availability.runnable && (
+            <RunUnavailableNotice availability={availability} />
+          )}
           <KernelBar status={runtime.status}>
-            {runUnavailableReason ? (
-              <span className="text-xs text-muted-foreground">
-                {runUnavailableReason}
-              </span>
-            ) : (
+            {!availability.runnable ? null : (
               <KernelActions
                 busy={
                   runtime.status === "busy" || runtime.status === "starting"

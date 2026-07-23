@@ -7,12 +7,14 @@ import {
   InteractiveNotebook,
   JupyterSandboxAdapter,
   PyodideKernelAdapter,
+  runAvailability,
   SandboxSessionClient,
   profileForNotebook,
   useTraceEngines,
   WorkerKernelAdapter,
   type KernelAdapter,
   type Notebook,
+  type RunAvailability,
   type TraceLanguage,
 } from "@workspace/core"
 import { devAuthRole } from "@workspace/core/navigation/role"
@@ -25,18 +27,13 @@ import {
 
 type LearnTab = "tutorial" | "exercise"
 
-/** Languages that run entirely in the browser when there is no kernel server. */
-const BROWSER_LANGUAGES = new Set(["python", "javascript"])
-
-function runUnavailableReason(
+function availabilityOf(
   notebook: Notebook,
   kernelUrl: string | undefined
-): string | undefined {
-  if (!profileForNotebook(notebook.language)) {
-    return `Ngôn ngữ notebook "${notebook.language}" chưa được hỗ trợ.`
-  }
-  if (kernelUrl || BROWSER_LANGUAGES.has(notebook.language)) return undefined
-  return "Notebook này cần kernel server để chạy (Python và JavaScript chạy được ngay trên trình duyệt)."
+): RunAvailability {
+  return runAvailability(notebook.language, {
+    hasKernelServer: Boolean(kernelUrl),
+  })
 }
 
 function createNotebookAdapter(
@@ -143,7 +140,7 @@ function DevLearnClient({ slug, tutorial, exercise }: LearnClientProps) {
           notebook={tutorial}
           adapter={tutorialAdapter}
           signedIn={canRun}
-          runUnavailableReason={runUnavailableReason(tutorial, kernelUrl)}
+          runAvailability={availabilityOf(tutorial, kernelUrl)}
           onSignIn={() => {}}
           exerciseTitle={exercise?.title ?? "Exercise"}
           onStartExercise={() => setTab("exercise")}
@@ -157,7 +154,7 @@ function DevLearnClient({ slug, tutorial, exercise }: LearnClientProps) {
             notebook={exercise}
             adapter={exerciseAdapter}
             signedIn={canRun}
-            runUnavailableReason={runUnavailableReason(exercise, kernelUrl)}
+            runAvailability={availabilityOf(exercise, kernelUrl)}
             onSignIn={() => {}}
           />
         ) : (
@@ -223,7 +220,7 @@ function ClerkLearnClient({ slug, tutorial, exercise }: LearnClientProps) {
           notebook={tutorial}
           adapter={tutorialAdapter}
           signedIn={canRun}
-          runUnavailableReason={runUnavailableReason(tutorial, kernelUrl)}
+          runAvailability={availabilityOf(tutorial, kernelUrl)}
           onSignIn={() => void clerk.openSignIn()}
           exerciseTitle={exercise?.title ?? "Exercise"}
           onStartExercise={() => setTab("exercise")}
@@ -237,7 +234,7 @@ function ClerkLearnClient({ slug, tutorial, exercise }: LearnClientProps) {
             notebook={exercise}
             adapter={exerciseAdapter}
             signedIn={canRun}
-            runUnavailableReason={runUnavailableReason(exercise, kernelUrl)}
+            runAvailability={availabilityOf(exercise, kernelUrl)}
             onSignIn={() => void clerk.openSignIn()}
           />
         ) : (
