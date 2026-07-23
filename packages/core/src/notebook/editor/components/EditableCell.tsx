@@ -35,6 +35,8 @@ interface EditableCellProps {
   /** "ready" = clickable action, "coming-soon" = disabled action, "hidden" = none. */
   visualize?: VisualizeAvailability
   onVisualize?: () => void
+  /** Anchor ids for this cell's headings, so the preview matches the TOC. */
+  headingSlugs?: readonly string[]
 }
 
 /** One editable cell, Colab-style: run gutter + editor + hover toolbar. */
@@ -54,6 +56,7 @@ export function EditableCell({
   onRunAdvance,
   visualize = "hidden",
   onVisualize,
+  headingSlugs,
 }: EditableCellProps) {
   const isCode = cell.cellType === "code"
 
@@ -104,6 +107,7 @@ export function EditableCell({
               onChange={onChange}
               onFocus={onSelect}
               onClose={onDeselect}
+              headingSlugs={headingSlugs}
             />
           )}
         </div>

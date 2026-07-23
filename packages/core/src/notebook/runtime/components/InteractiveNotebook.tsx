@@ -15,6 +15,7 @@ import { NotebookService } from "../../notebook.service"
 import { MarkdownCell } from "../../viewer/components/MarkdownCell"
 import { StartExerciseCard } from "../../viewer/components/StartExerciseCard"
 import { useActiveHeading } from "../../viewer/hooks/useActiveHeading"
+import { headingSlugsByCell } from "../../utils/toc"
 import {
   useVisualization,
   visualizeAvailability,
@@ -61,6 +62,7 @@ export function InteractiveNotebook({
 
   const toc = useMemo(() => service.extractToc(notebook), [notebook])
   const slugs = useMemo(() => toc.map((e) => e.slug), [toc])
+  const slugsByCell = useMemo(() => headingSlugsByCell(toc), [toc])
   const activeSlug = useActiveHeading(slugs)
 
   const visualization = useVisualization({
@@ -149,7 +151,13 @@ export function InteractiveNotebook({
               )
             }
             if (cell.cellType === "markdown") {
-              return <MarkdownCell key={cell.id} source={cell.source} />
+              return (
+                <MarkdownCell
+                  key={cell.id}
+                  source={cell.source}
+                  headingSlugs={slugsByCell.get(cell.id)}
+                />
+              )
             }
             return (
               <pre

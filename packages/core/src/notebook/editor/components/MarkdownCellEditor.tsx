@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react"
 import type { ReactNode } from "react"
-import { EditorState, Prec } from "@codemirror/state"
+import { Compartment, EditorState, Prec } from "@codemirror/state"
 import { EditorView, keymap, placeholder } from "@codemirror/view"
 import { markdown } from "@codemirror/lang-markdown"
 import { oneDark } from "@codemirror/theme-one-dark"
@@ -21,6 +21,7 @@ import {
 } from "lucide-react"
 
 import { MarkdownCell } from "../../viewer/components/MarkdownCell"
+import { useDarkMode } from "../hooks/useDarkMode"
 
 interface MarkdownCellEditorProps {
   source: string
@@ -30,6 +31,8 @@ interface MarkdownCellEditorProps {
   onFocus?: () => void
   /** Leave edit mode (the toolbar's "Đóng" button). */
   onClose?: () => void
+  /** Anchor ids for this cell's headings, so the preview matches the TOC. */
+  headingSlugs?: readonly string[]
 }
 
 const editorTheme = EditorView.theme({
@@ -53,11 +56,17 @@ export function MarkdownCellEditor({
   onChange,
   onFocus,
   onClose,
+  headingSlugs,
 }: MarkdownCellEditorProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const viewRef = useRef<EditorView | null>(null)
   const callbacks = useRef({ onChange, onFocus, onClose })
   callbacks.current = { onChange, onFocus, onClose }
+  const dark = useDarkMode()
+  // Read inside the mount effect, which must not re-run when the theme flips.
+  const darkRef = useRef(dark)
+  darkRef.current = dark
+  const themeCompartment = useRef(new Compartment()).current
 
   useEffect(() => {
     if (!editing) return
@@ -89,11 +98,10 @@ export function MarkdownCellEditor({
           callbacks.current.onFocus?.()
         }
       }),
+      // Compartment, so a mid-session light/dark toggle swaps the palette
+      // instead of waiting for the next edit session.
+      themeCompartment.of(darkRef.current ? oneDark : []),
     ]
-    // ponytail: theme picked at mount, same ceiling as CodeCellEditor.
-    if (document.documentElement.classList.contains("dark")) {
-      extensions.push(oneDark)
-    }
     const view = new EditorView({
       state: EditorState.create({ doc: source, extensions }),
       parent,
@@ -113,15 +121,24 @@ export function MarkdownCellEditor({
     if (!view) return
     const current = view.state.doc.toString()
     if (current !== source) {
-      view.dispatch({ changes: { from: 0, to: current.length, insert: source } })
+      view.dispatch({
+        changes: { from: 0, to: current.length, insert: source },
+      })
     }
   }, [source])
+
+  // Swap the palette when the site theme flips, without touching the document.
+  useEffect(() => {
+    viewRef.current?.dispatch({
+      effects: themeCompartment.reconfigure(dark ? oneDark : []),
+    })
+  }, [dark, themeCompartment])
 
   if (!editing) {
     return (
       <div className="px-4 py-3">
         {source.trim() ? (
-          <MarkdownCell source={source} />
+          <MarkdownCell source={source} headingSlugs={headingSlugs} />
         ) : (
           <p className="text-sm text-muted-foreground italic">
             Empty markdown cell — click to edit
@@ -210,7 +227,7 @@ export function MarkdownCellEditor({
         <div ref={containerRef} className="cm-cell min-w-0" />
         <div className="hidden min-w-0 px-4 py-3 md:block">
           {source.trim() ? (
-            <MarkdownCell source={source} />
+            <MarkdownCell source={source} headingSlugs={headingSlugs} />
           ) : (
             <p className="text-sm text-muted-foreground italic">Xem trước</p>
           )}

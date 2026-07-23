@@ -23,6 +23,7 @@ import {
 } from "../../layout"
 import { useNotebookRuntime } from "../../runtime/use-notebook-runtime"
 import { useActiveHeading } from "../../viewer/hooks/useActiveHeading"
+import { headingSlugsByCell } from "../../utils/toc"
 import {
   HttpNotebookStore,
   LocalNotebookStore,
@@ -166,6 +167,7 @@ export function NotebookEditor({
   const activeVisualization = visualization.active
   // Same scroll-spy TOC the viewer shows, built from the cells being edited.
   const toc = useMemo(() => service.extractToc(snapshot), [snapshot])
+  const slugsByCell = useMemo(() => headingSlugsByCell(toc), [toc])
   const activeSlug = useActiveHeading(
     useMemo(() => toc.map((entry) => entry.slug), [toc])
   )
@@ -343,6 +345,7 @@ export function NotebookEditor({
                 onMove={(direction) => editor.move(cell.id, direction)}
                 onDuplicate={() => editor.duplicate(cell.id)}
                 onDelete={() => editor.remove(cell.id)}
+                headingSlugs={slugsByCell.get(cell.id)}
                 runtime={runtime.cells[cell.id]}
                 visualize={
                   cell.cellType === "code" && runtime.cells[cell.id]
