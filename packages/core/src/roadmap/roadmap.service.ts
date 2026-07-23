@@ -10,6 +10,7 @@ import {
   type CreateNodeInput,
   type CreateRoadmapInput,
   type EdgeKind,
+  type Field,
   type NodeStatus,
   type NodeType,
   type Roadmap,
@@ -23,6 +24,12 @@ import { deriveCompositionFromNodes } from "./utils/derive-composition"
 import { emitRoadmapUpdate } from "./utils/update-signal"
 import { slugify, uniqueSlug } from "./utils/slugify"
 import { validateHierarchy } from "./utils/validate-hierarchy"
+
+/**
+ * Labels live only on the real backend — the mock has no store for them, so a
+ * write here would hand back an id the backend never heard of.
+ */
+const MOCK_FIELDS_UNAVAILABLE = "Lĩnh vực chỉ khả dụng khi kết nối backend"
 
 const LATENCY_MS = 150
 const delay = (ms = LATENCY_MS) => new Promise((r) => setTimeout(r, ms))
@@ -98,7 +105,52 @@ export class RoadmapService {
         thumbnailUrl: null,
         isPublished: true,
         nodeCount: childCount.get(n.id) ?? 0,
+        fields: [],
       }))
+  }
+
+  /**
+   * Discovery labels for the /roadmaps tab strip.
+   *
+   * The mock has no label store: labels only exist on the real backend, and the
+   * mock is local-only by rule (see CLAUDE.md "the mock roadmap service is
+   * LOCAL-ONLY"). Returning `[]` hides the strip rather than showing tabs that
+   * could never match anything.
+   */
+  // ponytail: → `fields` query
+  async listFields(): Promise<Field[]> {
+    await delay()
+    return []
+  }
+
+  /**
+   * Signature parity with `RoadmapApi.createField` so the env selector can swap
+   * the two. Labels have no mock store — creating one here would produce an id
+   * the backend never heard of, so this refuses rather than lying.
+   */
+  // ponytail: → `createField` mutation
+  async createField(_name: string, callerRole: CallerRole): Promise<Field> {
+    assertCanWrite(callerRole)
+    await delay()
+    throw new RoadmapServiceError("VALIDATION", MOCK_FIELDS_UNAVAILABLE)
+  }
+
+  // ponytail: → `updateField` mutation
+  async updateField(
+    _id: string,
+    _name: string,
+    callerRole: CallerRole
+  ): Promise<Field> {
+    assertCanWrite(callerRole)
+    await delay()
+    throw new RoadmapServiceError("VALIDATION", MOCK_FIELDS_UNAVAILABLE)
+  }
+
+  // ponytail: → `deleteField` mutation
+  async deleteField(_id: string, callerRole: CallerRole): Promise<boolean> {
+    assertCanWrite(callerRole)
+    await delay()
+    throw new RoadmapServiceError("VALIDATION", MOCK_FIELDS_UNAVAILABLE)
   }
 
   // ponytail: → `roadmaps(includeUnpublished: true)` query — admin list (Req 1.1)
@@ -164,6 +216,7 @@ export class RoadmapService {
             thumbnailUrl: null,
             isPublished: true,
             nodeCount: subtree.length,
+            fields: [],
           },
           nodes: subtree,
         }
@@ -203,6 +256,7 @@ export class RoadmapService {
         thumbnailUrl: null,
         isPublished: true,
         nodeCount: roadmapNodes.length,
+        fields: [],
       },
       nodes: roadmapNodes.map((n) => ({ ...n, status: "locked" as const })),
     }
@@ -254,6 +308,7 @@ export class RoadmapService {
       thumbnailUrl: input.thumbnailUrl ?? null,
       isPublished: false,
       nodeCount: 0,
+      fields: [],
       createdAt: now,
       updatedAt: now,
       authorId: input.authorId,
@@ -590,6 +645,8 @@ export class RoadmapService {
       ownerId?: string
       positionX: number
       positionY: number
+      /** Accepted for signature parity; the mock has no label store. */
+      fieldIds?: string[]
     },
     callerRole: CallerRole
   ): Promise<RoadmapNode> {

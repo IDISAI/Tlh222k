@@ -25,6 +25,7 @@ import {
   type RoadmapNode,
 } from "../../types"
 import { serviceErrorMessage } from "../utils/toast-messages"
+import { FieldPicker } from "./FieldPicker"
 
 /** A roadmap is a role or a skill (a role/skill node IS a roadmap block). */
 const ROADMAP_KINDS = [
@@ -48,6 +49,7 @@ export function CreateRoadmapDialog({
   const [title, setTitle] = useState("")
   const [description, setDescription] = useState("")
   const [nodeType, setNodeType] = useState<"role" | "skill">("role")
+  const [fieldIds, setFieldIds] = useState<string[]>([])
   const [error, setError] = useState("")
   const [busy, setBusy] = useState(false)
 
@@ -73,6 +75,7 @@ export function CreateRoadmapDialog({
           description: description.trim() || undefined,
           positionX: 0,
           positionY: 0,
+          fieldIds,
         },
         role
       )
@@ -131,6 +134,16 @@ export function CreateRoadmapDialog({
                 </Button>
               ))}
             </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label>Lĩnh vực (tùy chọn)</Label>
+            <FieldPicker
+              role={role}
+              value={fieldIds}
+              onChange={setFieldIds}
+              disabled={busy}
+            />
           </div>
 
           <div className="space-y-1.5">

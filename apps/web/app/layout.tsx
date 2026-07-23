@@ -10,6 +10,7 @@ import {
 import "@workspace/ui/globals.css"
 import { ThemeProvider } from "@/components/theme-provider"
 import { cn } from "@workspace/ui/lib/utils"
+import { SiteFooter } from "@/components/site-footer"
 import { SiteHeader } from "@/components/site-header"
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-sans" })
@@ -35,11 +36,14 @@ export default function RootLayout({
         inter.variable
       )}
     >
-      <body>
+      <body className="flex min-h-screen flex-col">
         <ReloadOnBackForward />
         <ThemeProvider>
           <SiteHeader />
-          <RoadmapApolloProvider>{children}</RoadmapApolloProvider>
+          <div className="flex flex-1 flex-col">
+            <RoadmapApolloProvider>{children}</RoadmapApolloProvider>
+          </div>
+          <SiteFooter />
         </ThemeProvider>
       </body>
     </html>

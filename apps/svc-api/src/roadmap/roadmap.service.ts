@@ -103,7 +103,22 @@ export interface NodeDto {
   childrenCount: number
   linkedRoadmapId: string | null
   isPublished: boolean
+  /**
+   * Discovery labels. Empty when the caller's query did not `include` them —
+   * the GraphQL field is a non-null list, so callers see `[]`, never null.
+   */
+  fields: FieldDto[]
 }
+
+export interface FieldDto {
+  id: string
+  name: string
+  slug: string
+  order: number
+}
+
+/** A `Node` row with its labels joined in. */
+type DbNodeWithFields = DbNode & { fields?: FieldDto[] }
 
 export interface GraphDto {
   roadmap: RoadmapDto
@@ -137,6 +152,7 @@ export interface CreateNodeInput {
   positionX: number
   positionY: number
   order?: number | null
+  fieldIds?: string[] | null
 }
 
 export interface UpdateNodeInput {
@@ -151,6 +167,8 @@ export interface UpdateNodeInput {
   parentId?: string | null
   linkedRoadmapId?: string | null
   isPublished?: boolean | null
+  /** Replaces the whole label set when present; `undefined` leaves it alone. */
+  fieldIds?: string[] | null
 }
 
 export interface SaveNodeInput {
@@ -341,7 +359,17 @@ export class RoadmapService implements OnModuleInit {
   async allNodes(user: CurrentUser | null): Promise<NodeDto[]> {
     // Exposes soft-deleted + unpublished content: admins only.
     assertCanWrite(user)
-    const nodes = await this.prisma.node.findMany({ orderBy: { order: "asc" } })
+    // Labels ride along: the admin detail panel renders a node's labels, and
+    // without them here the picker opens empty on a node that already has some.
+    const nodes = await this.prisma.node.findMany({
+      orderBy: { order: "asc" },
+      include: {
+        fields: {
+          orderBy: [{ order: "asc" }, { name: "asc" }],
+          select: { id: true, name: true, slug: true, order: true },
+        },
+      },
+    })
     return this.attachComputed(nodes, {})
   }
 
@@ -351,10 +379,19 @@ export class RoadmapService implements OnModuleInit {
    * not just top-level ones. No auth; only published, non-deleted blocks leak.
    * childrenCount is the direct-child count across the whole tree (card "N chủ đề").
    */
-  async publicBlocks(): Promise<NodeDto[]> {
+  async publicBlocks(fieldIds?: string[] | null): Promise<NodeDto[]> {
+    // Every non-deleted node is fetched even when filtering, because
+    // childrenCount counts children across the WHOLE tree — narrowing the
+    // query by label would undercount a block whose children carry no labels.
     const all = await this.prisma.node.findMany({
       where: { isDeleted: false },
       orderBy: { order: "asc" },
+      include: {
+        fields: {
+          orderBy: [{ order: "asc" }, { name: "asc" }],
+          select: { id: true, name: true, slug: true, order: true },
+        },
+      },
     })
     const childCount = new Map<string, number>()
     for (const n of all) {
@@ -362,11 +399,15 @@ export class RoadmapService implements OnModuleInit {
         childCount.set(n.parentId, (childCount.get(n.parentId) ?? 0) + 1)
       }
     }
+    // OR across labels: the strip selects one tab at a time, and a block
+    // carrying both AI and Data must show up under either.
+    const wanted = fieldIds?.length ? new Set(fieldIds) : null
     return all
       .filter(
         (n) =>
           n.isPublished && (n.nodeType === "role" || n.nodeType === "skill")
       )
+      .filter((n) => !wanted || n.fields.some((f) => wanted.has(f.id)))
       .map((n) => this.toNodeDto(n, "locked", childCount.get(n.id) ?? 0))
   }
 
@@ -539,9 +580,20 @@ export class RoadmapService implements OnModuleInit {
             notionPageId: input.notionPageId ?? null,
             articleType: input.articleType ?? null,
             jupyterUrl: normalizeHttpUrl(input.jupyterUrl),
+            fields: input.fieldIds?.length
+              ? { connect: input.fieldIds.map((fid) => ({ id: fid })) }
+              : undefined,
             positionX: input.positionX,
             positionY: input.positionY,
             order,
+          },
+          // Echo the labels back so the admin picker renders them straight
+          // after create instead of blanking.
+          include: {
+            fields: {
+              orderBy: [{ order: "asc" }, { name: "asc" }],
+              select: { id: true, name: true, slug: true, order: true },
+            },
           },
         })
       }, TREE_TRANSACTION_OPTIONS)
@@ -619,6 +671,21 @@ export class RoadmapService implements OnModuleInit {
                 input.isPublished !== undefined && input.isPublished !== null
                   ? input.isPublished
                   : undefined,
+              // `set` replaces the whole label list, so unchecking a label in
+              // the picker actually removes it. Omitted (undefined) input
+              // leaves existing labels untouched.
+              fields:
+                input.fieldIds !== undefined && input.fieldIds !== null
+                  ? { set: input.fieldIds.map((fid) => ({ id: fid })) }
+                  : undefined,
+            },
+            // Without this the mutation echoes back an empty label list and the
+            // admin picker blanks itself immediately after a successful save.
+            include: {
+              fields: {
+                orderBy: [{ order: "asc" }, { name: "asc" }],
+                select: { id: true, name: true, slug: true, order: true },
+              },
             },
           })
 
@@ -811,7 +878,7 @@ export class RoadmapService implements OnModuleInit {
   }
 
   private toNodeDto(
-    n: DbNode,
+    n: DbNodeWithFields,
     status: NodeStatus,
     childrenCount: number
   ): NodeDto {
@@ -834,11 +901,118 @@ export class RoadmapService implements OnModuleInit {
       childrenCount,
       linkedRoadmapId: n.linkedRoadmapId,
       isPublished: n.isPublished,
+      fields: n.fields ?? [],
     }
   }
 
+  // ── Discovery labels (Field) ───────────────────────────────────────────────
+
+  /** Every label, for the public tab strip. No auth — labels are not secret. */
+  async listFields(): Promise<FieldDto[]> {
+    return this.prisma.field.findMany({
+      orderBy: [{ order: "asc" }, { name: "asc" }],
+      select: { id: true, name: true, slug: true, order: true },
+    })
+  }
+
+  /**
+   * Find-or-create by name. The admin picker offers "create" inline, so two
+   * admins typing "AI" and "ai" must land on ONE label — otherwise the tab
+   * strip slowly fills with near-duplicates nobody can merge.
+   */
+  async createField(user: CurrentUser | null, name: string): Promise<FieldDto> {
+    assertCanWrite(user)
+    const trimmed = name.trim()
+    if (!trimmed) throw new RoadmapError("VALIDATION", "Field name is required")
+
+    const existing = await this.prisma.field.findFirst({
+      where: { name: { equals: trimmed, mode: "insensitive" } },
+      select: { id: true, name: true, slug: true, order: true },
+    })
+    if (existing) return existing
+
+    const count = await this.prisma.field.count()
+    return this.prisma.field.create({
+      data: {
+        name: trimmed,
+        slug: await this.uniqueFieldSlug(trimmed),
+        order: count,
+      },
+      select: { id: true, name: true, slug: true, order: true },
+    })
+  }
+
+  /**
+   * Rename in place. This is the whole reason labels are a table rather than a
+   * string column on `Node`: one row changes and every block carrying the label
+   * follows, with no bulk update and no chance of a half-renamed set.
+   */
+  async updateField(
+    user: CurrentUser | null,
+    id: string,
+    name: string
+  ): Promise<FieldDto> {
+    assertCanWrite(user)
+    const trimmed = name.trim()
+    if (!trimmed) throw new RoadmapError("VALIDATION", "Field name is required")
+
+    // Renaming onto another label's name would break the unique index with a
+    // raw Prisma error; reject it as a domain failure instead.
+    const clash = await this.prisma.field.findFirst({
+      where: { name: { equals: trimmed, mode: "insensitive" }, id: { not: id } },
+      select: { id: true },
+    })
+    if (clash) {
+      throw new RoadmapError("VALIDATION", `Lĩnh vực "${trimmed}" đã tồn tại`)
+    }
+
+    return this.prisma.field.update({
+      where: { id },
+      // The slug is derived from the name, so it has to move with it or links
+      // built from the old slug would point at a label that reads differently.
+      data: { name: trimmed, slug: await this.uniqueFieldSlug(trimmed, id) },
+      select: { id: true, name: true, slug: true, order: true },
+    })
+  }
+
+  /** Drops the label; the join rows go with it, the blocks themselves stay. */
+  async deleteField(user: CurrentUser | null, id: string): Promise<boolean> {
+    assertCanWrite(user)
+    await this.prisma.field.delete({ where: { id } })
+    return true
+  }
+
+  /**
+   * `excludeId` is the label being renamed: without it a rename that keeps the
+   * same slug would collide with the row's own slug and get suffixed "-2".
+   */
+  private async uniqueFieldSlug(
+    name: string,
+    excludeId?: string
+  ): Promise<string> {
+    const base =
+      name
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/\p{Diacritic}/gu, "")
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-|-$/g, "") || "field"
+    let slug = base
+    for (
+      let i = 2;
+      await this.prisma.field.findFirst({
+        where: { slug, ...(excludeId ? { id: { not: excludeId } } : {}) },
+        select: { id: true },
+      });
+      i++
+    ) {
+      slug = `${base}-${i}`
+    }
+    return slug
+  }
+
   private attachComputed(
-    nodes: DbNode[],
+    nodes: DbNodeWithFields[],
     progress: Record<string, NodeStatus>
   ): NodeDto[] {
     const childCount = new Map<string, number>()

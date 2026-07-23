@@ -52,9 +52,17 @@ export class RoadmapResolver {
   }
 
   // Public LEGO inventory — every published role/skill block, no auth.
+  // `fieldIds` is optional; when present it narrows to blocks carrying ANY of
+  // those discovery labels.
   @Query("publicBlocks")
-  publicBlocks() {
-    return this.service.publicBlocks()
+  publicBlocks(@Args("fieldIds") fieldIds?: string[] | null) {
+    return this.service.publicBlocks(fieldIds)
+  }
+
+  // Public discovery labels for the /roadmaps tab strip — no auth.
+  @Query("fields")
+  fields() {
+    return this.service.listFields()
   }
 
   // Public per-block composition (viewer drill) — one block + direct children.
@@ -69,6 +77,33 @@ export class RoadmapResolver {
   }
 
   // ── Mutations ──
+  // Find-or-create: the admin label picker creates inline, so a repeated name
+  // returns the existing label instead of minting a duplicate.
+  @Mutation("createField")
+  createField(
+    @Args("name") name: string,
+    @CurrentUser() user: CurrentUserType | null
+  ) {
+    return this.service.createField(user, name)
+  }
+
+  @Mutation("updateField")
+  updateField(
+    @Args("id") id: string,
+    @Args("name") name: string,
+    @CurrentUser() user: CurrentUserType | null
+  ) {
+    return this.service.updateField(user, id, name)
+  }
+
+  @Mutation("deleteField")
+  deleteField(
+    @Args("id") id: string,
+    @CurrentUser() user: CurrentUserType | null
+  ) {
+    return this.service.deleteField(user, id)
+  }
+
   @Mutation("createRoadmap")
   createRoadmap(
     @Args("input") input: CreateRoadmapInput,

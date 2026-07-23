@@ -59,9 +59,29 @@ model Node {
   children      Node[]         @relation("NodeChildren")
   linkedRoadmap Roadmap?       @relation("NodeLinkedRoadmap", fields: [linkedRoadmapId], references: [id], onDelete: SetNull)
   progress      UserProgress[]
+  // Discovery labels. Many-to-many on purpose: a role like "Data Engineer"
+  // belongs under both AI and Data, so it must surface under either tab.
+  fields        Field[]
 
   @@index([roadmapId])
   @@index([parentId])
+}
+
+/// A discovery label ("Web Dev", "AI", "Data") shown as a tab on /roadmaps.
+/// NOT a hierarchy level: a Field owns no canvas and is never navigable — it
+/// only groups blocks. Admins create these inline from the node dialog, so the
+/// tab strip is data-driven rather than a hardcoded list.
+model Field {
+  id        String   @id @default(cuid())
+  /// Unique so the inline "create" path can't silently mint "AI" twice.
+  name      String   @unique
+  slug      String   @unique
+  /// Display order in the tab strip; ties fall back to name.
+  order     Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  nodes Node[]
 }
 
 model RoadmapUpdateEvent {

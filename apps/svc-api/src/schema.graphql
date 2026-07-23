@@ -47,6 +47,22 @@ type RoadmapNode {
   childrenCount: Int!
   linkedRoadmapId: ID
   isPublished: Boolean!
+  """
+  Discovery labels this block carries. Many-to-many: a "Data Engineer" role
+  can sit under both AI and Data, so it surfaces under either tab.
+  """
+  fields: [Field!]!
+}
+
+"""
+A discovery label ("Web Dev", "AI") rendered as a tab on /roadmaps. NOT a
+hierarchy level — a Field owns no canvas and is never navigable.
+"""
+type Field {
+  id: ID!
+  name: String!
+  slug: String!
+  order: Int!
 }
 
 type RoadmapGraph {
@@ -82,7 +98,14 @@ type Query {
   roadmapGraph(slug: String!): RoadmapGraph
   roadmapGraphById(id: ID!): RoadmapGraph
   allNodes: [RoadmapNode!]!
-  publicBlocks: [RoadmapNode!]!
+  """
+  Public LEGO inventory. `fieldIds` narrows to blocks carrying ANY of the given
+  labels (OR, not AND) — the tab strip selects one at a time, and a block with
+  two labels must appear under both.
+  """
+  publicBlocks(fieldIds: [ID!]): [RoadmapNode!]!
+  """Every discovery label, for the tab strip. Public — no auth."""
+  fields: [Field!]!
   publicBlockGraph(id: ID!): RoadmapGraph
   myProgress: [RoadmapProgress!]!
   notionDoc(id: ID!): NotionDoc
@@ -96,6 +119,15 @@ type Mutation {
   createRoadmap(input: CreateRoadmapInput!): Roadmap!
   updateRoadmap(id: ID!, input: UpdateRoadmapInput!): Roadmap!
   deleteRoadmap(id: ID!): Boolean!
+  """
+  Find-or-create by name. The admin picker creates labels inline, so a repeated
+  name (case-insensitively) must return the EXISTING label rather than minting
+  a duplicate "AI" / "ai" pair.
+  """
+  createField(name: String!): Field!
+  """Rename in place — every node carrying the label follows automatically."""
+  updateField(id: ID!, name: String!): Field!
+  deleteField(id: ID!): Boolean!
   createNode(input: CreateNodeInput!): RoadmapNode!
   updateNode(id: ID!, input: UpdateNodeInput!): RoadmapNode!
   deleteNode(id: ID!): Boolean!
@@ -155,6 +187,7 @@ input CreateNodeInput {
   positionX: Float!
   positionY: Float!
   order: Int
+  fieldIds: [ID!]
 }
 
 input UpdateNodeInput {
@@ -169,6 +202,8 @@ input UpdateNodeInput {
   parentId: ID
   linkedRoadmapId: ID
   isPublished: Boolean
+  """Replaces the whole label set when present; omit to leave labels alone."""
+  fieldIds: [ID!]
 }
 
 input NodeInput {

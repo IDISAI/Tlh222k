@@ -20,6 +20,7 @@ export const MOCK_ROADMAPS: Roadmap[] = [
     thumbnailUrl: "https://placehold.co/600x338/6366f1/ffffff?text=Frontend",
     isPublished: true,
     nodeCount: MOCK_NODES.frontend?.length ?? 0,
+    fields: [],
     createdAt: "2024-01-15T08:00:00.000Z",
     updatedAt: "2024-06-20T14:30:00.000Z", // > 24h → dd/MM/yyyy
     authorId: MOCK_AUTHORS.linh.id,
@@ -34,6 +35,7 @@ export const MOCK_ROADMAPS: Roadmap[] = [
     thumbnailUrl: null,
     isPublished: true,
     nodeCount: MOCK_NODES.backend?.length ?? 0,
+    fields: [],
     createdAt: "2024-02-10T10:00:00.000Z",
     updatedAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(), // ~2h ago
     authorId: MOCK_AUTHORS.minh.id,
@@ -47,6 +49,7 @@ export const MOCK_ROADMAPS: Roadmap[] = [
     thumbnailUrl: "https://placehold.co/600x338/10b981/ffffff?text=DevOps",
     isPublished: true,
     nodeCount: MOCK_NODES.devops?.length ?? 0,
+    fields: [],
     createdAt: "2023-11-01T09:00:00.000Z",
     updatedAt: new Date(Date.now() - 30 * 60 * 1000).toISOString(), // ~30m ago
     authorId: MOCK_AUTHORS.system.id,
@@ -62,6 +65,7 @@ export const MOCK_ROADMAPS: Roadmap[] = [
     thumbnailUrl: null,
     isPublished: false,
     nodeCount: MOCK_NODES["ai-engineer"]?.length ?? 0,
+    fields: [],
     createdAt: "2025-03-05T12:00:00.000Z",
     updatedAt: "2025-03-05T12:00:00.000Z",
     authorId: MOCK_AUTHORS.linh.id,

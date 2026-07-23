@@ -39,6 +39,19 @@ export const MAX_DESCRIPTION_LENGTH = 500
  */
 export type CallerRole = "viewer" | "admin" | "super-admin"
 
+/**
+ * A discovery label ("Web Dev", "AI") rendered as a tab on /roadmaps. NOT a
+ * hierarchy level — a Field owns no canvas and is never navigable; it only
+ * groups blocks. A block may carry several, so a "Data Engineer" role shows up
+ * under both AI and Data.
+ */
+export interface Field {
+  id: string
+  name: string
+  slug: string
+  order: number
+}
+
 export interface Roadmap {
   id: string
   slug: string
@@ -47,6 +60,8 @@ export interface Roadmap {
   thumbnailUrl: string | null
   isPublished: boolean
   nodeCount: number
+  /** Discovery labels; empty when the block carries none. */
+  fields: Field[]
   // ── Metadata columns (roadmap-detail-columns spec) ────────────────────────
   /** ISO 8601 create time. Optional so legacy localStorage snapshots stay valid. */
   createdAt?: string
@@ -74,6 +89,13 @@ export interface RoadmapNode {
   /** Routable identifier for role/skill detail pages (Req 6.1/6.2). */
   slug: string
   description: string | null
+  /**
+   * Discovery labels. Only role/skill blocks carry these — an `article` is a
+   * leaf inside a chapter and never reaches the public card grid, so labelling
+   * one would be dead data. Optional because most node payloads (canvas moves,
+   * saves) don't select it; treat a missing value as "unknown", not "none".
+   */
+  fields?: Field[]
   /** Only meaningful for `article` nodes; null = document not linked yet. */
   articleType: ArticleType | null
   jupyterUrl: string | null
@@ -173,6 +195,8 @@ export interface CreateNodeInput {
   positionX: number
   positionY: number
   order?: number
+  /** Discovery labels to attach on create. */
+  fieldIds?: string[]
 }
 
 export type UpdateNodeInput = Partial<
@@ -192,6 +216,8 @@ export type RoadmapErrorCode =
   | "CHILDREN_LIMIT_EXCEEDED"
   | "NOT_FOUND"
   | "TIMEOUT"
+  | "INVALID_URL"
+  | "VALIDATION"
 
 /**
  * Typed service failure. `code` maps 1:1 onto the GraphQL error extension
