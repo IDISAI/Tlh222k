@@ -3,18 +3,30 @@
 import { CellRunButton } from "../../editor/components/CellRunButton"
 import { CodeCellEditor } from "../../editor/components/CodeCellEditor"
 import { OutputRenderer } from "../../viewer/components/OutputRenderer"
+import {
+  VisualizeCellAction,
+  type VisualizeAvailability,
+} from "../../visualize"
 import type { RuntimeCellState } from "../use-notebook-runtime"
 
 export function InteractiveCodeCell({
   cell,
+  language,
   disabled,
+  visualize = "hidden",
   onChange,
   onRun,
+  onVisualize,
 }: {
   cell: RuntimeCellState
+  /** Notebook language (nbformat); picks the code editor grammar. */
+  language?: string
   disabled?: boolean
+  /** "ready" = clickable action, "coming-soon" = disabled action, "hidden" = none. */
+  visualize?: VisualizeAvailability
   onChange: (source: string) => void
   onRun: () => void
+  onVisualize?: () => void
 }) {
   return (
     <section className="flex gap-2">
@@ -30,11 +42,16 @@ export function InteractiveCodeCell({
         <div className="rounded-md border bg-muted/40 transition-colors focus-within:border-primary focus-within:ring-1 focus-within:ring-primary/30">
           <CodeCellEditor
             source={cell.source}
+            language={language}
             onChange={onChange}
             onRun={disabled ? undefined : onRun}
             onRunAdvance={disabled ? undefined : onRun}
           />
         </div>
+        <VisualizeCellAction
+          availability={visualize}
+          onVisualize={onVisualize}
+        />
         {cell.outputs.length > 0 && (
           <div className="space-y-2 px-3 py-2">
             {cell.outputs.map((output, index) => (

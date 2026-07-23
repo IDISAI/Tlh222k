@@ -1,15 +1,21 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 
 import type { KernelAdapter, KernelStatus } from "../kernel"
 import type { CellOutput, Notebook } from "../types"
+
+/** Outcome of the cell's most recent execution (visualization gating). */
+export type CellRunStatus = "never" | "running" | "success" | "error"
 
 export interface RuntimeCellState {
   source: string
   outputs: CellOutput[]
   executionCount: number | null
   running: boolean
+  lastRunStatus: CellRunStatus
+  /** Source snapshot taken when the last run started; edits don't touch it. */
+  lastExecutedSource?: string
 }
 
 export function useNotebookRuntime(notebook: Notebook, adapter: KernelAdapter | null) {
@@ -31,6 +37,7 @@ export function useNotebookRuntime(notebook: Notebook, adapter: KernelAdapter | 
                 outputs: cell.outputs,
                 executionCount: cell.executionCount,
                 running: false,
+                lastRunStatus: "never" as const,
               },
         ])
       )
@@ -46,30 +53,66 @@ export function useNotebookRuntime(notebook: Notebook, adapter: KernelAdapter | 
     setCells((current) => ({ ...current, [id]: { ...current[id]!, source } }))
   }, [])
 
+  // Monotonic per-cell run tokens: a completion only records its outcome when
+  // it is still the latest run of that cell (interrupt + rerun races).
+  const runTokens = useRef<Record<string, number>>({})
+
   const runCell = useCallback(async (id: string) => {
     if (!adapter) throw new Error("Sign in to run this notebook")
     const source = cells[id]?.source
     if (source === undefined) return
+    const token = (runTokens.current[id] ?? 0) + 1
+    runTokens.current[id] = token
+    const isCurrent = () => runTokens.current[id] === token
+    // A stale completion (superseded by a newer run) must not touch state:
+    // the newer run owns `running` and the final outcome.
+    const finish = (status: "success" | "error") =>
+      setCells((current) =>
+        isCurrent()
+          ? {
+              ...current,
+              [id]: { ...current[id]!, running: false, lastRunStatus: status },
+            }
+          : current
+      )
+    let hadError = false
     setError(null)
-    setCells((current) => ({ ...current, [id]: { ...current[id]!, outputs: [], running: true } }))
+    setCells((current) => ({
+      ...current,
+      [id]: {
+        ...current[id]!,
+        outputs: [],
+        running: true,
+        lastRunStatus: "running",
+        lastExecutedSource: source,
+      },
+    }))
     try {
       const result = await adapter.execute(source, {
         onStream: (name, text) => setCells((current) => ({
           ...current,
           [id]: { ...current[id]!, outputs: [...current[id]!.outputs, { kind: "stream", name, text }] },
         })),
-        onOutput: (output) => setCells((current) => ({
-          ...current,
-          [id]: { ...current[id]!, outputs: [...current[id]!.outputs, output] },
-        })),
+        onOutput: (output) => {
+          if (output.kind === "error") hadError = true
+          setCells((current) => ({
+            ...current,
+            [id]: { ...current[id]!, outputs: [...current[id]!.outputs, output] },
+          }))
+        },
       })
-      setCells((current) => ({
-        ...current,
-        [id]: { ...current[id]!, executionCount: result.executionCount, running: false },
-      }))
+      setCells((current) =>
+        isCurrent()
+          ? {
+              ...current,
+              [id]: { ...current[id]!, executionCount: result.executionCount },
+            }
+          : current
+      )
+      finish(hadError ? "error" : "success")
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Execution failed")
-      setCells((current) => ({ ...current, [id]: { ...current[id]!, running: false } }))
+      finish("error")
       throw cause
     }
   }, [adapter, cells])
@@ -97,5 +140,6 @@ function initialCells(notebook: Notebook): Record<string, RuntimeCellState> {
     outputs: cell.outputs,
     executionCount: cell.executionCount,
     running: false,
+    lastRunStatus: "never" as const,
   }]))
 }

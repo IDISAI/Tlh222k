@@ -7,9 +7,15 @@ import {
   InteractiveNotebook,
   JupyterSandboxAdapter,
   PyodideKernelAdapter,
+  runAvailability,
   SandboxSessionClient,
+  profileForNotebook,
+  useTraceEngines,
+  WorkerKernelAdapter,
   type KernelAdapter,
   type Notebook,
+  type RunAvailability,
+  type TraceLanguage,
 } from "@workspace/core"
 import { devAuthRole } from "@workspace/core/navigation/role"
 import {
@@ -20,6 +26,55 @@ import {
 } from "@workspace/ui/components/tabs"
 
 type LearnTab = "tutorial" | "exercise"
+
+function availabilityOf(
+  notebook: Notebook,
+  kernelUrl: string | undefined
+): RunAvailability {
+  return runAvailability(notebook.language, {
+    hasKernelServer: Boolean(kernelUrl),
+  })
+}
+
+function createNotebookAdapter(
+  notebook: Notebook,
+  kernelUrl: string | undefined,
+  getToken: () => Promise<string | null>
+): KernelAdapter | null {
+  const profile = profileForNotebook(notebook.language)
+  if (!profile) return null
+  if (kernelUrl) {
+    return new JupyterSandboxAdapter(
+      new SandboxSessionClient(kernelUrl, getToken),
+      profile
+    )
+  }
+  // No kernel server (the deployed default): Python runs on Pyodide and
+  // JavaScript on the bundled interpreter, so both stay usable — and their
+  // "Visualize execution" gate, which needs a successful run, still opens.
+  if (notebook.language === "python") {
+    return new PyodideKernelAdapter(
+      () => new Worker(new URL("./pyodide.worker.ts", import.meta.url))
+    )
+  }
+  if (notebook.language === "javascript") {
+    return new WorkerKernelAdapter(
+      () => new Worker(new URL("./javascript-trace.worker.ts", import.meta.url))
+    )
+  }
+  return null
+}
+
+/**
+ * Trace worker entrypoints. Static `new URL(..., import.meta.url)` so the app's
+ * bundler emits the chunk; the Worker itself is only constructed on the first
+ * "Visualize execution" click.
+ */
+function createTraceWorker(language: TraceLanguage): Worker {
+  return language === "python"
+    ? new Worker(new URL("./pyodide.worker.ts", import.meta.url))
+    : new Worker(new URL("./javascript-trace.worker.ts", import.meta.url))
+}
 
 interface LearnClientProps {
   slug: string
@@ -52,25 +107,21 @@ function DevLearnClient({ slug, tutorial, exercise }: LearnClientProps) {
   const getDevToken = async () => "dev-token"
 
   const makeAdapter = useMemo(
-    () => (): KernelAdapter =>
-      kernelUrl
-        ? new JupyterSandboxAdapter(
-            new SandboxSessionClient(kernelUrl, getDevToken),
-            "data-science"
-          )
-        : new PyodideKernelAdapter(
-            () => new Worker(new URL("./pyodide.worker.ts", import.meta.url))
-          ),
+    () =>
+      (notebook: Notebook): KernelAdapter | null =>
+        createNotebookAdapter(notebook, kernelUrl, getDevToken),
     [kernelUrl]
   )
   const tutorialAdapter = useMemo(
-    () => (canRun ? makeAdapter() : null),
-    [canRun, makeAdapter]
+    () => (canRun ? makeAdapter(tutorial) : null),
+    [canRun, makeAdapter, tutorial]
   )
   const exerciseAdapter = useMemo(
-    () => (canRun && exercise ? makeAdapter() : null),
+    () => (canRun && exercise ? makeAdapter(exercise) : null),
     [canRun, exercise, makeAdapter]
   )
+  // Tutorial only: Exercise-cell visualization is out of scope.
+  const createTrace = useTraceEngines(createTraceWorker)
 
   return (
     <Tabs value={tab} onValueChange={(value) => setTab(value as LearnTab)}>
@@ -89,9 +140,11 @@ function DevLearnClient({ slug, tutorial, exercise }: LearnClientProps) {
           notebook={tutorial}
           adapter={tutorialAdapter}
           signedIn={canRun}
+          runAvailability={availabilityOf(tutorial, kernelUrl)}
           onSignIn={() => {}}
           exerciseTitle={exercise?.title ?? "Exercise"}
           onStartExercise={() => setTab("exercise")}
+          createTrace={createTrace}
         />
       </TabsContent>
 
@@ -101,6 +154,7 @@ function DevLearnClient({ slug, tutorial, exercise }: LearnClientProps) {
             notebook={exercise}
             adapter={exerciseAdapter}
             signedIn={canRun}
+            runAvailability={availabilityOf(exercise, kernelUrl)}
             onSignIn={() => {}}
           />
         ) : (
@@ -133,25 +187,21 @@ function ClerkLearnClient({ slug, tutorial, exercise }: LearnClientProps) {
   const canRun = usePyodide || isSignedIn
 
   const makeAdapter = useMemo(
-    () => (): KernelAdapter =>
-      kernelUrl
-        ? new JupyterSandboxAdapter(
-            new SandboxSessionClient(kernelUrl, getToken),
-            "data-science"
-          )
-        : new PyodideKernelAdapter(
-            () => new Worker(new URL("./pyodide.worker.ts", import.meta.url))
-          ),
+    () =>
+      (notebook: Notebook): KernelAdapter | null =>
+        createNotebookAdapter(notebook, kernelUrl, getToken),
     [getToken, kernelUrl]
   )
   const tutorialAdapter = useMemo(
-    () => (canRun ? makeAdapter() : null),
-    [canRun, makeAdapter]
+    () => (canRun ? makeAdapter(tutorial) : null),
+    [canRun, makeAdapter, tutorial]
   )
   const exerciseAdapter = useMemo(
-    () => (canRun && exercise ? makeAdapter() : null),
+    () => (canRun && exercise ? makeAdapter(exercise) : null),
     [canRun, exercise, makeAdapter]
   )
+  // Tutorial only: Exercise-cell visualization is out of scope.
+  const createTrace = useTraceEngines(createTraceWorker)
 
   return (
     <Tabs value={tab} onValueChange={(value) => setTab(value as LearnTab)}>
@@ -170,9 +220,11 @@ function ClerkLearnClient({ slug, tutorial, exercise }: LearnClientProps) {
           notebook={tutorial}
           adapter={tutorialAdapter}
           signedIn={canRun}
+          runAvailability={availabilityOf(tutorial, kernelUrl)}
           onSignIn={() => void clerk.openSignIn()}
           exerciseTitle={exercise?.title ?? "Exercise"}
           onStartExercise={() => setTab("exercise")}
+          createTrace={createTrace}
         />
       </TabsContent>
 
@@ -182,6 +234,7 @@ function ClerkLearnClient({ slug, tutorial, exercise }: LearnClientProps) {
             notebook={exercise}
             adapter={exerciseAdapter}
             signedIn={canRun}
+            runAvailability={availabilityOf(exercise, kernelUrl)}
             onSignIn={() => void clerk.openSignIn()}
           />
         ) : (

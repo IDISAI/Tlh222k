@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/lh222k/kernel-server/internal/profiles"
 	"github.com/lh222k/kernel-server/internal/sessions"
 )
 
@@ -19,15 +20,18 @@ type CommandRunner interface {
 	Run(ctx context.Context, name string, args ...string) ([]byte, error)
 }
 
-type Images struct {
-	DataScience string
-	MLCPU       string
-}
+type Images map[string]string
 
 func DefaultImages() Images {
 	return Images{
-		DataScience: "local/notebook-data-science:dev",
-		MLCPU:       "local/notebook-ml-cpu:dev",
+		profiles.DataScience: "local/notebook-data-science:dev",
+		profiles.MLCPU:       "local/notebook-ml-cpu:dev",
+		profiles.JavaScript:  "local/notebook-javascript:dev",
+		profiles.CPP:         "local/notebook-cpp:dev",
+		profiles.Java:        "local/notebook-java:dev",
+		profiles.Rust:        "local/notebook-rust:dev",
+		profiles.Go:          "local/notebook-go:dev",
+		profiles.Julia:       "local/notebook-julia:dev",
 	}
 }
 
@@ -80,6 +84,24 @@ func NewDockerRuntime(runner CommandRunner, images Images, options ...DockerRunt
 	return runtime
 }
 
+// RustScratchDir is the one writable path a runtime may execute from. Docker
+// forces noexec onto every other tmpfs, and evcxr compiles each Rust cell into
+// a shared object it then dlopen()s — without this the Rust kernel dies before
+// replying to kernel_info. The rust kernelspec points TMPDIR here.
+const RustScratchDir = "/home/jovyan/.evcxr"
+
+const rustScratchTmpfs = RustScratchDir + ":rw,exec,nosuid,size=512m,mode=0700,uid=1000,gid=100"
+
+// profileTmpfs returns extra mounts a single profile needs. Every profile whose
+// kernel JITs in memory (Python, JavaScript, C++, Java, Go, Julia) keeps a fully
+// noexec writable set; only Rust opts into an exec-capable scratch mount.
+func profileTmpfs(profile string) []string {
+	if profile != profiles.Rust {
+		return nil
+	}
+	return []string{"--tmpfs", rustScratchTmpfs}
+}
+
 func (r *DockerRuntime) Start(ctx context.Context, request sessions.StartRequest) (sessions.RuntimeHandle, error) {
 	image, err := r.imageFor(request.Profile)
 	if err != nil {
@@ -104,7 +126,14 @@ func (r *DockerRuntime) Start(ctx context.Context, request sessions.StartRequest
 		"--tmpfs", "/home/jovyan/.ipython:rw,nosuid,size=128m,mode=1777",
 		"--tmpfs", "/home/jovyan/.jupyter:rw,nosuid,size=128m,mode=1777",
 		"--tmpfs", "/home/jovyan/.local:rw,nosuid,size=256m,mode=1777",
+		"--tmpfs", "/home/jovyan/.cargo:rw,nosuid,size=512m,mode=0700,uid=1000,gid=100",
+		"--tmpfs", "/home/jovyan/.ivy2:rw,nosuid,size=256m,mode=0700,uid=1000,gid=100",
+		"--tmpfs", "/home/jovyan/.julia:rw,nosuid,size=512m,mode=0700,uid=1000,gid=100",
+		"--tmpfs", "/home/jovyan/go:rw,nosuid,size=512m,mode=0700,uid=1000,gid=100",
 		"--tmpfs", "/home/jovyan/work:rw,nosuid,size=512m,mode=1777",
+	)
+	args = append(args, profileTmpfs(request.Profile)...)
+	args = append(args,
 		"--cap-drop", "ALL",
 		"--security-opt", "no-new-privileges",
 		"--pids-limit", strconv.Itoa(request.Pids),
@@ -251,15 +280,10 @@ func (r *DockerRuntime) RemoveStaleContainers(ctx context.Context) error {
 }
 
 func (r *DockerRuntime) imageFor(profile string) (string, error) {
-	var image string
-	switch profile {
-	case "data-science":
-		image = r.images.DataScience
-	case "ml-cpu":
-		image = r.images.MLCPU
-	default:
+	if !profiles.Valid(profile) {
 		return "", fmt.Errorf("unsupported runtime profile %q", profile)
 	}
+	image := strings.TrimSpace(r.images[profile])
 	if image == "" {
 		return "", fmt.Errorf("runtime image for profile %q is not configured", profile)
 	}

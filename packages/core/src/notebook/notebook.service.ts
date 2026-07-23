@@ -82,11 +82,12 @@ export class NotebookService {
   /** TOC from markdown-cell headings, in document order. */
   extractToc(notebook: Notebook): TocEntry[] {
     const entries: TocEntry[] = []
+    // One slugger for the whole notebook: two cells that both say "Ví dụ" get
+    // distinct anchors, so the second TOC entry stops scrolling to the first.
+    // MarkdownCell renders these same slugs rather than recomputing them.
+    const slug = createSlugger()
     for (const cell of notebook.cells) {
       if (cell.cellType !== "markdown") continue
-      // Per-cell slugger mirrors MarkdownCell's own ID computation so TOC
-      // anchors always match the rendered heading ids.
-      const slug = createSlugger()
       for (const match of cell.source.matchAll(HEADING_PATTERN)) {
         const text = stripInlineMarkdown(match[2]!)
         entries.push({
@@ -130,10 +131,7 @@ export class NotebookService {
     }
   }
 
-  private deriveTitle(
-    metadataTitle: unknown,
-    cells: NotebookCell[]
-  ): string {
+  private deriveTitle(metadataTitle: unknown, cells: NotebookCell[]): string {
     if (typeof metadataTitle === "string" && metadataTitle.trim()) {
       return metadataTitle.trim()
     }
@@ -189,7 +187,12 @@ function parseMimeBundle(
   const html = asText(data["text/html"])
   if (html !== undefined) bundle.html = html
 
-  for (const mime of ["image/png", "image/jpeg", "image/gif", "image/svg+xml"]) {
+  for (const mime of [
+    "image/png",
+    "image/jpeg",
+    "image/gif",
+    "image/svg+xml",
+  ]) {
     const image = asText(data[mime])
     if (image !== undefined) {
       bundle.image = { mime, base64: image.replace(/\n/g, "") }

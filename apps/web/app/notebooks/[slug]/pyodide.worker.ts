@@ -1,13 +1,20 @@
-// Pyodide execution worker for the /learn Exercise tab. Runs Python entirely
-// client-side — DevTools Network shows zero execution requests. Bundled by the
-// web app (referenced via `new URL("./pyodide.worker.ts", import.meta.url)`),
-// so it owns worker bundling; only `import type` crosses into @workspace/core.
+// Pyodide worker for notebook code cells. Runs Python entirely client-side —
+// DevTools Network shows zero execution requests. Bundled by the consuming app
+// (referenced via `new URL("./pyodide.worker.ts", import.meta.url)`), so the
+// app owns worker bundling. web and admin keep byte-identical copies.
+//
+// The host instantiates this module twice: once for cell execution (owned by
+// PyodideKernelAdapter) and once for "Visualize execution" (owned by
+// WorkerTraceEngine). Separate instances mean a trace timeout terminates only
+// the trace worker and never the user's live kernel. Trace logic itself lives
+// in @workspace/core so web and admin cannot drift.
 
 import type {
   CellOutput,
   WorkerRequest,
   WorkerResponse,
 } from "@workspace/core"
+import { createPythonTraceHandler } from "@workspace/core/notebook/visualize/python-worker-runtime"
 
 import { LEARNTOOLS_FILES } from "./learntools"
 
@@ -48,6 +55,8 @@ function send(msg: WorkerResponse): void {
 }
 
 let pyodide: Pyodide | null = null
+/** Memoized boot; a failed boot is not cached so a retry can succeed. */
+let booting: Promise<Pyodide> | null = null
 let executionCount = 0
 /** The execId of the run currently streaming stdout/stderr (for routing). */
 let activeExecId = 0
@@ -80,7 +89,7 @@ def __nb_grades__():
         return "{}"
 `
 
-async function init(): Promise<void> {
+async function init(): Promise<Pyodide> {
   ctx.importScripts(`${INDEX_URL}pyodide.js`)
   const py = await loadPyodide({ indexURL: INDEX_URL })
 
@@ -103,7 +112,26 @@ async function init(): Promise<void> {
 
   pyodide = py
   send({ type: "ready" })
+  return py
 }
+
+function ensurePyodide(): Promise<Pyodide> {
+  booting ??= init().catch((error: unknown) => {
+    booting = null
+    throw error
+  })
+  return booting
+}
+
+/**
+ * Trace requests reuse this worker's Pyodide instance but never touch the
+ * execute path's counters or status messages.
+ */
+const handleTrace = createPythonTraceHandler(ensurePyodide, {
+  prepare: async (runtime, request) => {
+    await (runtime as Pyodide).loadPackagesFromImports(request.code)
+  },
+})
 
 function toErrorOutput(err: unknown): CellOutput {
   const message = err instanceof Error ? err.message : String(err)
@@ -213,7 +241,7 @@ function reportGrades(py: Pyodide, execId: number): void {
 ctx.onmessage = (e: MessageEvent<WorkerRequest>) => {
   const msg = e.data
   if (msg.type === "init") {
-    init().catch((err: unknown) =>
+    ensurePyodide().catch((err: unknown) =>
       send({
         type: "fatal",
         message: err instanceof Error ? err.message : String(err),
@@ -221,5 +249,7 @@ ctx.onmessage = (e: MessageEvent<WorkerRequest>) => {
     )
   } else if (msg.type === "execute") {
     void execute(msg.execId, msg.code)
+  } else if (msg.type === "trace") {
+    void handleTrace(msg).then(send)
   }
 }

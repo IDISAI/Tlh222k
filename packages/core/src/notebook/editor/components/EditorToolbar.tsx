@@ -8,10 +8,7 @@ import {
   FileText,
   Globe,
   Link2,
-  Play,
   Redo2,
-  RotateCcw,
-  Square,
   Undo2,
 } from "lucide-react"
 import { Button } from "@workspace/ui/components/button"
@@ -20,26 +17,29 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@workspace/ui/components/popover"
-import { cn } from "@workspace/ui/lib/utils"
-
-import type { KernelStatus } from "../../kernel"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@workspace/ui/components/select"
+import { LANGUAGES } from "../../kernel"
 import type { SaveState } from "../hooks/useNotebookEditor"
 
 interface EditorToolbarProps {
   saveState: SaveState
+  /** Notebook language (nbformat); shown in the language selector. */
+  language?: string
+  /** Switches the notebook language (rewrites kernelspec + profile). */
+  onLanguageChange?: (language: string) => void
   onAddCode: () => void
   onAddMarkdown: () => void
   onDownload: () => void
-  /** Runs every code cell top-to-bottom; omit when no kernel is available. */
-  onRunAll?: () => void
-  running?: boolean
   published: boolean
   onTogglePublish: () => void
   /** Public viewer URL shown/copied once published. */
   learnUrl?: string
-  kernelStatus?: KernelStatus
-  onInterrupt?: () => void
-  onRestart?: () => void
   onUndo?: () => void
   onRedo?: () => void
   canUndo?: boolean
@@ -53,28 +53,21 @@ const SAVE_LABEL: Record<SaveState, string> = {
   saved: "Đã lưu",
 }
 
-const KERNEL_LABEL: Record<KernelStatus, string> = {
-  uninitialized: "chưa khởi động",
-  starting: "đang khởi động…",
-  idle: "sẵn sàng",
-  busy: "đang chạy…",
-  error: "lỗi",
-}
-
-/** Editor top bar. Run All requires a kernel (signed-in + kernel-server configured). */
+/**
+ * Editor top bar: authoring actions only. Kernel status and the run controls
+ * live in the shared KernelBar above the cells, exactly as the web viewer
+ * presents them.
+ */
 export function EditorToolbar({
   saveState,
+  language,
+  onLanguageChange,
   onAddCode,
   onAddMarkdown,
   onDownload,
-  onRunAll,
-  running,
   published,
   onTogglePublish,
   learnUrl,
-  kernelStatus,
-  onInterrupt,
-  onRestart,
   onUndo,
   onRedo,
   canUndo,
@@ -136,51 +129,29 @@ export function EditorToolbar({
 
       <div className="mx-1 h-5 w-px bg-border" />
 
-      <Button
-        type="button"
-        size="sm"
-        variant="ghost"
-        disabled={!onRunAll || running}
-        title={onRunAll ? "Chạy tất cả code cell" : "Cần kernel để chạy code"}
-        onClick={onRunAll}
-      >
-        <Play className="size-4" /> {running ? "Đang chạy…" : "Run All"}
-      </Button>
-      <Button
-        type="button"
-        size="sm"
-        variant="ghost"
-        disabled={!onInterrupt || kernelStatus !== "busy"}
-        title="Dừng cell đang chạy"
-        onClick={onInterrupt}
-      >
-        <Square className="size-4" /> Dừng
-      </Button>
-      <Button
-        type="button"
-        size="sm"
-        variant="ghost"
-        disabled={!onRestart}
-        title="Khởi động lại kernel (xóa biến và output)"
-        onClick={onRestart}
-      >
-        <RotateCcw className="size-4" /> Restart
-      </Button>
-
-      {kernelStatus && (
-        <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-          <span
-            className={cn(
-              "size-2 rounded-full",
-              kernelStatus === "idle" && "bg-green-500",
-              kernelStatus === "busy" && "bg-amber-500",
-              kernelStatus === "starting" && "animate-pulse bg-amber-500",
-              kernelStatus === "error" && "bg-destructive",
-              kernelStatus === "uninitialized" && "bg-muted-foreground/40"
-            )}
-          />
-          Kernel: {KERNEL_LABEL[kernelStatus]}
-        </span>
+      {language && onLanguageChange && (
+        <>
+          <Select
+            value={language}
+            onValueChange={(value) => onLanguageChange(String(value))}
+          >
+            <SelectTrigger
+              size="sm"
+              title="Ngôn ngữ của notebook (mỗi notebook một ngôn ngữ)"
+              aria-label="Ngôn ngữ notebook"
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {LANGUAGES.map((spec) => (
+                <SelectItem key={spec.language} value={spec.language}>
+                  {spec.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <div className="mx-1 h-5 w-px bg-border" />
+        </>
       )}
 
       <div className="ml-auto flex items-center gap-3">
@@ -219,9 +190,7 @@ export function EditorToolbar({
                       readOnly
                       value={learnUrl}
                       className="min-w-0 flex-1 rounded-md border bg-muted px-2 py-1.5 text-xs focus:outline-none"
-                      onClick={(e) =>
-                        (e.target as HTMLInputElement).select()
-                      }
+                      onClick={(e) => (e.target as HTMLInputElement).select()}
                     />
                     <Button
                       type="button"

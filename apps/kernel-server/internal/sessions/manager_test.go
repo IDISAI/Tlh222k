@@ -266,6 +266,12 @@ func (r *blockingRuntime) startCount() int {
 	return r.starts
 }
 
+func (r *blockingRuntime) stopCount() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.stops
+}
+
 func TestSlowStartDoesNotBlockExistingSessionTouch(t *testing.T) {
 	runtime := &blockingRuntime{}
 	options := managerOptions()
@@ -360,18 +366,66 @@ func TestConcurrentStartsReserveGlobalCapacity(t *testing.T) {
 	}
 }
 
-func TestPerOwnerQuotaRejectsSecondProfileWithoutStartingRuntime(t *testing.T) {
+// A learner holds one sandbox. Opening a notebook in another language must
+// replace it, not fail: a browser reload strands the previous session, and
+// rejecting would lock the learner out for the whole idle timeout.
+func TestSecondProfileReplacesTheOwnersExistingSession(t *testing.T) {
 	runtime := &blockingRuntime{}
 	options := managerOptions()
 	options.MaxSessionsPerOwner = 1
 	manager := sessions.NewManager(options, runtime, &fakeClock{now: time.Unix(100, 0)})
-	if _, err := manager.CreateOrResume(context.Background(), "user-1", "data-science"); err != nil {
+
+	first, err := manager.CreateOrResume(context.Background(), "user-1", "data-science")
+	if err != nil {
 		t.Fatalf("create first profile: %v", err)
 	}
-	if _, err := manager.CreateOrResume(context.Background(), "user-1", "ml-cpu"); !errors.Is(err, sessions.ErrOwnerCapacity) {
-		t.Fatalf("second owner profile error = %v, want ErrOwnerCapacity", err)
+	second, err := manager.CreateOrResume(context.Background(), "user-1", "javascript")
+	if err != nil {
+		t.Fatalf("create second profile: %v", err)
 	}
-	if runtime.startCount() != 1 {
-		t.Fatalf("runtime starts = %d, want 1", runtime.startCount())
+
+	if second.Profile != "javascript" || second.ID == first.ID {
+		t.Fatalf("second session = %+v, want a new javascript session", second)
+	}
+	if runtime.startCount() != 2 || runtime.stopCount() != 1 {
+		t.Fatalf("runtime starts/stops = %d/%d, want 2/1",
+			runtime.startCount(), runtime.stopCount())
+	}
+	if _, err := manager.Get("user-1", first.ID); !errors.Is(err, sessions.ErrNotFound) {
+		t.Fatalf("replaced session lookup = %v, want ErrNotFound", err)
+	}
+	// The replacement must not widen the quota: the new session is now the one
+	// that gets resumed, with no further runtime churn.
+	resumed, err := manager.CreateOrResume(context.Background(), "user-1", "javascript")
+	if err != nil || resumed.ID != second.ID {
+		t.Fatalf("resume after replacement = %+v, %v; want %s", resumed, err, second.ID)
+	}
+	if runtime.startCount() != 2 || runtime.stopCount() != 1 {
+		t.Fatalf("runtime starts/stops after resume = %d/%d, want 2/1",
+			runtime.startCount(), runtime.stopCount())
+	}
+}
+
+// Resuming the same profile must never restart the runtime.
+func TestSameProfileResumesWithoutReplacing(t *testing.T) {
+	runtime := &blockingRuntime{}
+	options := managerOptions()
+	options.MaxSessionsPerOwner = 1
+	manager := sessions.NewManager(options, runtime, &fakeClock{now: time.Unix(100, 0)})
+
+	first, err := manager.CreateOrResume(context.Background(), "user-1", "data-science")
+	if err != nil {
+		t.Fatalf("create first profile: %v", err)
+	}
+	again, err := manager.CreateOrResume(context.Background(), "user-1", "data-science")
+	if err != nil {
+		t.Fatalf("resume same profile: %v", err)
+	}
+	if again.ID != first.ID {
+		t.Fatalf("resumed session = %s, want %s", again.ID, first.ID)
+	}
+	if runtime.startCount() != 1 || runtime.stopCount() != 0 {
+		t.Fatalf("runtime starts/stops = %d/%d, want 1/0",
+			runtime.startCount(), runtime.stopCount())
 	}
 }

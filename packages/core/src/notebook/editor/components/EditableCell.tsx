@@ -11,9 +11,15 @@ import { CodeCellEditor } from "./CodeCellEditor"
 import { MarkdownCellEditor } from "./MarkdownCellEditor"
 import { OutputRenderer } from "../../viewer/components/OutputRenderer"
 import type { RuntimeCellState } from "../../runtime/use-notebook-runtime"
+import {
+  VisualizeCellAction,
+  type VisualizeAvailability,
+} from "../../visualize"
 
 interface EditableCellProps {
   cell: NotebookCell
+  /** Notebook language (nbformat); picks the code editor grammar. */
+  language?: string
   selected: boolean
   onSelect: () => void
   onDeselect?: () => void
@@ -26,11 +32,17 @@ interface EditableCellProps {
   onRun?: () => void
   /** Shift+Enter: run then focus the next cell (Colab behavior). */
   onRunAdvance?: () => void
+  /** "ready" = clickable action, "coming-soon" = disabled action, "hidden" = none. */
+  visualize?: VisualizeAvailability
+  onVisualize?: () => void
+  /** Anchor ids for this cell's headings, so the preview matches the TOC. */
+  headingSlugs?: readonly string[]
 }
 
 /** One editable cell, Colab-style: run gutter + editor + hover toolbar. */
 export function EditableCell({
   cell,
+  language,
   selected,
   onSelect,
   onDeselect,
@@ -42,6 +54,9 @@ export function EditableCell({
   runtime,
   onRun,
   onRunAdvance,
+  visualize = "hidden",
+  onVisualize,
+  headingSlugs,
 }: EditableCellProps) {
   const isCode = cell.cellType === "code"
 
@@ -59,13 +74,14 @@ export function EditableCell({
       </div>
 
       <div className="min-w-0 flex-1">
+        {/* Frame matches the web viewer's code cell; selection is the one
+            editor-only addition on top of it. */}
         <div
           className={cn(
-            "relative overflow-hidden rounded-md border transition-all",
-            selected
-              ? "border-primary/50 shadow-md ring-2 ring-primary/15"
-              : "border-transparent group-hover:border-border group-hover:shadow-sm",
-            isCode && "bg-muted/40"
+            "relative overflow-hidden rounded-md border transition-colors",
+            isCode &&
+              "bg-muted/40 focus-within:border-primary focus-within:ring-1 focus-within:ring-primary/30",
+            selected && "border-primary/50 ring-1 ring-primary/20"
           )}
         >
           {/* Colab-style accent bar on the active cell. */}
@@ -78,6 +94,7 @@ export function EditableCell({
           {isCode ? (
             <CodeCellEditor
               source={cell.source}
+              language={language}
               onChange={onChange}
               onFocus={onSelect}
               onRun={onRun}
@@ -90,9 +107,17 @@ export function EditableCell({
               onChange={onChange}
               onFocus={onSelect}
               onClose={onDeselect}
+              headingSlugs={headingSlugs}
             />
           )}
         </div>
+
+        {isCode && (
+          <VisualizeCellAction
+            availability={visualize}
+            onVisualize={onVisualize}
+          />
+        )}
 
         {isCode && runtime && runtime.outputs.length > 0 && (
           <div className="space-y-2 px-3 py-2">
@@ -106,11 +131,7 @@ export function EditableCell({
       <div
         className={cn(
           "absolute right-2 bottom-full z-10 mb-1 items-center gap-0.5 rounded-md border bg-background p-0.5 shadow-sm",
-          !selected
-              ? "hidden group-hover:flex"
-              : isCode
-                ? "flex"
-                : "hidden" // markdown editing — never show, prevents overlap
+          !selected ? "hidden group-hover:flex" : isCode ? "flex" : "hidden" // markdown editing — never show, prevents overlap
         )}
         onClick={(e) => e.stopPropagation()}
       >

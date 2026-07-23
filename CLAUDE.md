@@ -31,9 +31,15 @@ go vet ./...
 APP_ENV=development DEV_AUTH_ROLE=super-admin SESSION_TICKET_SECRET=development-only-ticket-secret go run ./cmd/server   # listens on :3006
 ```
 
-There is no test runner configured yet. CI is
-`install --frozen-lockfile -> lint -> typecheck -> build`. `lint` is ESLint;
-`typecheck` is `tsc --noEmit`. CI does NOT cover the Go kernel-server.
+CI is `install --frozen-lockfile -> lint -> typecheck -> test -> build`, plus a
+separate job running `go test -race`, `go vet`, and `go build` for the Go
+kernel-server. `lint` is ESLint; `typecheck` is `tsc --noEmit`; `test` is
+Vitest, whose suites live in `packages/core`. Run one package's suite locally
+with `pnpm -F @workspace/core test -- --run`.
+
+The seven notebook runtime images are NOT built or exercised in CI — they need
+Docker. Verify them locally against a running kernel-server before changing a
+kernelspec, an image, or anything under `apps/kernel-server/runtime/`.
 
 ## Architecture
 
@@ -200,6 +206,7 @@ Deploys cover web, admin, and super-admin. Required GitHub secrets include
 When the user's request matches an available skill, invoke it via the Skill tool. When in doubt, invoke the skill.
 
 Key routing rules:
+
 - Product ideas/brainstorming → invoke /office-hours
 - Strategy/scope → invoke /plan-ceo-review
 - Architecture → invoke /plan-eng-review

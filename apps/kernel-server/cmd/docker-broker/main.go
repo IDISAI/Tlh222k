@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/lh222k/kernel-server/internal/broker"
+	"github.com/lh222k/kernel-server/internal/profiles"
 	"github.com/lh222k/kernel-server/internal/runtime"
 )
 
@@ -27,9 +28,16 @@ func main() {
 		Pids:    positiveInt("JUPYTER_SESSION_PIDS", 128),
 		Network: getenv("JUPYTER_DOCKER_NETWORK", "notebook-internal"),
 	}
+	defaultImages := runtime.DefaultImages()
 	images := runtime.Images{
-		DataScience: getenv("JUPYTER_IMAGE_DATA_SCIENCE", runtime.DefaultImages().DataScience),
-		MLCPU:       getenv("JUPYTER_IMAGE_ML_CPU", runtime.DefaultImages().MLCPU),
+		profiles.DataScience: getenv("JUPYTER_IMAGE_DATA_SCIENCE", defaultImages[profiles.DataScience]),
+		profiles.MLCPU:       getenv("JUPYTER_IMAGE_ML_CPU", defaultImages[profiles.MLCPU]),
+		profiles.JavaScript:  getenv("JUPYTER_IMAGE_JAVASCRIPT", defaultImages[profiles.JavaScript]),
+		profiles.CPP:         getenv("JUPYTER_IMAGE_CPP", defaultImages[profiles.CPP]),
+		profiles.Java:        getenv("JUPYTER_IMAGE_JAVA", defaultImages[profiles.Java]),
+		profiles.Rust:        getenv("JUPYTER_IMAGE_RUST", defaultImages[profiles.Rust]),
+		profiles.Go:          getenv("JUPYTER_IMAGE_GO", defaultImages[profiles.Go]),
+		profiles.Julia:       getenv("JUPYTER_IMAGE_JULIA", defaultImages[profiles.Julia]),
 	}
 	controller := runtime.NewDockerRuntime(nil, images)
 	server := &http.Server{

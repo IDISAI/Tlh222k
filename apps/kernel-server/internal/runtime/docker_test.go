@@ -17,7 +17,7 @@ type recordedCommand struct {
 
 func TestDockerRuntimeStopsContainerWhenJupyterReadinessFails(t *testing.T) {
 	runner := &recordingRunner{outputs: [][]byte{[]byte("container-1\n"), []byte("true kernel-broker\n"), nil}}
-	runtime := NewDockerRuntime(runner, Images{DataScience: "data-image"}, WithReadyCheck(func(context.Context, string, string) error {
+	runtime := NewDockerRuntime(runner, Images{"data-science": "data-image"}, WithReadyCheck(func(context.Context, string, string) error {
 		return errors.New("not ready")
 	}))
 
@@ -37,7 +37,7 @@ func TestDockerRuntimeStopsContainerWhenJupyterReadinessFails(t *testing.T) {
 
 func TestDockerRuntimeUsesLoopbackPortForHostDevelopment(t *testing.T) {
 	runner := &recordingRunner{outputs: [][]byte{[]byte("container-1\n"), []byte("127.0.0.1:49152\n")}}
-	runtime := NewDockerRuntime(runner, Images{DataScience: "data-image"}, WithHostProxy(), WithReadyCheck(func(_ context.Context, endpoint, _ string) error {
+	runtime := NewDockerRuntime(runner, Images{"data-science": "data-image"}, WithHostProxy(), WithReadyCheck(func(_ context.Context, endpoint, _ string) error {
 		if endpoint != "http://127.0.0.1:49152" {
 			return errors.New("unexpected endpoint " + endpoint)
 		}
@@ -80,8 +80,8 @@ func (r *recordingRunner) Run(_ context.Context, name string, args ...string) ([
 func TestDockerRuntimeStartUsesLockedDownRunArguments(t *testing.T) {
 	runner := &recordingRunner{output: []byte("container-1\n")}
 	runtime := NewDockerRuntime(runner, Images{
-		DataScience: "local/notebook-data-science:dev",
-		MLCPU:       "local/notebook-ml-cpu:dev",
+		"data-science": "local/notebook-data-science:dev",
+		"ml-cpu":       "local/notebook-ml-cpu:dev",
 	}, WithReadyCheck(func(context.Context, string, string) error { return nil }))
 
 	handle, err := runtime.Start(context.Background(), sessions.StartRequest{
@@ -110,6 +110,10 @@ func TestDockerRuntimeStartUsesLockedDownRunArguments(t *testing.T) {
 		"--tmpfs", "/home/jovyan/.ipython:rw,nosuid,size=128m,mode=1777",
 		"--tmpfs", "/home/jovyan/.jupyter:rw,nosuid,size=128m,mode=1777",
 		"--tmpfs", "/home/jovyan/.local:rw,nosuid,size=256m,mode=1777",
+		"--tmpfs", "/home/jovyan/.cargo:rw,nosuid,size=512m,mode=0700,uid=1000,gid=100",
+		"--tmpfs", "/home/jovyan/.ivy2:rw,nosuid,size=256m,mode=0700,uid=1000,gid=100",
+		"--tmpfs", "/home/jovyan/.julia:rw,nosuid,size=512m,mode=0700,uid=1000,gid=100",
+		"--tmpfs", "/home/jovyan/go:rw,nosuid,size=512m,mode=0700,uid=1000,gid=100",
 		"--tmpfs", "/home/jovyan/work:rw,nosuid,size=512m,mode=1777",
 		"--cap-drop", "ALL", "--security-opt", "no-new-privileges",
 		"--pids-limit", "128", "--cpus", "1", "--memory", "2g",
@@ -138,9 +142,58 @@ func TestDockerRuntimeStartUsesLockedDownRunArguments(t *testing.T) {
 	}
 }
 
+func TestDockerRuntimeStartGivesOnlyRustAnExecScratchMount(t *testing.T) {
+	const rustMount = "/home/jovyan/.evcxr:rw,exec,nosuid,size=512m,mode=0700,uid=1000,gid=100"
+
+	for _, testCase := range []struct {
+		profile string
+		wantRun bool
+	}{
+		{profile: "rust", wantRun: true},
+		{profile: "data-science"},
+		{profile: "cpp"},
+		{profile: "java"},
+		{profile: "go"},
+		{profile: "julia"},
+		{profile: "javascript"},
+	} {
+		t.Run(testCase.profile, func(t *testing.T) {
+			runner := &recordingRunner{output: []byte("container-1\n")}
+			runtime := NewDockerRuntime(runner, DefaultImages(),
+				WithReadyCheck(func(context.Context, string, string) error { return nil }))
+
+			if _, err := runtime.Start(context.Background(), sessions.StartRequest{
+				SessionID: "session-1",
+				Profile:   testCase.profile,
+				CPU:       "1",
+				Memory:    "2g",
+				Pids:      128,
+				Network:   "notebook-internal",
+			}); err != nil {
+				t.Fatalf("start runtime: %v", err)
+			}
+
+			args := runner.commands[0].args
+			if got := slices.Contains(args, rustMount); got != testCase.wantRun {
+				t.Fatalf("exec scratch mount present = %v, want %v: %#v", got, testCase.wantRun, args)
+			}
+			// The exec mount must never widen /tmp for anybody.
+			if !slices.Contains(args, "/tmp:rw,noexec,nosuid,size=256m,mode=1777") {
+				t.Fatalf("/tmp lost its noexec mount: %#v", args)
+			}
+			for _, arg := range args {
+				if strings.Contains(arg, "exec") && strings.HasPrefix(arg, "/") &&
+					!strings.Contains(arg, "noexec") && arg != rustMount {
+					t.Fatalf("unexpected exec-capable mount %q", arg)
+				}
+			}
+		})
+	}
+}
+
 func TestDockerRuntimeStartRejectsUnknownProfile(t *testing.T) {
 	runner := &recordingRunner{}
-	runtime := NewDockerRuntime(runner, Images{DataScience: "data-image", MLCPU: "ml-image"})
+	runtime := NewDockerRuntime(runner, Images{"data-science": "data-image", "ml-cpu": "ml-image"})
 
 	_, err := runtime.Start(context.Background(), sessions.StartRequest{Profile: "custom"})
 	if err == nil || !strings.Contains(err.Error(), "unsupported runtime profile") {
@@ -148,6 +201,68 @@ func TestDockerRuntimeStartRejectsUnknownProfile(t *testing.T) {
 	}
 	if len(runner.commands) != 0 {
 		t.Fatalf("commands = %d, want 0", len(runner.commands))
+	}
+}
+
+func TestDefaultImagesCoversEveryRuntimeProfile(t *testing.T) {
+	images := DefaultImages()
+	for _, profile := range []string{
+		"data-science",
+		"ml-cpu",
+		"javascript",
+		"cpp",
+		"java",
+		"rust",
+		"go",
+		"julia",
+	} {
+		if image := strings.TrimSpace(images[profile]); image == "" {
+			t.Errorf("DefaultImages()[%q] = %q, want configured image", profile, image)
+		}
+	}
+}
+
+func TestDockerRuntimeStartsEveryProfileWithItsConfiguredImage(t *testing.T) {
+	images := Images{
+		"data-science": "registry/data-science:test",
+		"ml-cpu":       "registry/ml-cpu:test",
+		"javascript":   "registry/javascript:test",
+		"cpp":          "registry/cpp:test",
+		"java":         "registry/java:test",
+		"rust":         "registry/rust:test",
+		"go":           "registry/go:test",
+		"julia":        "registry/julia:test",
+	}
+
+	for profile, image := range images {
+		t.Run(profile, func(t *testing.T) {
+			runner := &recordingRunner{output: []byte("container-1\n")}
+			runtime := NewDockerRuntime(
+				runner,
+				images,
+				WithReadyCheck(func(context.Context, string, string) error { return nil }),
+			)
+
+			_, err := runtime.Start(context.Background(), sessions.StartRequest{
+				SessionID: "session-1",
+				Profile:   profile,
+				CPU:       "1",
+				Memory:    "2g",
+				Pids:      128,
+				Network:   "notebook-internal",
+			})
+
+			if err != nil {
+				t.Fatalf("start runtime: %v", err)
+			}
+			if len(runner.commands) != 1 {
+				t.Fatalf("commands = %d, want 1", len(runner.commands))
+			}
+			args := runner.commands[0].args
+			if got := args[len(args)-1]; got != image {
+				t.Fatalf("docker image = %q, want %q", got, image)
+			}
+		})
 	}
 }
 
