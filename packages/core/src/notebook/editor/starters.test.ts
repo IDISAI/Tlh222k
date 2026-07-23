@@ -15,12 +15,29 @@ describe("emptyNotebook seeding", () => {
     }
   })
 
-  it("never seeds a main-shaped program into a REPL kernel", () => {
-    // The bug this exists to prevent: `fn main() { … }` defines a function the
-    // REPL never calls, so the cell succeeds and prints nothing.
-    for (const language of ["cpp", "java", "rust", "go", "julia"] as const) {
-      expect(STARTERS[language].code).not.toMatch(/\bmain\s*\(/)
+  it("calls main, because a REPL kernel will not call it for you", () => {
+    // The starters are written in each language's normal shape, `main` and all,
+    // so nobody learns a syntax they would have to unlearn. That shape prints
+    // nothing on its own here: defining `main` is not running it. Every starter
+    // that declares one must therefore also invoke it on a later line.
+    for (const [language, starter] of Object.entries(STARTERS)) {
+      if (!/\bmain\b/.test(starter.code)) continue
+      const lines = starter.code.trimEnd().split("\n")
+      const last = lines[lines.length - 1]!.trim()
+      expect(last, `${language} never calls main`).toMatch(/main\(/)
     }
+  })
+
+  it("writes each language in its own conventional form", () => {
+    // Enough of the real shape to be worth copying into a file, per language.
+    expect(STARTERS.go.code).toContain("package main")
+    expect(STARTERS.cpp.code).toContain("#include <iostream>")
+    expect(STARTERS.cpp.code).toContain("return 0;")
+    expect(STARTERS.java.code).toContain("public class Main")
+    expect(STARTERS.java.code).toContain("String[] args")
+    expect(STARTERS.rust.code).toContain("fn main()")
+    expect(STARTERS.julia.code).toContain("function main()")
+    expect(STARTERS.python.code).toContain('if __name__ == "__main__":')
   })
 
   it("explains the kernel above the first cell", () => {
@@ -32,6 +49,7 @@ describe("emptyNotebook seeding", () => {
     expect(markdown).toHaveLength(2)
     expect(markdown[0]!.source).toContain("# Bài mới")
     expect(markdown[1]!.source).toContain("main")
+    expect(markdown[1]!.source).toContain("cú pháp chuẩn")
   })
 
   it("still defaults to Python, as the create form expects", () => {

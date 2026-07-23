@@ -107,9 +107,15 @@ export function InteractiveNotebook({
             <KernelActions
               busy={busy}
               disabled={!adapter}
-              onRunAll={() => void runtime.runAll()}
-              onInterrupt={() => void runtime.interrupt()}
-              onRestart={() => void runtime.restart()}
+              // The hook already reports failures through runtime.error and
+              // rethrows only so runAll stops at the first bad cell. Swallow it
+              // here: a dropped kernel is ordinary, and letting the rejection
+              // float turns it into a full-page error overlay.
+              onRunAll={() => void runtime.runAll().catch(() => undefined)}
+              onInterrupt={() =>
+                void runtime.interrupt().catch(() => undefined)
+              }
+              onRestart={() => void runtime.restart().catch(() => undefined)}
             />
           )}
         </KernelBar>
@@ -135,7 +141,9 @@ export function InteractiveNotebook({
                     runtime.cells[cell.id]!
                   )}
                   onChange={(source) => runtime.updateSource(cell.id, source)}
-                  onRun={() => void runtime.runCell(cell.id)}
+                  onRun={() =>
+                    void runtime.runCell(cell.id).catch(() => undefined)
+                  }
                   onVisualize={() => visualization.open(cell.id)}
                 />
               )

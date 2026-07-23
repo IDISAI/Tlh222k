@@ -17,10 +17,10 @@ export interface LanguageStarter {
 }
 
 const REPL_NOTE =
-  "Ô code chạy như **từng câu lệnh** trong một phiên làm việc, không phải một " +
-  "file chương trình hoàn chỉnh. Viết thẳng câu lệnh — đừng bọc trong `main`, " +
-  "vì sẽ không có ai gọi nó và ô sẽ chạy xong mà không in gì. Muốn giữ `main` " +
-  "thì phải tự gọi nó ở dòng sau."
+  "Chương trình được viết đúng cú pháp chuẩn của ngôn ngữ này — có hàm `main` " +
+  "như khi bạn viết ra file. Khác biệt duy nhất: kernel chạy ô code như **từng " +
+  "câu lệnh** chứ không khởi động một chương trình, nên không có ai tự gọi " +
+  "`main`. Dòng cuối gọi nó; bỏ dòng đó thì ô vẫn chạy xong nhưng không in gì."
 
 const DIRECT_NOTE =
   "Bấm ▶ để chạy ô này. Kết quả in ra hiện ngay bên dưới, và các ô chạy sau " +
@@ -28,31 +28,62 @@ const DIRECT_NOTE =
 
 export const STARTERS: Record<NotebookLanguage, LanguageStarter> = {
   python: {
-    code: 'print("Xin chào!")\n',
+    code:
+      "def main():\n" +
+      '    print("Xin chào!")\n\n\n' +
+      'if __name__ == "__main__":\n' +
+      "    main()\n",
     note: DIRECT_NOTE,
   },
   javascript: {
-    code: 'console.log("Xin chào!")\n',
+    code:
+      "function main() {\n" +
+      '  console.log("Xin chào!")\n' +
+      "}\n\n" +
+      "main()\n",
     note: DIRECT_NOTE,
   },
   cpp: {
-    code: '#include <iostream>\n\nstd::cout << "Xin chào!" << std::endl;\n',
+    code:
+      "#include <iostream>\n\n" +
+      "int main() {\n" +
+      '    std::cout << "Xin chào!" << std::endl;\n' +
+      "    return 0;\n" +
+      "}\n\n" +
+      "main();\n",
     note: REPL_NOTE,
   },
   java: {
-    code: 'System.out.println("Xin chào!");\n',
+    code:
+      "public class Main {\n" +
+      "    public static void main(String[] args) {\n" +
+      '        System.out.println("Xin chào!");\n' +
+      "    }\n" +
+      "}\n\n" +
+      "Main.main(new String[]{});\n",
     note: REPL_NOTE,
   },
   rust: {
-    code: 'println!("Xin chào!");\n',
+    code:
+      "fn main() {\n" + '    println!("Xin chào!");\n' + "}\n\n" + "main();\n",
     note: REPL_NOTE,
   },
   go: {
-    code: 'import "fmt"\n\nfmt.Println("Xin chào!")\n',
+    code:
+      "package main\n\n" +
+      'import "fmt"\n\n' +
+      "func main() {\n" +
+      '    fmt.Println("Xin chào!")\n' +
+      "}\n\n" +
+      "main()\n",
     note: REPL_NOTE,
   },
   julia: {
-    code: 'println("Xin chào!")\n',
+    code:
+      "function main()\n" +
+      '    println("Xin chào!")\n' +
+      "end\n\n" +
+      "main()\n",
     note: REPL_NOTE,
   },
 }
