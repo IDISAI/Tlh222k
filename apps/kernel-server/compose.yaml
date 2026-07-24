@@ -17,18 +17,75 @@ services:
     image: local/notebook-ml-cpu:dev
     entrypoint: ["true"]
 
+  runtime-javascript:
+    profiles: [runtime-javascript]
+    build:
+      context: .
+      dockerfile: runtime/Dockerfile
+      args: { PROFILE: javascript }
+    image: local/notebook-javascript:dev
+    entrypoint: ["true"]
+
+  runtime-cpp:
+    profiles: [runtime-cpp]
+    build:
+      context: .
+      dockerfile: runtime/Dockerfile
+      args: { PROFILE: cpp }
+    image: local/notebook-cpp:dev
+    entrypoint: ["true"]
+
+  runtime-java:
+    profiles: [runtime-java]
+    build:
+      context: .
+      dockerfile: runtime/Dockerfile
+      args: { PROFILE: java }
+    image: local/notebook-java:dev
+    entrypoint: ["true"]
+
+  runtime-rust:
+    profiles: [runtime-rust]
+    build:
+      context: .
+      dockerfile: runtime/Dockerfile
+      args: { PROFILE: rust }
+    image: local/notebook-rust:dev
+    entrypoint: ["true"]
+
+  runtime-go:
+    profiles: [runtime-go]
+    build:
+      context: .
+      dockerfile: runtime/Dockerfile
+      args: { PROFILE: go }
+    image: local/notebook-go:dev
+    entrypoint: ["true"]
+
+  runtime-julia:
+    profiles: [runtime-julia]
+    build:
+      context: .
+      dockerfile: runtime/Dockerfile
+      args: { PROFILE: julia }
+    image: local/notebook-julia:dev
+    entrypoint: ["true"]
+
   docker-broker:
     build:
       context: .
       target: docker-broker
-    depends_on:
-      runtime-data-science: { condition: service_completed_successfully }
-      runtime-ml-cpu: { condition: service_completed_successfully }
     environment:
       BROKER_PORT: "3007"
       BROKER_TOKEN: ${JUPYTER_BROKER_TOKEN:-local-broker-control-secret-32bytes}
       JUPYTER_IMAGE_DATA_SCIENCE: local/notebook-data-science:dev
       JUPYTER_IMAGE_ML_CPU: local/notebook-ml-cpu:dev
+      JUPYTER_IMAGE_JAVASCRIPT: local/notebook-javascript:dev
+      JUPYTER_IMAGE_CPP: local/notebook-cpp:dev
+      JUPYTER_IMAGE_JAVA: local/notebook-java:dev
+      JUPYTER_IMAGE_RUST: local/notebook-rust:dev
+      JUPYTER_IMAGE_GO: local/notebook-go:dev
+      JUPYTER_IMAGE_JULIA: local/notebook-julia:dev
       JUPYTER_SESSION_CPU: ${JUPYTER_SESSION_CPU:-1}
       JUPYTER_SESSION_MEMORY: ${JUPYTER_SESSION_MEMORY:-2g}
       JUPYTER_SESSION_PIDS: ${JUPYTER_SESSION_PIDS:-128}

@@ -1,2 +1,4 @@
 .vercel
 .env*
+# CLAUDE.md rule: real env files stay local, but the example IS committed.
+!.env.example

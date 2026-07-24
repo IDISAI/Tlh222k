@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/lh222k/kernel-server/internal/profiles"
 	"github.com/lh222k/kernel-server/internal/sessions"
 )
 
@@ -81,7 +82,7 @@ func (s *Server) start(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid request")
 		return
 	}
-	if !sessionIDPattern.MatchString(body.SessionID) || (body.Profile != "data-science" && body.Profile != "ml-cpu") {
+	if !sessionIDPattern.MatchString(body.SessionID) || !profiles.Valid(body.Profile) {
 		writeError(w, http.StatusBadRequest, "invalid request")
 		return
 	}

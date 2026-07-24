@@ -7,15 +7,19 @@ import { slugify } from "../../utils/slugify"
 
 interface MarkdownCellProps {
   source: string
+  /**
+   * Anchor ids for this cell's headings, in document order, as allocated by
+   * `NotebookService.extractToc`. Passing them is what makes two cells with the
+   * same heading text land on different anchors — this component sees one cell
+   * and cannot know what the rest of the notebook already used. Omitted, each
+   * heading falls back to its own slug.
+   */
+  headingSlugs?: readonly string[]
 }
 
 // Collect visible text from react-markdown children (strings, arrays, and
-// element children like inline <code>) so the anchor id derives purely from
-// the heading itself — no cross-heading counter that could drift between the
-// server and StrictMode's double-invoked client render.
-// ponytail: no duplicate-suffix dedup here; matches extractToc for the common
-// one-heading-per-cell layout. Add a per-cell slugger if a cell ever ships two
-// headings with identical text.
+// element children like inline <code>), for the fallback slug when the host
+// supplies no ids.
 function childText(children: ReactNode): string {
   if (typeof children === "string" || typeof children === "number") {
     return String(children)
@@ -29,10 +33,16 @@ function childText(children: ReactNode): string {
   return ""
 }
 
-const headingId = (children: ReactNode) => slugify(childText(children))
-
 /** Kaggle-Learn-style markdown rendering for tutorial prose. */
-export function MarkdownCell({ source }: MarkdownCellProps) {
+export function MarkdownCell({ source, headingSlugs }: MarkdownCellProps) {
+  // Fresh on every render pass, deliberately: react-markdown renders headings
+  // in document order within a pass, so walking the list in step is exact, and
+  // StrictMode's second invocation starts from zero instead of continuing a
+  // stale count the way a ref or a memo would.
+  let next = 0
+  const headingId = (children: ReactNode) =>
+    headingSlugs?.[next++] ?? slugify(childText(children))
+
   const components: Components = {
     h1: ({ children }) => (
       <h1 id={headingId(children)} className="scroll-mt-20 text-3xl font-bold">
@@ -48,12 +58,18 @@ export function MarkdownCell({ source }: MarkdownCellProps) {
       </h2>
     ),
     h3: ({ children }) => (
-      <h3 id={headingId(children)} className="scroll-mt-20 text-xl font-semibold">
+      <h3
+        id={headingId(children)}
+        className="scroll-mt-20 text-xl font-semibold"
+      >
         {children}
       </h3>
     ),
     h4: ({ children }) => (
-      <h4 id={headingId(children)} className="scroll-mt-20 text-lg font-semibold">
+      <h4
+        id={headingId(children)}
+        className="scroll-mt-20 text-lg font-semibold"
+      >
         {children}
       </h4>
     ),

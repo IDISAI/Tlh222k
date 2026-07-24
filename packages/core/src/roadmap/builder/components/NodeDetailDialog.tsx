@@ -3,6 +3,7 @@
 import { useState } from "react"
 import {
   AlertTriangle,
+  ChevronRight,
   ExternalLink,
   FileText,
   PencilLine,
@@ -10,7 +11,12 @@ import {
 } from "lucide-react"
 import { Badge } from "@workspace/ui/components/badge"
 import { Button } from "@workspace/ui/components/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@workspace/ui/components/card"
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@workspace/ui/components/card"
 import { Input } from "@workspace/ui/components/input"
 import { Label } from "@workspace/ui/components/label"
 import {
@@ -31,6 +37,7 @@ import { toast } from "@workspace/ui/components/sonner"
 import { cn } from "@workspace/ui/lib/utils"
 
 import type { ArticleType, RoadmapNode } from "../../types"
+import { ancestorPath } from "../../utils/node-ancestors"
 import {
   navigationBlockedMessage,
   nodeNavigationUrl,
@@ -48,7 +55,11 @@ interface ArticleCreateFormProps {
   onDone: () => void
 }
 
-function ArticleCreateForm({ chapterId, onCreateArticle, onDone }: ArticleCreateFormProps) {
+function ArticleCreateForm({
+  chapterId,
+  onCreateArticle,
+  onDone,
+}: ArticleCreateFormProps) {
   const [title, setTitle] = useState("")
   const [articleType, setArticleType] = useState<ArticleType>("notion")
   const [saving, setSaving] = useState(false)
@@ -70,7 +81,10 @@ function ArticleCreateForm({ chapterId, onCreateArticle, onDone }: ArticleCreate
   }
 
   return (
-    <form onSubmit={(e) => void handleSubmit(e)} className="space-y-3 rounded-md border p-3">
+    <form
+      onSubmit={(e) => void handleSubmit(e)}
+      className="space-y-3 rounded-md border p-3"
+    >
       <p className="text-xs font-medium">Bài viết mới</p>
       <div className="space-y-1">
         <Label className="text-xs">Tiêu đề *</Label>
@@ -84,7 +98,10 @@ function ArticleCreateForm({ chapterId, onCreateArticle, onDone }: ArticleCreate
       </div>
       <div className="space-y-1">
         <Label className="text-xs">Loại</Label>
-        <Select value={articleType} onValueChange={(v) => setArticleType(v as ArticleType)}>
+        <Select
+          value={articleType}
+          onValueChange={(v) => setArticleType(v as ArticleType)}
+        >
           <SelectTrigger className="h-7 text-xs">
             <SelectValue />
           </SelectTrigger>
@@ -100,15 +117,27 @@ function ArticleCreateForm({ chapterId, onCreateArticle, onDone }: ArticleCreate
         </p>
       ) : (
         <p className="text-xs text-muted-foreground">
-          Notebook nội bộ — điều hướng tới <code className="text-[11px]">/notebooks/[slug]</code>{" "}
-          (slug sinh từ tiêu đề). Không cần Jupyter URL.
+          Notebook nội bộ — điều hướng tới{" "}
+          <code className="text-[11px]">/notebooks/[slug]</code> (slug sinh từ
+          tiêu đề). Không cần Jupyter URL.
         </p>
       )}
       <div className="flex gap-2">
-        <Button type="submit" size="sm" disabled={saving || !title.trim()} className="h-7 text-xs">
+        <Button
+          type="submit"
+          size="sm"
+          disabled={saving || !title.trim()}
+          className="h-7 text-xs"
+        >
           Tạo
         </Button>
-        <Button type="button" variant="ghost" size="sm" className="h-7 text-xs" onClick={onDone}>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="h-7 text-xs"
+          onClick={onDone}
+        >
           Hủy
         </Button>
       </div>
@@ -180,6 +209,8 @@ export function NodeDetailDialog({
     ? (nodes.find((n) => n.id === node.parentId) ?? null)
     : null
   const childCount = childrenOf(nodes, node.id).length
+  // Where this node sits: role › skill › chapter › article.
+  const trail = ancestorPath(nodes, node)
   const navUrl = nodeNavigationUrl(node, {
     notebookBasePath,
     notionBasePath,
@@ -193,9 +224,7 @@ export function NodeDetailDialog({
     node.nodeType === "chapter"
       ? nodes.filter(
           (n) =>
-            n.parentId === node.id &&
-            n.nodeType === "article" &&
-            !n.isDeleted
+            n.parentId === node.id && n.nodeType === "article" && !n.isDeleted
         )
       : []
   const canNavigate = navUrl !== null
@@ -292,7 +321,7 @@ export function NodeDetailDialog({
                 />
               )}
               {chapterArticles.length === 0 && !showArticleForm ? (
-                <p className="text-xs italic text-muted-foreground">
+                <p className="text-xs text-muted-foreground italic">
                   Chưa có bài viết nào trong chapter này
                 </p>
               ) : (
@@ -304,34 +333,54 @@ export function NodeDetailDialog({
                       parentChapterSlug: node.slug,
                     })
                     const cardContent = (
-                      <Card size="sm" className="cursor-pointer transition-all hover:bg-muted hover:shadow-sm">
+                      <Card
+                        size="sm"
+                        className="cursor-pointer transition-all hover:bg-muted hover:shadow-sm"
+                      >
                         <CardHeader className="flex flex-row items-center justify-between space-y-0 p-3 pb-1">
-                          <div className="flex items-center gap-2 min-w-0">
+                          <div className="flex min-w-0 items-center gap-2">
                             <FileText className="size-4 shrink-0 text-muted-foreground" />
-                            <CardTitle className="text-xs font-semibold truncate">{a.title}</CardTitle>
+                            <CardTitle className="truncate text-xs font-semibold">
+                              {a.title}
+                            </CardTitle>
                           </div>
                           {a.isPublished ? (
-                            <Badge variant="secondary" className="h-5 bg-emerald-100 text-emerald-700 hover:bg-emerald-100 border-transparent text-[10px] px-1.5 py-0">
+                            <Badge
+                              variant="secondary"
+                              className="h-5 border-transparent bg-emerald-100 px-1.5 py-0 text-[10px] text-emerald-700 hover:bg-emerald-100"
+                            >
                               Public
                             </Badge>
                           ) : (
-                            <Badge variant="outline" className="h-5 text-[10px] px-1.5 py-0 text-muted-foreground">
+                            <Badge
+                              variant="outline"
+                              className="h-5 px-1.5 py-0 text-[10px] text-muted-foreground"
+                            >
                               Draft
                             </Badge>
                           )}
                         </CardHeader>
                         <CardContent className="flex items-center gap-2 p-3 pt-0">
                           {a.articleType === "notion" ? (
-                            <Badge variant="outline" className="text-[10px] text-zinc-500 bg-zinc-50 border-zinc-200">
+                            <Badge
+                              variant="outline"
+                              className="border-zinc-200 bg-zinc-50 text-[10px] text-zinc-500"
+                            >
                               Notion
                             </Badge>
                           ) : (
-                            <Badge variant="outline" className="text-[10px] text-orange-600 bg-orange-50 border-orange-200">
+                            <Badge
+                              variant="outline"
+                              className="border-orange-200 bg-orange-50 text-[10px] text-orange-600"
+                            >
                               Jupyter
                             </Badge>
                           )}
                           {!url && (
-                            <Badge variant="outline" className="text-[10px] text-amber-600 bg-amber-50 border-amber-200 gap-1">
+                            <Badge
+                              variant="outline"
+                              className="gap-1 border-amber-200 bg-amber-50 text-[10px] text-amber-600"
+                            >
                               <AlertTriangle className="size-3" /> Chưa liên kết
                             </Badge>
                           )}
@@ -361,6 +410,46 @@ export function NodeDetailDialog({
               )}
             </div>
           )}
+
+          {/* Full trail, so an article says which chapter it lives in and
+              which roadmap that chapter belongs to. */}
+          <div className="space-y-1.5">
+            <Label>Vị trí</Label>
+            <nav
+              aria-label="Vị trí trong roadmap"
+              className="flex flex-wrap items-center gap-x-1 gap-y-0.5 text-xs"
+            >
+              {trail.map((step, index) => {
+                const current = index === trail.length - 1
+                return (
+                  <span key={step.id} className="flex items-center gap-1">
+                    {index > 0 && (
+                      <ChevronRight
+                        aria-hidden
+                        className="size-3 text-muted-foreground"
+                      />
+                    )}
+                    <span className="text-muted-foreground">
+                      {step.nodeType}
+                    </span>
+                    <span
+                      className={cn(
+                        "font-medium",
+                        current ? "text-foreground" : "text-foreground/80"
+                      )}
+                    >
+                      {step.title}
+                    </span>
+                  </span>
+                )
+              })}
+            </nav>
+            {trail.length === 1 && (
+              <p className="text-xs text-muted-foreground">
+                Node này chưa nằm trong roadmap nào.
+              </p>
+            )}
+          </div>
 
           <div className="grid grid-cols-2 gap-3 text-xs text-muted-foreground">
             <p>

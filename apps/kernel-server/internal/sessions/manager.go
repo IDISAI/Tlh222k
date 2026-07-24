@@ -97,7 +97,21 @@ func (m *Manager) CreateOrResume(ctx context.Context, owner, profile string) (Se
 		}
 
 		if err := m.reserveStart(owner); err != nil {
-			return Session{}, err
+			if !errors.Is(err, ErrOwnerCapacity) {
+				return Session{}, err
+			}
+			// The owner holds a sandbox for a different runtime. One sandbox per
+			// owner is the product model, so opening another language must replace
+			// it: a browser reload strands the previous session, and without this
+			// the learner is locked out for the whole idle timeout.
+			replaced, replaceErr := m.replaceOwnerSession(ctx, owner)
+			if replaceErr != nil {
+				return Session{}, replaceErr
+			}
+			if !replaced {
+				return Session{}, err
+			}
+			continue
 		}
 		id, err := newSessionID()
 		if err != nil {
@@ -305,6 +319,50 @@ func (m *Manager) reserveAliveCheck(owner, profile string) (Session, bool, error
 		}
 	}
 	return Session{}, false, nil
+}
+
+// replaceOwnerSession stops the owner's least recently used active session so a
+// different runtime profile can start in its place. Reports whether one was
+// actually stopped, so the caller can surface the original capacity error when
+// there was nothing to reclaim.
+func (m *Manager) replaceOwnerSession(ctx context.Context, owner string) (bool, error) {
+	m.mu.Lock()
+	if m.shuttingDown {
+		m.mu.Unlock()
+		return false, ErrShuttingDown
+	}
+	var target Session
+	found := false
+	for _, session := range m.sessions {
+		if session.Owner != owner || session.Status != StatusActive {
+			continue
+		}
+		if !found || session.LastActivity.Before(target.LastActivity) {
+			target = session
+			found = true
+		}
+	}
+	if !found {
+		m.mu.Unlock()
+		return false, nil
+	}
+	target.Status = StatusStopping
+	m.sessions[target.ID] = target
+	m.runtimeOps.Add(1)
+	m.mu.Unlock()
+
+	stopErr := m.runtime.Stop(ctx, target.Handle.ID)
+	m.mu.Lock()
+	if latest, ok := m.sessions[target.ID]; ok &&
+		latest.Status == StatusStopping && latest.Handle.ID == target.Handle.ID {
+		delete(m.sessions, target.ID)
+	}
+	m.mu.Unlock()
+	m.runtimeOps.Done()
+	if stopErr != nil {
+		return false, stopErr
+	}
+	return true, nil
 }
 
 func (m *Manager) reserveStart(owner string) error {

@@ -3,10 +3,9 @@
 import { useMemo } from "react"
 import { cn } from "@workspace/ui/lib/utils"
 
-import { tokenizePython } from "../../utils/highlight"
+import { tokenizeCode } from "../../utils/highlight"
 
-// Beyond these the regex tokenizer is skipped (main-thread freeze /
-// catastrophic backtracking guard) and the cell renders as plain text.
+// Beyond these the parser is skipped to keep main-thread rendering bounded.
 const MAX_HIGHLIGHT_LINES = 2000
 const MAX_HIGHLIGHT_CHARS = 50_000
 
@@ -23,18 +22,25 @@ const TOKEN_CLASS: Record<string, string> = {
 export interface CodeCellProps {
   source: string
   executionCount: number | null
+  /** Notebook language (nbformat); drives the highlighter. */
+  language?: string
   className?: string
 }
 
 /** Kaggle-style code cell: `In [n]:` prompt + syntax-highlighted source. */
-export function CodeCell({ source, executionCount, className }: CodeCellProps) {
+export function CodeCell({
+  source,
+  executionCount,
+  language = "python",
+  className,
+}: CodeCellProps) {
   const oversized =
     source.length > MAX_HIGHLIGHT_CHARS ||
     source.split("\n").length > MAX_HIGHLIGHT_LINES
 
   const tokens = useMemo(
-    () => (oversized ? null : tokenizePython(source)),
-    [oversized, source]
+    () => (oversized ? null : tokenizeCode(source, language)),
+    [oversized, source, language]
   )
 
   return (

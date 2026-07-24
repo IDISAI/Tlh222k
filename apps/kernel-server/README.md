@@ -42,6 +42,49 @@ Point the Next apps at it with `NEXT_PUBLIC_KERNEL_SERVER_URL=http://localhost:3
 (web + admin `.env.local`). If unset, web falls back to committed `.ipynb`
 fixtures and the admin editor uses per-browser localStorage.
 
+## Runtime images
+
+Python `data-science` and `ml-cpu` images remain part of the default Compose
+stack. Other languages are opt-in profiles: broker startup does not build them.
+Build only the language needed:
+
+```bash
+docker compose --profile runtime-javascript build runtime-javascript
+docker compose --profile runtime-cpp build runtime-cpp
+docker compose --profile runtime-java build runtime-java
+docker compose --profile runtime-rust build runtime-rust
+docker compose --profile runtime-go build runtime-go
+docker compose --profile runtime-julia build runtime-julia
+```
+
+Each image contains one canonical kernelspec consumed by notebook metadata:
+
+| Language | Image | Kernelspec |
+| --- | --- | --- |
+| JavaScript | `local/notebook-javascript:dev` | `deno` |
+| C++ | `local/notebook-cpp:dev` | `xcpp17` |
+| Java | `local/notebook-java:dev` | `java` |
+| Rust | `local/notebook-rust:dev` | `rust` |
+| Go | `local/notebook-go:dev` | `gophernotes` |
+| Julia | `local/notebook-julia:dev` | `julia` |
+
+Smoke-test installed kernels without starting Jupyter Server:
+
+```bash
+docker run --rm local/notebook-javascript:dev jupyter kernelspec list --json
+docker run --rm local/notebook-cpp:dev jupyter kernelspec list --json
+docker run --rm local/notebook-java:dev jupyter kernelspec list --json
+docker run --rm local/notebook-rust:dev jupyter kernelspec list --json
+docker run --rm local/notebook-go:dev jupyter kernelspec list --json
+docker run --rm local/notebook-julia:dev jupyter kernelspec list --json
+```
+
+Remove local language images when reclaiming Docker disk:
+
+```bash
+docker image rm local/notebook-javascript:dev local/notebook-cpp:dev local/notebook-java:dev local/notebook-rust:dev local/notebook-go:dev local/notebook-julia:dev
+```
+
 ## API
 
 | Method | Path | Auth | Purpose |
@@ -49,7 +92,7 @@ fixtures and the admin editor uses per-browser localStorage.
 | GET | `/health` | — | liveness |
 | GET | `/api/notebooks` | admin | list notebook summaries |
 | GET | `/api/notebooks/{slug}` | admin | fetch one (for editing) |
-| PUT | `/api/notebooks/{slug}` | admin | create/update `{notebook, title, published}` |
+| PUT | `/api/notebooks/{slug}` | admin | create/update `{notebook, title, published, runtimeProfile}` |
 | DELETE | `/api/notebooks/{slug}` | admin | delete |
 | GET | `/api/published/{slug}` | public | web viewer read (published only) |
 
