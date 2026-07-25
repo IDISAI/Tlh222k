@@ -32,7 +32,7 @@ const FIELD_FIELDS = `id title slug order publishStatus`
 const NODE_FIELDS = `
   id roadmapId parentId title slug description nodeType notionPageId
   articleType jupyterUrl positionX positionY order status isDeleted
-  linkedRoadmapId isPublished publishStatus
+  linkedRoadmapId isPublished publishStatus coverUrl level
   fields { ${FIELD_FIELDS} }
 `
 

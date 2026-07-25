@@ -10,12 +10,14 @@ import {
   NODE_TYPES,
   isNodeType,
   normalizeHttpUrl,
+  normalizeLevel,
   normalizePublishStatus,
   publishStatusFromLegacy,
   reachesLearners,
   slugify,
   type ArticleType,
   type NodeStatus,
+  type Level,
   type NodeType,
   type PublishStatus,
 } from "./hierarchy"
@@ -109,6 +111,8 @@ export interface NodeDto {
   linkedRoadmapId: string | null
   isPublished: boolean
   publishStatus: PublishStatus
+  coverUrl: string | null
+  level: Level | null
   /**
    * Discovery labels. Empty when the caller's query did not `include` them —
    * the GraphQL field is a non-null list, so callers see `[]`, never null.
@@ -211,6 +215,8 @@ export interface CreateNodeInput {
   positionX: number
   positionY: number
   order?: number | null
+  coverUrl?: string | null
+  level?: string | null
   fieldIds?: string[] | null
 }
 
@@ -226,6 +232,8 @@ export interface UpdateNodeInput {
   parentId?: string | null
   linkedRoadmapId?: string | null
   isPublished?: boolean | null
+  coverUrl?: string | null
+  level?: string | null
   /** Replaces the whole label set when present; `undefined` leaves it alone. */
   fieldIds?: string[] | null
 }
@@ -673,6 +681,8 @@ export class RoadmapService implements OnModuleInit {
             positionX: input.positionX,
             positionY: input.positionY,
             order,
+            coverUrl: normalizeHttpUrl(input.coverUrl),
+            level: normalizeLevel(input.level),
           },
           // Echo the labels back so the admin picker renders them straight
           // after create instead of blanking.
@@ -762,6 +772,13 @@ export class RoadmapService implements OnModuleInit {
                 input.isPublished !== undefined && input.isPublished !== null
                   ? publishStatusFromLegacy(input.isPublished)
                   : undefined,
+              coverUrl:
+                input.coverUrl !== undefined
+                  ? normalizeHttpUrl(input.coverUrl)
+                  : undefined,
+              // An explicit null clears the level; omitting it leaves it alone.
+              level:
+                input.level !== undefined ? normalizeLevel(input.level) : undefined,
               // `set` replaces the whole label list, so unchecking a label in
               // the picker actually removes it. Omitted (undefined) input
               // leaves existing labels untouched.
@@ -1004,6 +1021,10 @@ export class RoadmapService implements OnModuleInit {
         n.publishStatus === undefined
           ? publishStatusFromLegacy(n.isPublished)
           : normalizePublishStatus(n.publishStatus),
+      coverUrl: n.coverUrl ?? null,
+      // Narrowed here rather than trusted: the column is a plain string, and an
+      // unreadable value means "unjudged", not a level nothing can render.
+      level: normalizeLevel(n.level),
       fields: (n.fields ?? []).map(toFieldDto),
     }
   }

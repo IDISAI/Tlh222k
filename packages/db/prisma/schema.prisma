@@ -61,6 +61,14 @@ model Node {
   /// A Document keeps only the boolean this round, so the sync at that
   /// boundary translates: PUBLISHED means true, Draft and Private mean false.
   publishStatus   String   @default("DRAFT")
+  /// The image standing in for this block wherever it is shown as a card —
+  /// the browse grid, the Field Workspace canvas, the roadmap picker. Distinct
+  /// from a Field's image, which covers a whole scene.
+  coverUrl        String?
+  /// BASIC | INTERMEDIATE | ADVANCED. Editorial, never counted from node
+  /// count. Null means nobody has judged this block yet, which is a real
+  /// state — defaulting it would put a judgement in an editor's mouth.
+  level           String?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 

@@ -31,6 +31,16 @@ enum PublishStatus {
   PRIVATE
 }
 
+"""
+How demanding a roadmap block is. Editorial: chosen by whoever edits the block,
+never counted from its size. Absent means nobody has judged it yet.
+"""
+enum Level {
+  BASIC
+  INTERMEDIATE
+  ADVANCED
+}
+
 type Roadmap {
   id: ID!
   slug: String!
@@ -64,6 +74,9 @@ type RoadmapNode {
   linkedRoadmapId: ID
   isPublished: Boolean!
   publishStatus: PublishStatus!
+  """The image standing in for this block wherever it is shown as a card."""
+  coverUrl: String
+  level: Level
   """
   Discovery labels this block carries. Many-to-many: a "Data Engineer" role
   can sit under both AI and Data, so it surfaces under either tab.
@@ -205,6 +218,8 @@ input CreateNodeInput {
   positionX: Float!
   positionY: Float!
   order: Int
+  coverUrl: String
+  level: Level
   fieldIds: [ID!]
 }
 
@@ -220,6 +235,8 @@ input UpdateNodeInput {
   parentId: ID
   linkedRoadmapId: ID
   isPublished: Boolean
+  coverUrl: String
+  level: Level
   """Replaces the whole label set when present; omit to leave labels alone."""
   fieldIds: [ID!]
 }

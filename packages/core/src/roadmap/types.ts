@@ -1,8 +1,9 @@
+import type { Level } from "./level"
 import type { PublishStatus } from "./publish-status"
 
 // Re-exported so every consumer reaches the domain vocabulary through one
 // module rather than importing the status from a second place.
-export type { PublishStatus }
+export type { Level, PublishStatus }
 
 export type NodeStatus = "locked" | "in_progress" | "done"
 
@@ -121,6 +122,10 @@ export interface RoadmapNode {
   isPublished?: boolean
   /** Draft, Published or Private. See the note on `Roadmap.publishStatus`. */
   publishStatus?: PublishStatus
+  /** Image standing in for this block wherever it renders as a card. */
+  coverUrl?: string | null
+  /** Editorial difficulty; null means nobody has judged this block yet. */
+  level?: Level | null
 }
 
 export interface RoadmapGraph {
@@ -211,6 +216,8 @@ export interface CreateNodeInput {
   positionX: number
   positionY: number
   order?: number
+  coverUrl?: string | null
+  level?: Level | null
   /** Discovery labels to attach on create. */
   fieldIds?: string[]
 }

@@ -122,3 +122,22 @@ export function publishStatusFromLegacy(isPublished: boolean): PublishStatus {
 export function legacyIsPublished(status: PublishStatus): boolean {
   return status === "PUBLISHED"
 }
+
+/**
+ * How demanding a roadmap block is. Mirrors `level.ts` in the shared domain
+ * package — duplicated for the same reason PublishStatus is. Keep in step.
+ */
+export const LEVELS = ["BASIC", "INTERMEDIATE", "ADVANCED"] as const
+
+export type Level = (typeof LEVELS)[number]
+
+export function isLevel(value: unknown): value is Level {
+  return typeof value === "string" && (LEVELS as readonly string[]).includes(value)
+}
+
+/** Null rather than a guess: "unjudged" is a real state for a block. */
+export function normalizeLevel(raw: unknown): Level | null {
+  if (typeof raw !== "string") return null
+  const value = raw.trim().toUpperCase()
+  return isLevel(value) ? value : null
+}

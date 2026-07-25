@@ -14,6 +14,7 @@ import {
 } from "@workspace/ui/components/sheet"
 import { toast } from "@workspace/ui/components/sonner"
 import { Textarea } from "@workspace/ui/components/textarea"
+import { LEVELS, LEVEL_LABELS, type Level } from "../../level"
 
 import {
   MAX_DESCRIPTION_LENGTH,
@@ -56,6 +57,10 @@ export function NodeEditPanel({ node, onClose, onSave }: NodeEditPanelProps) {
   const [fieldIds, setFieldIds] = useState<string[]>(
     () => node.fields?.map((f) => f.id) ?? []
   )
+  const [coverUrl, setCoverUrl] = useState(node.coverUrl ?? "")
+  // "" is the unjudged state — a block nobody has rated yet, which is real and
+  // must survive a round trip rather than defaulting to Cơ bản.
+  const [level, setLevel] = useState<Level | "">(node.level ?? "")
   const [titleError, setTitleError] = useState("")
   const [saving, setSaving] = useState(false)
 
@@ -80,7 +85,11 @@ export function NodeEditPanel({ node, onClose, onSave }: NodeEditPanelProps) {
     // Articles never carry discovery labels (they don't reach the public card
     // grid), so only send the key for block nodes. Omitting it entirely leaves
     // whatever the server has untouched.
-    if (!isArticle) input.fieldIds = fieldIds
+    if (!isArticle) {
+      input.fieldIds = fieldIds
+      input.coverUrl = coverUrl.trim() || null
+      input.level = level || null
+    }
     if (isArticle && articleType) {
       input.articleType = articleType
       // Jupyter is always internal by slug — never persist an external URL.
@@ -148,6 +157,27 @@ export function NodeEditPanel({ node, onClose, onSave }: NodeEditPanelProps) {
 
           {!isArticle && (
             <div className="space-y-1.5">
+              <Label htmlFor="edit-cover">Ảnh bìa (tùy chọn)</Label>
+              <Input
+                id="edit-cover"
+                value={coverUrl}
+                placeholder="https://..."
+                onChange={(e) => setCoverUrl(e.target.value)}
+              />
+              <Label htmlFor="edit-level">Cấp độ (tùy chọn)</Label>
+              <select
+                id="edit-level"
+                value={level}
+                onChange={(e) => setLevel(e.target.value as Level | "")}
+                className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm"
+              >
+                <option value="">Chưa xếp cấp độ</option>
+                {LEVELS.map((l) => (
+                  <option key={l} value={l}>
+                    {LEVEL_LABELS[l]}
+                  </option>
+                ))}
+              </select>
               <Label>Lĩnh vực (tùy chọn)</Label>
               <FieldPicker
                 value={fieldIds}
