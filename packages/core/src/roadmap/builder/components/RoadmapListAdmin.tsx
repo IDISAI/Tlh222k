@@ -19,6 +19,7 @@ import { RoadmapService } from "../../api"
 import type { CallerRole, RoadmapNode } from "../../types"
 import { truncateDescription } from "../../utils"
 import { serviceErrorMessage } from "../utils/toast-messages"
+import { reachesLearners, statusOf } from "../../publish-status"
 import { CreateRoadmapDialog } from "./CreateRoadmapDialog"
 import { FieldManagerDialog } from "./FieldManagerDialog"
 import { DeleteNodeDialog } from "./DeleteNodeDialog"
@@ -224,7 +225,7 @@ export function RoadmapListAdmin({ role }: RoadmapListAdminProps) {
                   <TableCell className="text-right">{descendants}</TableCell>
                   <TableCell>
                     <span className="flex justify-center">
-                      {node.isPublished ? (
+                      {reachesLearners(statusOf(node)) ? (
                         <Check className="size-4 text-emerald-600" />
                       ) : (
                         <X className="size-4 text-muted-foreground" />

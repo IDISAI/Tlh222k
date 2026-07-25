@@ -43,6 +43,7 @@ import {
   nodeNavigationUrl,
 } from "../../utils/node-navigation"
 import { NODE_TYPE_ACCENT, NODE_TYPE_ICONS } from "../utils/node-type-styles"
+import { reachesLearners, statusOf } from "../../publish-status"
 import { childrenOf } from "./builder-context"
 
 interface ArticleCreateFormProps {
@@ -363,7 +364,7 @@ export function NodeDetailDialog({
                               {a.title}
                             </CardTitle>
                           </div>
-                          {a.isPublished ? (
+                          {reachesLearners(statusOf(a)) ? (
                             <Badge
                               variant="secondary"
                               className="h-5 border-transparent bg-emerald-100 px-1.5 py-0 text-[10px] text-emerald-700 hover:bg-emerald-100"

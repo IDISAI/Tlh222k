@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { toast } from "@workspace/ui/components/sonner"
 
 import { RoadmapService } from "../../api"
+import { reachesLearners, statusOf } from "../../publish-status"
 import type {
   CallerRole,
   CreateNodeInput,
@@ -430,12 +431,16 @@ export function useBuilderCanvas(
     try {
       const updated = await service.updateRoadmap(
         roadmap.id,
-        { isPublished: !roadmap.isPublished },
+        // The boolean is still the only input the API takes; the status is
+        // derived from it server-side until #40 removes it.
+        { isPublished: !reachesLearners(statusOf(roadmap)) },
         role
       )
       setRoadmap(updated)
       toast.success(
-        updated.isPublished ? "Đã xuất bản roadmap" : "Đã ngừng xuất bản roadmap"
+        reachesLearners(statusOf(updated))
+          ? "Đã xuất bản roadmap"
+          : "Đã ngừng xuất bản roadmap"
       )
     } catch (error) {
       toast.error(serviceErrorMessage(error))

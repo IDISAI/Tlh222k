@@ -8,6 +8,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@workspace/ui/component
 import { cn } from "@workspace/ui/lib/utils"
 
 import type { CallerRole } from "../../types"
+import { reachesLearners, statusOf } from "../../publish-status"
 import { useCompositionCanvas } from "../hooks/use-composition-canvas"
 import { CompositionCanvas } from "./CompositionCanvas"
 import { DeleteNodeDialog } from "./DeleteNodeDialog"
@@ -96,6 +97,9 @@ export function BuilderPage({
   }
 
   const owner = canvas.ownerNode
+  // One question, asked through one helper, so this badge cannot disagree with
+  // the gate that decides whether learners actually see the block.
+  const ownerIsPublic = owner ? reachesLearners(statusOf(owner)) : false
   const publicUrl = publicOrigin && owner ? `${publicOrigin}/roadmap/${owner.slug}` : null
 
   const copyPublicUrl = () => {
@@ -152,9 +156,9 @@ export function BuilderPage({
                 <Button
                   type="button"
                   size="sm"
-                  variant={owner.isPublished ? "secondary" : "outline"}
+                  variant={ownerIsPublic ? "secondary" : "outline"}
                 >
-                  {owner.isPublished ? (
+                  {ownerIsPublic ? (
                     <>
                       <Globe className="size-4 text-sky-500" />
                       <span className="text-sky-500">Đã xuất bản</span>
@@ -169,7 +173,7 @@ export function BuilderPage({
               }
             />
             <PopoverContent className="w-80" align="end">
-              {owner.isPublished ? (
+              {ownerIsPublic ? (
                 <div className="space-y-3">
                   <p className="flex items-center gap-1.5 text-xs font-medium text-sky-500">
                     <Globe className="size-3.5" />
