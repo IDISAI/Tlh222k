@@ -7,6 +7,7 @@ import {
   normalizePublishStatus,
   publishStatusFromLegacy,
   reachesLearners,
+  statusOf,
 } from "./publish-status"
 
 describe("publish status", () => {
@@ -50,6 +51,35 @@ describe("publish status", () => {
       expect(reachesLearners("PUBLISHED")).toBe(true)
       expect(reachesLearners("DRAFT")).toBe(false)
       expect(reachesLearners("PRIVATE")).toBe(false)
+    })
+  })
+
+  describe("statusOf", () => {
+    it("prefers the stored status over the boolean", () => {
+      expect(statusOf({ publishStatus: "PRIVATE", isPublished: true })).toBe(
+        "PRIVATE"
+      )
+      expect(statusOf({ publishStatus: "PUBLISHED", isPublished: false })).toBe(
+        "PUBLISHED"
+      )
+    })
+
+    it("falls back to the boolean when no status is stored", () => {
+      expect(statusOf({ isPublished: true })).toBe("PUBLISHED")
+      expect(statusOf({ isPublished: false })).toBe("DRAFT")
+      expect(statusOf({ publishStatus: null, isPublished: true })).toBe(
+        "PUBLISHED"
+      )
+    })
+
+    it("treats a record carrying neither as a draft", () => {
+      expect(statusOf({})).toBe("DRAFT")
+    })
+
+    it("still fails closed on a stored value it cannot read", () => {
+      expect(statusOf({ publishStatus: "LIVE", isPublished: true })).toBe(
+        "DRAFT"
+      )
     })
   })
 

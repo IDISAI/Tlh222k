@@ -105,6 +105,15 @@ export function normalizePublishStatus(raw: unknown): PublishStatus {
   return isPublishStatus(value) ? value : "DRAFT"
 }
 
+/**
+ * The single visibility rule: Published is seen, Draft and Private are not.
+ * A Private item is still reachable by a request that names it directly —
+ * that is a different question from whether it is listed.
+ */
+export function reachesLearners(status: PublishStatus): boolean {
+  return status === "PUBLISHED"
+}
+
 export function publishStatusFromLegacy(isPublished: boolean): PublishStatus {
   return isPublished ? "PUBLISHED" : "DRAFT"
 }

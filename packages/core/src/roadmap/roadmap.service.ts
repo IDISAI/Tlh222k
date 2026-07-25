@@ -20,6 +20,7 @@ import {
   type UpdateNodeInput,
 } from "./types"
 import { getStore, persistStore } from "./mock/builder-store"
+import { reachesLearners, statusOf } from "./publish-status"
 import { deriveCompositionFromNodes } from "./utils/derive-composition"
 import { emitRoadmapUpdate } from "./utils/update-signal"
 import { slugify, uniqueSlug } from "./utils/slugify"
@@ -94,7 +95,7 @@ export class RoadmapService {
       .filter(
         (n) =>
           !n.isDeleted &&
-          n.isPublished === true &&
+          reachesLearners(statusOf(n)) &&
           (n.nodeType === "role" || n.nodeType === "skill")
       )
       .map((n) => ({
@@ -243,7 +244,8 @@ export class RoadmapService {
     await delay()
     const store = getStore()
     const node = store.nodes.find((n) => n.id === id && !n.isDeleted)
-    if (!node || node.nodeType === "article" || !node.isPublished) return null
+    if (!node || node.nodeType === "article" || !reachesLearners(statusOf(node)))
+      return null
     // Whole roadmap's nodes so the web viewer derives the same composition the
     // admin builder renders (shared deriveCompositionFromNodes).
     const roadmapNodes = store.nodes.filter(

@@ -12,6 +12,7 @@ import {
   normalizeHttpUrl,
   normalizePublishStatus,
   publishStatusFromLegacy,
+  reachesLearners,
   slugify,
   type ArticleType,
   type NodeStatus,
@@ -139,6 +140,17 @@ const FIELD_ORDER_BY: Prisma.FieldOrderByWithRelationInput[] = [
   { order: "asc" },
   { title: "asc" },
 ]
+
+/**
+ * Read a row's status. The column is a plain string, so it is narrowed here
+ * rather than trusted; a row written before the column existed falls back to
+ * what its boolean says, so no gate ever sees an empty status.
+ */
+function statusOf(row: { publishStatus?: string | null; isPublished: boolean }) {
+  return row.publishStatus == null
+    ? publishStatusFromLegacy(row.isPublished)
+    : normalizePublishStatus(row.publishStatus)
+}
 
 /** A label as Postgres hands it back — `publishStatus` is a plain column. */
 type DbField = {
@@ -300,7 +312,8 @@ export class RoadmapService implements OnModuleInit {
     // published roadmaps regardless of the flag.
     const isAdmin = user?.role === "admin" || user?.role === "super-admin"
     const rows = await this.prisma.roadmap.findMany({
-      where: includeUnpublished && isAdmin ? {} : { isPublished: true },
+      where:
+        includeUnpublished && isAdmin ? {} : { publishStatus: "PUBLISHED" },
       include: {
         _count: { select: { nodes: { where: { isDeleted: false } } } },
       },
@@ -334,7 +347,7 @@ export class RoadmapService implements OnModuleInit {
     // orphaned/unpublished record (e.g. a block spun out of the table then
     // dragged into another canvas, leaving an empty same-slug roadmap) must NOT
     // shadow the real block node — fall through to the node lookup below.
-    if (roadmap && (roadmap.isPublished || isAdmin)) {
+    if (roadmap && (reachesLearners(statusOf(roadmap)) || isAdmin)) {
       const nodes = await this.activeNodesOf(roadmap.id)
       if (nodes.length > 0) {
         return this.buildGraph(
@@ -361,7 +374,14 @@ export class RoadmapService implements OnModuleInit {
       const parentRoadmap = await this.prisma.roadmap.findUnique({
         where: { id: node.roadmapId },
       })
-      if (!node.isPublished && !parentRoadmap?.isPublished) return null
+      // A block inherits its wrapper's reach: it is visible if either it or
+      // the roadmap it is filed under is published.
+      if (
+        !reachesLearners(statusOf(node)) &&
+        !(parentRoadmap && reachesLearners(statusOf(parentRoadmap)))
+      ) {
+        return null
+      }
     }
 
     const subtree = await this.subtreeOf(node)
@@ -459,7 +479,8 @@ export class RoadmapService implements OnModuleInit {
     return all
       .filter(
         (n) =>
-          n.isPublished && (n.nodeType === "role" || n.nodeType === "skill")
+          reachesLearners(statusOf(n)) &&
+          (n.nodeType === "role" || n.nodeType === "skill")
       )
       .filter((n) => !wanted || n.fields.some((f) => wanted.has(f.id)))
       .map((n) => this.toNodeDto(n, "locked", childCount.get(n.id) ?? 0))
@@ -475,11 +496,11 @@ export class RoadmapService implements OnModuleInit {
   async publicBlockGraph(id: string): Promise<GraphDto | null> {
     const node = await this.prisma.node.findUnique({ where: { id } })
     if (!node || node.isDeleted || node.nodeType === "article") return null
-    if (!node.isPublished) {
+    if (!reachesLearners(statusOf(node))) {
       const parent = await this.prisma.roadmap.findUnique({
         where: { id: node.roadmapId },
       })
-      if (!parent?.isPublished) return null
+      if (!parent || !reachesLearners(statusOf(parent))) return null
     }
     // Return the WHOLE roadmap's nodes so the web viewer derives the exact same
     // composition (deriveCompositionFromNodes) the admin builder renders — one

@@ -43,6 +43,22 @@ export function reachesLearners(status: PublishStatus): boolean {
   return status === "PUBLISHED"
 }
 
+/**
+ * Read a record's status while both forms still exist. The stored status wins;
+ * a record written before the column existed falls back to what its boolean
+ * says. Nothing that gates visibility should read either field directly, or the
+ * two drift and whichever a screen happens to pick decides what is public.
+ */
+export function statusOf(record: {
+  publishStatus?: PublishStatus | string | null
+  isPublished?: boolean | null
+}): PublishStatus {
+  if (record.publishStatus != null) {
+    return normalizePublishStatus(record.publishStatus)
+  }
+  return publishStatusFromLegacy(record.isPublished === true)
+}
+
 /** Backfill and read-side translation while the legacy boolean still exists. */
 export function publishStatusFromLegacy(isPublished: boolean): PublishStatus {
   return isPublished ? "PUBLISHED" : "DRAFT"
