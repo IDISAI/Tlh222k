@@ -129,7 +129,7 @@ export class RoadmapService {
    * the backend never heard of, so this refuses rather than lying.
    */
   // ponytail: → `createField` mutation
-  async createField(_name: string, callerRole: CallerRole): Promise<Field> {
+  async createField(_title: string, callerRole: CallerRole): Promise<Field> {
     assertCanWrite(callerRole)
     await delay()
     throw new RoadmapServiceError("VALIDATION", MOCK_FIELDS_UNAVAILABLE)
@@ -138,7 +138,7 @@ export class RoadmapService {
   // ponytail: → `updateField` mutation
   async updateField(
     _id: string,
-    _name: string,
+    _title: string,
     callerRole: CallerRole
   ): Promise<Field> {
     assertCanWrite(callerRole)

@@ -61,23 +61,23 @@ export function FieldManagerDialog({
 
   const startEdit = (field: Field) => {
     setEditingId(field.id)
-    setDraft(field.name)
+    setDraft(field.title)
     setConfirmId(null)
   }
 
   const saveEdit = async (field: Field) => {
-    const name = draft.trim()
-    if (!name || name === field.name) {
+    const title = draft.trim()
+    if (!title || title === field.title) {
       setEditingId(null)
       return
     }
     setBusyId(field.id)
     try {
-      await service.updateField(field.id, name, role)
+      await service.updateField(field.id, title, role)
       await load()
       setEditingId(null)
       onChanged?.()
-      toast.success(`Đã đổi tên thành "${name}"`)
+      toast.success(`Đã đổi tên thành "${title}"`)
     } catch (err) {
       toast.error(serviceErrorMessage(err))
     } finally {
@@ -92,7 +92,7 @@ export function FieldManagerDialog({
       await load()
       setConfirmId(null)
       onChanged?.()
-      toast.success(`Đã xóa lĩnh vực "${field.name}"`)
+      toast.success(`Đã xóa lĩnh vực "${field.title}"`)
     } catch (err) {
       toast.error(serviceErrorMessage(err))
     } finally {
@@ -175,7 +175,7 @@ export function FieldManagerDialog({
                 className="flex items-center justify-between gap-2 rounded-md px-2 py-1.5 hover:bg-muted"
               >
                 <span className="min-w-0 truncate text-sm font-medium">
-                  {field.name}
+                  {field.title}
                 </span>
                 <div className="flex shrink-0 items-center gap-1">
                   {confirmId === field.id ? (
@@ -205,7 +205,7 @@ export function FieldManagerDialog({
                       <Button
                         size="sm"
                         variant="ghost"
-                        aria-label={`Đổi tên ${field.name}`}
+                        aria-label={`Đổi tên ${field.title}`}
                         onClick={() => startEdit(field)}
                       >
                         <Pencil className="size-3.5" />
@@ -213,7 +213,7 @@ export function FieldManagerDialog({
                       <Button
                         size="sm"
                         variant="ghost"
-                        aria-label={`Xóa ${field.name}`}
+                        aria-label={`Xóa ${field.title}`}
                         onClick={() => setConfirmId(field.id)}
                       >
                         <Trash2 className="size-3.5 text-destructive" />

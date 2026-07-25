@@ -77,23 +77,23 @@ export class RoadmapResolver {
   }
 
   // ── Mutations ──
-  // Find-or-create: the admin label picker creates inline, so a repeated name
+  // Find-or-create: the admin label picker creates inline, so a repeated title
   // returns the existing label instead of minting a duplicate.
   @Mutation("createField")
   createField(
-    @Args("name") name: string,
+    @Args("title") title: string,
     @CurrentUser() user: CurrentUserType | null
   ) {
-    return this.service.createField(user, name)
+    return this.service.createField(user, title)
   }
 
   @Mutation("updateField")
   updateField(
     @Args("id") id: string,
-    @Args("name") name: string,
+    @Args("title") title: string,
     @CurrentUser() user: CurrentUserType | null
   ) {
-    return this.service.updateField(user, id, name)
+    return this.service.updateField(user, id, title)
   }
 
   @Mutation("deleteField")

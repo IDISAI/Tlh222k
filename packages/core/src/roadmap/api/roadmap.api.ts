@@ -29,7 +29,7 @@ const NODE_FIELDS = `
   id roadmapId parentId title slug description nodeType notionPageId
   articleType jupyterUrl positionX positionY order status isDeleted
   linkedRoadmapId isPublished
-  fields { id name slug order }
+  fields { id title slug order }
 `
 
 /**
@@ -56,7 +56,7 @@ export class RoadmapApi {
         fields: Field[]
       }[]
     }>(
-      `query { publicBlocks { id slug title description childrenCount fields { id name slug order } } }`
+      `query { publicBlocks { id slug title description childrenCount fields { id title slug order } } }`
     )
     return data.publicBlocks.map((n) => ({
       id: n.id,
@@ -73,35 +73,35 @@ export class RoadmapApi {
   /** Discovery labels for the /roadmaps tab strip. Public — no auth. */
   async listFields(): Promise<Field[]> {
     const data = await gql<{ fields: Field[] }>(
-      `query { fields { id name slug order } }`
+      `query { fields { id title slug order } }`
     )
     return data.fields
   }
 
   /**
-   * Find-or-create by name — the server dedupes case-insensitively, so the
+   * Find-or-create by title — the server dedupes case-insensitively, so the
    * picker can call this optimistically without checking for an existing label
    * first.
    */
-  async createField(name: string, _callerRole: CallerRole): Promise<Field> {
+  async createField(title: string, _callerRole: CallerRole): Promise<Field> {
     const data = await gql<{ createField: Field }>(
-      `mutation ($name: String!) { createField(name: $name) { id name slug order } }`,
-      { name }
+      `mutation ($title: String!) { createField(title: $title) { id title slug order } }`,
+      { title }
     )
     return data.createField
   }
 
-  /** Rename in place; every block carrying the label follows. */
+  /** Retitle in place; every block carrying the label follows. */
   async updateField(
     id: string,
-    name: string,
+    title: string,
     _callerRole: CallerRole
   ): Promise<Field> {
     const data = await gql<{ updateField: Field }>(
-      `mutation ($id: ID!, $name: String!) {
-         updateField(id: $id, name: $name) { id name slug order }
+      `mutation ($id: ID!, $title: String!) {
+         updateField(id: $id, title: $title) { id title slug order }
        }`,
-      { id, name }
+      { id, title }
     )
     return data.updateField
   }

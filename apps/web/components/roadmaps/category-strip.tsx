@@ -69,7 +69,7 @@ export function CategoryStrip({
               onClick={() => onSelect(field.id)}
             >
               <Icon className="size-[18px]" />
-              {field.name}
+              {field.title}
             </Tab>
           )
         })}

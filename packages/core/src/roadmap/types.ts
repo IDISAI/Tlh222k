@@ -47,7 +47,7 @@ export type CallerRole = "viewer" | "admin" | "super-admin"
  */
 export interface Field {
   id: string
-  name: string
+  title: string
   slug: string
   order: number
 }

@@ -288,7 +288,7 @@ export function NodeDetailDialog({
                     key={field.id}
                     className="rounded-full bg-secondary px-2.5 py-1 text-xs font-medium"
                   >
-                    {field.name}
+                    {field.title}
                   </span>
                 ))}
               </div>

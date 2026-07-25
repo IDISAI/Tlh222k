@@ -74,9 +74,12 @@ model Node {
 model Field {
   id        String   @id @default(cuid())
   /// Unique so the inline "create" path can't silently mint "AI" twice.
-  name      String   @unique
+  /// Mapped to the legacy `name` column: `prisma db push` has no rename, it
+  /// drops and recreates, so renaming the physical column would empty every
+  /// deployed Field. The code speaks the glossary; the column keeps its name.
+  title     String   @unique @map("name")
   slug      String   @unique
-  /// Display order in the tab strip; ties fall back to name.
+  /// Display order in the tab strip; ties fall back to title.
   order     Int      @default(0)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

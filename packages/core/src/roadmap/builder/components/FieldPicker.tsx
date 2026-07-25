@@ -72,9 +72,9 @@ export function FieldPicker({
 
   const needle = fold(query)
   const matches = needle
-    ? fields.filter((f) => fold(f.name).includes(needle))
+    ? fields.filter((f) => fold(f.title).includes(needle))
     : fields
-  const exactExists = fields.some((f) => fold(f.name) === needle)
+  const exactExists = fields.some((f) => fold(f.title) === needle)
   const canCreate = needle.length > 0 && !exactExists
 
   const selected = fields.filter((f) => value.includes(f.id))
@@ -84,11 +84,11 @@ export function FieldPicker({
   }
 
   const handleCreate = async () => {
-    const name = query.trim()
-    if (!name || creating) return
+    const title = query.trim()
+    if (!title || creating) return
     setCreating(true)
     try {
-      const created = await service.createField(name, role)
+      const created = await service.createField(title, role)
       // The server dedupes, so `created` may be a label already in the list.
       setFields((prev) =>
         prev.some((f) => f.id === created.id) ? prev : [...prev, created]
@@ -112,10 +112,10 @@ export function FieldPicker({
               key={field.id}
               className="inline-flex items-center gap-1 rounded-full bg-secondary px-2.5 py-1 text-xs font-medium"
             >
-              {field.name}
+              {field.title}
               <button
                 type="button"
-                aria-label={`Bỏ ${field.name}`}
+                aria-label={`Bỏ ${field.title}`}
                 disabled={disabled}
                 onClick={() => toggle(field.id)}
                 className="text-muted-foreground hover:text-foreground"
@@ -164,7 +164,7 @@ export function FieldPicker({
                 isOn && "font-medium"
               )}
             >
-              {field.name}
+              {field.title}
               {isOn && <Check className="size-4" />}
             </button>
           )

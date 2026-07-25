@@ -60,7 +60,7 @@ hierarchy level — a Field owns no canvas and is never navigable.
 """
 type Field {
   id: ID!
-  name: String!
+  title: String!
   slug: String!
   order: Int!
 }
@@ -120,13 +120,13 @@ type Mutation {
   updateRoadmap(id: ID!, input: UpdateRoadmapInput!): Roadmap!
   deleteRoadmap(id: ID!): Boolean!
   """
-  Find-or-create by name. The admin picker creates labels inline, so a repeated
-  name (case-insensitively) must return the EXISTING label rather than minting
+  Find-or-create by title. The admin picker creates labels inline, so a repeated
+  title (case-insensitively) must return the EXISTING label rather than minting
   a duplicate "AI" / "ai" pair.
   """
-  createField(name: String!): Field!
-  """Rename in place — every node carrying the label follows automatically."""
-  updateField(id: ID!, name: String!): Field!
+  createField(title: String!): Field!
+  """Retitle in place — every node carrying the label follows automatically."""
+  updateField(id: ID!, title: String!): Field!
   deleteField(id: ID!): Boolean!
   createNode(input: CreateNodeInput!): RoadmapNode!
   updateNode(id: ID!, input: UpdateNodeInput!): RoadmapNode!

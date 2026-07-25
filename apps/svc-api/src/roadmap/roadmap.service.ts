@@ -112,7 +112,7 @@ export interface NodeDto {
 
 export interface FieldDto {
   id: string
-  name: string
+  title: string
   slug: string
   order: number
 }
@@ -365,8 +365,8 @@ export class RoadmapService implements OnModuleInit {
       orderBy: { order: "asc" },
       include: {
         fields: {
-          orderBy: [{ order: "asc" }, { name: "asc" }],
-          select: { id: true, name: true, slug: true, order: true },
+          orderBy: [{ order: "asc" }, { title: "asc" }],
+          select: { id: true, title: true, slug: true, order: true },
         },
       },
     })
@@ -388,8 +388,8 @@ export class RoadmapService implements OnModuleInit {
       orderBy: { order: "asc" },
       include: {
         fields: {
-          orderBy: [{ order: "asc" }, { name: "asc" }],
-          select: { id: true, name: true, slug: true, order: true },
+          orderBy: [{ order: "asc" }, { title: "asc" }],
+          select: { id: true, title: true, slug: true, order: true },
         },
       },
     })
@@ -591,8 +591,8 @@ export class RoadmapService implements OnModuleInit {
           // after create instead of blanking.
           include: {
             fields: {
-              orderBy: [{ order: "asc" }, { name: "asc" }],
-              select: { id: true, name: true, slug: true, order: true },
+              orderBy: [{ order: "asc" }, { title: "asc" }],
+              select: { id: true, title: true, slug: true, order: true },
             },
           },
         })
@@ -683,8 +683,8 @@ export class RoadmapService implements OnModuleInit {
             // admin picker blanks itself immediately after a successful save.
             include: {
               fields: {
-                orderBy: [{ order: "asc" }, { name: "asc" }],
-                select: { id: true, name: true, slug: true, order: true },
+                orderBy: [{ order: "asc" }, { title: "asc" }],
+                select: { id: true, title: true, slug: true, order: true },
               },
             },
           })
@@ -910,35 +910,35 @@ export class RoadmapService implements OnModuleInit {
   /** Every label, for the public tab strip. No auth — labels are not secret. */
   async listFields(): Promise<FieldDto[]> {
     return this.prisma.field.findMany({
-      orderBy: [{ order: "asc" }, { name: "asc" }],
-      select: { id: true, name: true, slug: true, order: true },
+      orderBy: [{ order: "asc" }, { title: "asc" }],
+      select: { id: true, title: true, slug: true, order: true },
     })
   }
 
   /**
-   * Find-or-create by name. The admin picker offers "create" inline, so two
+   * Find-or-create by title. The admin picker offers "create" inline, so two
    * admins typing "AI" and "ai" must land on ONE label — otherwise the tab
    * strip slowly fills with near-duplicates nobody can merge.
    */
-  async createField(user: CurrentUser | null, name: string): Promise<FieldDto> {
+  async createField(user: CurrentUser | null, title: string): Promise<FieldDto> {
     assertCanWrite(user)
-    const trimmed = name.trim()
-    if (!trimmed) throw new RoadmapError("VALIDATION", "Field name is required")
+    const trimmed = title.trim()
+    if (!trimmed) throw new RoadmapError("VALIDATION", "Field title is required")
 
     const existing = await this.prisma.field.findFirst({
-      where: { name: { equals: trimmed, mode: "insensitive" } },
-      select: { id: true, name: true, slug: true, order: true },
+      where: { title: { equals: trimmed, mode: "insensitive" } },
+      select: { id: true, title: true, slug: true, order: true },
     })
     if (existing) return existing
 
     const count = await this.prisma.field.count()
     return this.prisma.field.create({
       data: {
-        name: trimmed,
+        title: trimmed,
         slug: await this.uniqueFieldSlug(trimmed),
         order: count,
       },
-      select: { id: true, name: true, slug: true, order: true },
+      select: { id: true, title: true, slug: true, order: true },
     })
   }
 
@@ -950,16 +950,19 @@ export class RoadmapService implements OnModuleInit {
   async updateField(
     user: CurrentUser | null,
     id: string,
-    name: string
+    title: string
   ): Promise<FieldDto> {
     assertCanWrite(user)
-    const trimmed = name.trim()
-    if (!trimmed) throw new RoadmapError("VALIDATION", "Field name is required")
+    const trimmed = title.trim()
+    if (!trimmed) throw new RoadmapError("VALIDATION", "Field title is required")
 
-    // Renaming onto another label's name would break the unique index with a
+    // Retitling onto another label's title would break the unique index with a
     // raw Prisma error; reject it as a domain failure instead.
     const clash = await this.prisma.field.findFirst({
-      where: { name: { equals: trimmed, mode: "insensitive" }, id: { not: id } },
+      where: {
+        title: { equals: trimmed, mode: "insensitive" },
+        id: { not: id },
+      },
       select: { id: true },
     })
     if (clash) {
@@ -968,10 +971,10 @@ export class RoadmapService implements OnModuleInit {
 
     return this.prisma.field.update({
       where: { id },
-      // The slug is derived from the name, so it has to move with it or links
+      // The slug is derived from the title, so it has to move with it or links
       // built from the old slug would point at a label that reads differently.
-      data: { name: trimmed, slug: await this.uniqueFieldSlug(trimmed, id) },
-      select: { id: true, name: true, slug: true, order: true },
+      data: { title: trimmed, slug: await this.uniqueFieldSlug(trimmed, id) },
+      select: { id: true, title: true, slug: true, order: true },
     })
   }
 
@@ -987,11 +990,11 @@ export class RoadmapService implements OnModuleInit {
    * same slug would collide with the row's own slug and get suffixed "-2".
    */
   private async uniqueFieldSlug(
-    name: string,
+    title: string,
     excludeId?: string
   ): Promise<string> {
     const base =
-      name
+      title
         .toLowerCase()
         .normalize("NFD")
         .replace(/\p{Diacritic}/gu, "")
