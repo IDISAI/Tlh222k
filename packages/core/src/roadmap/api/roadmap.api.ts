@@ -25,11 +25,14 @@ import { gql } from "./client"
 const ROADMAP_FIELDS = `
   id slug title description thumbnailUrl isPublished nodeCount createdAt updatedAt
 `
+/** Every column of a discovery label. One place, so the next rename is one edit. */
+const FIELD_FIELDS = `id title slug order`
+
 const NODE_FIELDS = `
   id roadmapId parentId title slug description nodeType notionPageId
   articleType jupyterUrl positionX positionY order status isDeleted
   linkedRoadmapId isPublished
-  fields { id title slug order }
+  fields { ${FIELD_FIELDS} }
 `
 
 /**
@@ -56,7 +59,7 @@ export class RoadmapApi {
         fields: Field[]
       }[]
     }>(
-      `query { publicBlocks { id slug title description childrenCount fields { id title slug order } } }`
+      `query { publicBlocks { id slug title description childrenCount fields { ${FIELD_FIELDS} } } }`
     )
     return data.publicBlocks.map((n) => ({
       id: n.id,
@@ -73,7 +76,7 @@ export class RoadmapApi {
   /** Discovery labels for the /roadmaps tab strip. Public — no auth. */
   async listFields(): Promise<Field[]> {
     const data = await gql<{ fields: Field[] }>(
-      `query { fields { id title slug order } }`
+      `query { fields { ${FIELD_FIELDS} } }`
     )
     return data.fields
   }
@@ -85,7 +88,7 @@ export class RoadmapApi {
    */
   async createField(title: string, _callerRole: CallerRole): Promise<Field> {
     const data = await gql<{ createField: Field }>(
-      `mutation ($title: String!) { createField(title: $title) { id title slug order } }`,
+      `mutation ($title: String!) { createField(title: $title) { ${FIELD_FIELDS} } }`,
       { title }
     )
     return data.createField
@@ -99,7 +102,7 @@ export class RoadmapApi {
   ): Promise<Field> {
     const data = await gql<{ updateField: Field }>(
       `mutation ($id: ID!, $title: String!) {
-         updateField(id: $id, title: $title) { id title slug order }
+         updateField(id: $id, title: $title) { ${FIELD_FIELDS} }
        }`,
       { id, title }
     )

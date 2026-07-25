@@ -117,6 +117,22 @@ export interface FieldDto {
   order: number
 }
 
+/**
+ * Every column of a discovery label, and the order the tab strip wants them in.
+ * Both are named once because a label is selected from eight different queries:
+ * inlined, the next column rename is eight chances to miss one.
+ */
+const FIELD_SELECT = {
+  id: true,
+  title: true,
+  slug: true,
+  order: true,
+} as const
+const FIELD_ORDER_BY: Prisma.FieldOrderByWithRelationInput[] = [
+  { order: "asc" },
+  { title: "asc" },
+]
+
 /** A `Node` row with its labels joined in. */
 type DbNodeWithFields = DbNode & { fields?: FieldDto[] }
 
@@ -365,8 +381,8 @@ export class RoadmapService implements OnModuleInit {
       orderBy: { order: "asc" },
       include: {
         fields: {
-          orderBy: [{ order: "asc" }, { title: "asc" }],
-          select: { id: true, title: true, slug: true, order: true },
+          orderBy: FIELD_ORDER_BY,
+          select: FIELD_SELECT,
         },
       },
     })
@@ -388,8 +404,8 @@ export class RoadmapService implements OnModuleInit {
       orderBy: { order: "asc" },
       include: {
         fields: {
-          orderBy: [{ order: "asc" }, { title: "asc" }],
-          select: { id: true, title: true, slug: true, order: true },
+          orderBy: FIELD_ORDER_BY,
+          select: FIELD_SELECT,
         },
       },
     })
@@ -591,8 +607,8 @@ export class RoadmapService implements OnModuleInit {
           // after create instead of blanking.
           include: {
             fields: {
-              orderBy: [{ order: "asc" }, { title: "asc" }],
-              select: { id: true, title: true, slug: true, order: true },
+              orderBy: FIELD_ORDER_BY,
+              select: FIELD_SELECT,
             },
           },
         })
@@ -683,8 +699,8 @@ export class RoadmapService implements OnModuleInit {
             // admin picker blanks itself immediately after a successful save.
             include: {
               fields: {
-                orderBy: [{ order: "asc" }, { title: "asc" }],
-                select: { id: true, title: true, slug: true, order: true },
+                orderBy: FIELD_ORDER_BY,
+                select: FIELD_SELECT,
               },
             },
           })
@@ -910,8 +926,8 @@ export class RoadmapService implements OnModuleInit {
   /** Every label, for the public tab strip. No auth — labels are not secret. */
   async listFields(): Promise<FieldDto[]> {
     return this.prisma.field.findMany({
-      orderBy: [{ order: "asc" }, { title: "asc" }],
-      select: { id: true, title: true, slug: true, order: true },
+      orderBy: FIELD_ORDER_BY,
+      select: FIELD_SELECT,
     })
   }
 
@@ -927,7 +943,7 @@ export class RoadmapService implements OnModuleInit {
 
     const existing = await this.prisma.field.findFirst({
       where: { title: { equals: trimmed, mode: "insensitive" } },
-      select: { id: true, title: true, slug: true, order: true },
+      select: FIELD_SELECT,
     })
     if (existing) return existing
 
@@ -938,7 +954,7 @@ export class RoadmapService implements OnModuleInit {
         slug: await this.uniqueFieldSlug(trimmed),
         order: count,
       },
-      select: { id: true, title: true, slug: true, order: true },
+      select: FIELD_SELECT,
     })
   }
 
@@ -974,7 +990,7 @@ export class RoadmapService implements OnModuleInit {
       // The slug is derived from the title, so it has to move with it or links
       // built from the old slug would point at a label that reads differently.
       data: { title: trimmed, slug: await this.uniqueFieldSlug(trimmed, id) },
-      select: { id: true, title: true, slug: true, order: true },
+      select: FIELD_SELECT,
     })
   }
 
