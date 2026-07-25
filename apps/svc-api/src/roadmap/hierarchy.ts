@@ -76,3 +76,40 @@ export function slugify(input: string): string {
     .slice(0, 80)
   return base || "untitled"
 }
+
+/**
+ * Whether content is shown, hidden, or merely unlisted — the same three states
+ * for every kind of content. Mirrors `publish-status.ts` in the shared domain
+ * package, duplicated here for the same reason `NodeType` and `slugify` are:
+ * this service depends on the database package alone, not on the shared
+ * package. Keep the two in step.
+ *
+ * Called `publishStatus` on each type because a block's `status` already means
+ * the viewer's own progress through it.
+ */
+export const PUBLISH_STATUSES = ["DRAFT", "PUBLISHED", "PRIVATE"] as const
+
+export type PublishStatus = (typeof PUBLISH_STATUSES)[number]
+
+export function isPublishStatus(value: unknown): value is PublishStatus {
+  return (
+    typeof value === "string" &&
+    (PUBLISH_STATUSES as readonly string[]).includes(value)
+  )
+}
+
+/** Anything unreadable becomes DRAFT: fail closed, hide rather than expose. */
+export function normalizePublishStatus(raw: unknown): PublishStatus {
+  if (typeof raw !== "string") return "DRAFT"
+  const value = raw.trim().toUpperCase()
+  return isPublishStatus(value) ? value : "DRAFT"
+}
+
+export function publishStatusFromLegacy(isPublished: boolean): PublishStatus {
+  return isPublished ? "PUBLISHED" : "DRAFT"
+}
+
+/** Lossy on purpose: PRIVATE collapses to false for the Document boundary. */
+export function legacyIsPublished(status: PublishStatus): boolean {
+  return status === "PUBLISHED"
+}

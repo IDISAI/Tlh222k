@@ -8,6 +8,7 @@ import type {
   Field,
   NodeStatus,
   NodeType,
+  PublishStatus,
   Roadmap,
   RoadmapEdge,
   RoadmapGraph,
@@ -23,15 +24,15 @@ import { gql } from "./client"
 
 // Field selections matching the domain types (childrenCount is server-only).
 const ROADMAP_FIELDS = `
-  id slug title description thumbnailUrl isPublished nodeCount createdAt updatedAt
+  id slug title description thumbnailUrl isPublished publishStatus nodeCount createdAt updatedAt
 `
 /** Every column of a discovery label. One place, so the next rename is one edit. */
-const FIELD_FIELDS = `id title slug order`
+const FIELD_FIELDS = `id title slug order publishStatus`
 
 const NODE_FIELDS = `
   id roadmapId parentId title slug description nodeType notionPageId
   articleType jupyterUrl positionX positionY order status isDeleted
-  linkedRoadmapId isPublished
+  linkedRoadmapId isPublished publishStatus
   fields { ${FIELD_FIELDS} }
 `
 
@@ -56,10 +57,11 @@ export class RoadmapApi {
         title: string
         description: string | null
         childrenCount: number
+        publishStatus: PublishStatus
         fields: Field[]
       }[]
     }>(
-      `query { publicBlocks { id slug title description childrenCount fields { ${FIELD_FIELDS} } } }`
+      `query { publicBlocks { id slug title description childrenCount publishStatus fields { ${FIELD_FIELDS} } } }`
     )
     return data.publicBlocks.map((n) => ({
       id: n.id,
@@ -68,6 +70,10 @@ export class RoadmapApi {
       description: n.description,
       thumbnailUrl: null,
       isPublished: true,
+      // `publicBlocks` only ever returns published blocks, but the card carries
+      // the block's own status rather than a hardcoded one so a later screen
+      // that reuses this shape cannot be misled by it.
+      publishStatus: n.publishStatus,
       nodeCount: n.childrenCount ?? 0,
       fields: n.fields ?? [],
     }))

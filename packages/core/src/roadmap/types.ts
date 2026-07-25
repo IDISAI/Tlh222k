@@ -1,3 +1,9 @@
+import type { PublishStatus } from "./publish-status"
+
+// Re-exported so every consumer reaches the domain vocabulary through one
+// module rather than importing the status from a second place.
+export type { PublishStatus }
+
 export type NodeStatus = "locked" | "in_progress" | "done"
 
 /**
@@ -50,6 +56,8 @@ export interface Field {
   title: string
   slug: string
   order: number
+  /** Draft, Published or Private. Only Published reaches learners. */
+  publishStatus: PublishStatus
 }
 
 export interface Roadmap {
@@ -59,6 +67,12 @@ export interface Roadmap {
   description: string | null
   thumbnailUrl: string | null
   isPublished: boolean
+  /**
+   * Draft, Published or Private. Named apart from `status`, which on a block
+   * means the viewer's own progress. Carried beside `isPublished` until every
+   * reader has moved across.
+   */
+  publishStatus: PublishStatus
   nodeCount: number
   /** Discovery labels; empty when the block carries none. */
   fields: Field[]
@@ -105,6 +119,8 @@ export interface RoadmapNode {
   linkedRoadmapId?: string | null
   /** Publish state synced with the linked Document (notion-article-node Req 7). */
   isPublished?: boolean
+  /** Draft, Published or Private. See the note on `Roadmap.publishStatus`. */
+  publishStatus?: PublishStatus
 }
 
 export interface RoadmapGraph {

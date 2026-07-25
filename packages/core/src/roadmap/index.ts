@@ -1,4 +1,5 @@
 export * from "./types"
+export * from "./publish-status"
 // `RoadmapService` is exported from ./api (swaps mock ↔ svc-roadmap by env).
 // The mock class itself still lives in ./roadmap.service for the fallback.
 export * from "./api"

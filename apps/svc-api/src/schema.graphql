@@ -16,6 +16,21 @@ enum NodeStatus {
   done
 }
 
+"""
+Whether a piece of content is shown, hidden, or merely unlisted. The same three
+states for every kind of content. There is no review state and no archive:
+nothing in this system approves content, so a state meaning "awaiting approval"
+would name an act nobody performs.
+
+Named `publishStatus` on each type because a block's `status` already means the
+viewer's own progress through it.
+"""
+enum PublishStatus {
+  DRAFT
+  PUBLISHED
+  PRIVATE
+}
+
 type Roadmap {
   id: ID!
   slug: String!
@@ -23,6 +38,7 @@ type Roadmap {
   description: String
   thumbnailUrl: String
   isPublished: Boolean!
+  publishStatus: PublishStatus!
   nodeCount: Int!
   createdAt: String
   updatedAt: String
@@ -47,6 +63,7 @@ type RoadmapNode {
   childrenCount: Int!
   linkedRoadmapId: ID
   isPublished: Boolean!
+  publishStatus: PublishStatus!
   """
   Discovery labels this block carries. Many-to-many: a "Data Engineer" role
   can sit under both AI and Data, so it surfaces under either tab.
@@ -63,6 +80,7 @@ type Field {
   title: String!
   slug: String!
   order: Int!
+  publishStatus: PublishStatus!
 }
 
 type RoadmapGraph {

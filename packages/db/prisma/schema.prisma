@@ -25,6 +25,12 @@ model Roadmap {
   description  String?
   thumbnailUrl String?
   isPublished  Boolean  @default(false)
+  /// DRAFT | PUBLISHED | PRIVATE — the three states every kind of content
+  /// shares. Named `publishStatus` rather than `status` because a block's
+  /// `status` already means the viewer's own progress through it. Kept beside
+  /// `isPublished` until every reader has moved across; the two are written
+  /// together in the meantime.
+  publishStatus String  @default("DRAFT")
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -51,6 +57,10 @@ model Node {
   linkedRoadmapId String?
   // Publish state synced with the linked Document (notion-article-node Req 7).
   isPublished     Boolean  @default(false)
+  /// DRAFT | PUBLISHED | PRIVATE. See the note on `Roadmap.publishStatus`.
+  /// A Document keeps only the boolean this round, so the sync at that
+  /// boundary translates: PUBLISHED means true, Draft and Private mean false.
+  publishStatus   String   @default("DRAFT")
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
@@ -83,6 +93,11 @@ model Field {
   /// column keeps its name.
   title     String   @unique @map("name")
   slug      String   @unique
+  /// DRAFT | PUBLISHED | PRIVATE. See the note on `Roadmap.publishStatus`.
+  /// A Field has never had a publish state, and every existing one is visible
+  /// today, so the backfill puts them all at PUBLISHED: starting them at DRAFT
+  /// would empty the browse strip the moment a reader moves across.
+  publishStatus String @default("DRAFT")
   /// Display order in the tab strip; ties fall back to title.
   order     Int      @default(0)
   createdAt DateTime @default(now())

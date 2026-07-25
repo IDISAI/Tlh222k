@@ -10,10 +10,13 @@ import {
   NODE_TYPES,
   isNodeType,
   normalizeHttpUrl,
+  normalizePublishStatus,
+  publishStatusFromLegacy,
   slugify,
   type ArticleType,
   type NodeStatus,
   type NodeType,
+  type PublishStatus,
 } from "./hierarchy"
 import { assertAcyclicTree } from "./tree-invariants"
 
@@ -79,6 +82,7 @@ export interface RoadmapDto {
   description: string | null
   thumbnailUrl: string | null
   isPublished: boolean
+  publishStatus: PublishStatus
   nodeCount: number
   createdAt?: string | null
   updatedAt?: string | null
@@ -103,6 +107,7 @@ export interface NodeDto {
   childrenCount: number
   linkedRoadmapId: string | null
   isPublished: boolean
+  publishStatus: PublishStatus
   /**
    * Discovery labels. Empty when the caller's query did not `include` them —
    * the GraphQL field is a non-null list, so callers see `[]`, never null.
@@ -115,6 +120,7 @@ export interface FieldDto {
   title: string
   slug: string
   order: number
+  publishStatus: PublishStatus
 }
 
 /**
@@ -127,14 +133,39 @@ const FIELD_SELECT = {
   title: true,
   slug: true,
   order: true,
+  publishStatus: true,
 } as const
 const FIELD_ORDER_BY: Prisma.FieldOrderByWithRelationInput[] = [
   { order: "asc" },
   { title: "asc" },
 ]
 
+/** A label as Postgres hands it back — `publishStatus` is a plain column. */
+type DbField = {
+  id: string
+  title: string
+  slug: string
+  order: number
+  publishStatus: string
+}
+
+/**
+ * Narrow a stored label onto the DTO. The status is a plain string column, so
+ * this is the boundary where an unreadable value becomes DRAFT rather than
+ * leaking out as a status nothing downstream knows how to read.
+ */
+function toFieldDto(f: DbField): FieldDto {
+  return {
+    id: f.id,
+    title: f.title,
+    slug: f.slug,
+    order: f.order,
+    publishStatus: normalizePublishStatus(f.publishStatus),
+  }
+}
+
 /** A `Node` row with its labels joined in. */
-type DbNodeWithFields = DbNode & { fields?: FieldDto[] }
+type DbNodeWithFields = DbNode & { fields?: DbField[] }
 
 export interface GraphDto {
   roadmap: RoadmapDto
@@ -248,7 +279,10 @@ export class RoadmapService implements OnModuleInit {
             ],
             isPublished: !doc.isPublished,
           },
-          data: { isPublished: doc.isPublished },
+          data: {
+            isPublished: doc.isPublished,
+            publishStatus: publishStatusFromLegacy(doc.isPublished),
+          },
         })
       }
     } catch (err) {
@@ -338,6 +372,10 @@ export class RoadmapService implements OnModuleInit {
       description: node.description,
       thumbnailUrl: null,
       isPublished: true,
+      // Synthetic wrapper around one block: it carries the block's own status
+      // rather than a hardcoded one, so a private block cannot be dressed as
+      // published by the shape used to render it.
+      publishStatus: normalizePublishStatus(node.publishStatus),
       nodeCount: subtree.length,
     }
     return this.buildGraph(
@@ -457,6 +495,10 @@ export class RoadmapService implements OnModuleInit {
       description: node.description,
       thumbnailUrl: null,
       isPublished: true,
+      // Synthetic wrapper around one block: it carries the block's own status
+      // rather than a hardcoded one, so a private block cannot be dressed as
+      // published by the shape used to render it.
+      publishStatus: normalizePublishStatus(node.publishStatus),
       nodeCount: roadmapNodes.length,
     }
     return this.buildGraph(synthetic, roadmapNodes, {})
@@ -516,6 +558,7 @@ export class RoadmapService implements OnModuleInit {
         description: input.description?.trim() || null,
         thumbnailUrl: input.thumbnailUrl ?? null,
         isPublished: false,
+        publishStatus: publishStatusFromLegacy(false),
       },
     })
     await this.events.emit(created.id)
@@ -548,6 +591,13 @@ export class RoadmapService implements OnModuleInit {
         isPublished:
           input.isPublished !== undefined && input.isPublished !== null
             ? input.isPublished
+            : undefined,
+        // The boolean is still the only way in from the API, so the status
+        // follows it. Nothing may write one without the other, or the two
+        // forms drift and whichever a reader picks decides what is public.
+        publishStatus:
+          input.isPublished !== undefined && input.isPublished !== null
+            ? publishStatusFromLegacy(input.isPublished)
             : undefined,
       },
       include: {
@@ -686,6 +736,10 @@ export class RoadmapService implements OnModuleInit {
               isPublished:
                 input.isPublished !== undefined && input.isPublished !== null
                   ? input.isPublished
+                  : undefined,
+              publishStatus:
+                input.isPublished !== undefined && input.isPublished !== null
+                  ? publishStatusFromLegacy(input.isPublished)
                   : undefined,
               // `set` replaces the whole label list, so unchecking a label in
               // the picker actually removes it. Omitted (undefined) input
@@ -875,6 +929,7 @@ export class RoadmapService implements OnModuleInit {
       description: string | null
       thumbnailUrl: string | null
       isPublished: boolean
+      publishStatus?: string
       createdAt?: Date
       updatedAt?: Date
     },
@@ -887,6 +942,13 @@ export class RoadmapService implements OnModuleInit {
       description: r.description,
       thumbnailUrl: r.thumbnailUrl,
       isPublished: r.isPublished,
+      // Both forms are read while the boolean still exists. The stored status
+      // wins when present; a row that predates the column falls back to what
+      // its boolean implies, so no caller ever sees an empty status.
+      publishStatus:
+        r.publishStatus === undefined
+          ? publishStatusFromLegacy(r.isPublished)
+          : normalizePublishStatus(r.publishStatus),
       nodeCount,
       createdAt: r.createdAt ? r.createdAt.toISOString() : null,
       updatedAt: r.updatedAt ? r.updatedAt.toISOString() : null,
@@ -917,7 +979,11 @@ export class RoadmapService implements OnModuleInit {
       childrenCount,
       linkedRoadmapId: n.linkedRoadmapId,
       isPublished: n.isPublished,
-      fields: n.fields ?? [],
+      publishStatus:
+        n.publishStatus === undefined
+          ? publishStatusFromLegacy(n.isPublished)
+          : normalizePublishStatus(n.publishStatus),
+      fields: (n.fields ?? []).map(toFieldDto),
     }
   }
 
@@ -925,10 +991,11 @@ export class RoadmapService implements OnModuleInit {
 
   /** Every label, for the public tab strip. No auth — labels are not secret. */
   async listFields(): Promise<FieldDto[]> {
-    return this.prisma.field.findMany({
+    const rows = await this.prisma.field.findMany({
       orderBy: FIELD_ORDER_BY,
       select: FIELD_SELECT,
     })
+    return rows.map(toFieldDto)
   }
 
   /**
@@ -945,10 +1012,10 @@ export class RoadmapService implements OnModuleInit {
       where: { title: { equals: trimmed, mode: "insensitive" } },
       select: FIELD_SELECT,
     })
-    if (existing) return existing
+    if (existing) return toFieldDto(existing)
 
     const count = await this.prisma.field.count()
-    return this.prisma.field.create({
+    const created = await this.prisma.field.create({
       data: {
         title: trimmed,
         slug: await this.uniqueFieldSlug(trimmed),
@@ -956,6 +1023,7 @@ export class RoadmapService implements OnModuleInit {
       },
       select: FIELD_SELECT,
     })
+    return toFieldDto(created)
   }
 
   /**
@@ -985,13 +1053,14 @@ export class RoadmapService implements OnModuleInit {
       throw new RoadmapError("VALIDATION", `Lĩnh vực "${trimmed}" đã tồn tại`)
     }
 
-    return this.prisma.field.update({
+    const updated = await this.prisma.field.update({
       where: { id },
       // The slug is derived from the title, so it has to move with it or links
       // built from the old slug would point at a label that reads differently.
       data: { title: trimmed, slug: await this.uniqueFieldSlug(trimmed, id) },
       select: FIELD_SELECT,
     })
+    return toFieldDto(updated)
   }
 
   /** Drops the label; the join rows go with it, the blocks themselves stay. */
