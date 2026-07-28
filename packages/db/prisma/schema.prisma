@@ -61,6 +61,8 @@ model Node {
   /// A Document keeps only the boolean this round, so the sync at that
   /// boundary translates: PUBLISHED means true, Draft and Private mean false.
   publishStatus   String   @default("DRAFT")
+  /// FREE is public once published; INTERNAL additionally requires aio/admin.
+  visibility      String   @default("FREE")
   /// The image standing in for this block wherever it is shown as a card —
   /// the browse grid, the Field Workspace canvas, the roadmap picker. Distinct
   /// from a Field's image, which covers a whole scene.
@@ -77,9 +79,10 @@ model Node {
   children      Node[]         @relation("NodeChildren")
   linkedRoadmap Roadmap?       @relation("NodeLinkedRoadmap", fields: [linkedRoadmapId], references: [id], onDelete: SetNull)
   progress      UserProgress[]
-  // Discovery labels. Many-to-many on purpose: a role like "Data Engineer"
-  // belongs under both AI and Data, so it must surface under either tab.
-  fields        Field[]
+  // Legacy implicit relation is retained only while deployed memberships are
+  // copied into FieldMembership. New reads and writes use memberships below.
+  fields        Field[] @relation("FieldToNode")
+  fieldMemberships FieldMembership[]
 
   @@index([roadmapId])
   @@index([parentId])
@@ -106,12 +109,33 @@ model Field {
   /// today, so the backfill puts them all at PUBLISHED: starting them at DRAFT
   /// would empty the browse strip the moment a reader moves across.
   publishStatus String @default("DRAFT")
+  /// One image across Explorer hero, CMS list, and workspace preview.
+  imageUrl     String?
+  /// Editorial description. Draft Fields may leave this empty.
+  description  String?
   /// Display order in the tab strip; ties fall back to title.
   order     Int      @default(0)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  nodes Node[]
+  // Kept during the zero-data-loss migration from Prisma's implicit join.
+  nodes Node[] @relation("FieldToNode")
+  memberships FieldMembership[]
+}
+
+/// Ordered many-to-many Field ↔ roadmap-block membership. Position is scoped
+/// to the Field, so moving a block in AI never changes its order in Data.
+model FieldMembership {
+  fieldId String
+  nodeId  String
+  position Int @default(0)
+  createdAt DateTime @default(now())
+  field Field @relation(fields: [fieldId], references: [id], onDelete: Cascade)
+  node  Node  @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+
+  @@id([fieldId, nodeId])
+  @@index([fieldId, position])
+  @@index([nodeId])
 }
 
 model RoadmapUpdateEvent {

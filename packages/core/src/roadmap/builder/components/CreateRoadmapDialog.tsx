@@ -29,9 +29,22 @@ import { FieldPicker } from "./FieldPicker"
 
 /** A roadmap is a role or a skill (a role/skill node IS a roadmap block). */
 const ROADMAP_KINDS = [
-  { value: "role" as const, label: "Role" },
-  { value: "skill" as const, label: "Skill" },
+  { value: "role" as const, label: "Lộ trình" },
+  { value: "skill" as const, label: "Kỹ năng" },
 ]
+
+function createSlugPreview(title: string) {
+  const slug = title
+    .trim()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/đ/g, "d")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+
+  return slug ? `/roadmaps/${slug}` : "/roadmaps/..."
+}
 
 interface CreateRoadmapDialogProps {
   role: CallerRole
@@ -95,27 +108,54 @@ export function CreateRoadmapDialog({
         if (!open) onClose()
       }}
     >
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="max-h-[92vh] overflow-y-auto border-border/80 bg-background p-0 sm:max-w-[540px]">
         <DialogHeader>
-          <DialogTitle>Tạo roadmap mới</DialogTitle>
-          <DialogDescription>
-            Roadmap mới sẽ ở trạng thái chưa xuất bản cho đến khi bạn bật xuất
-            bản trong builder.
-          </DialogDescription>
+          <div className="border-b px-6 pb-4 pt-6">
+            <DialogTitle className="text-2xl">Tạo roadmap</DialogTitle>
+            <DialogDescription className="mt-1.5 text-sm">
+              Bản nháp được lưu tự động, xuất bản khi bạn sẵn sàng.
+            </DialogDescription>
+          </div>
         </DialogHeader>
 
-        <div className="space-y-4">
+        <div className="space-y-5 px-6 pb-2">
           <div className="space-y-1.5">
-            <Label htmlFor="rm-title">Tên roadmap *</Label>
+            <div className="flex items-center justify-between">
+              <Label htmlFor="rm-title">Tiêu đề</Label>
+              <span className="text-xs text-destructive">Bắt buộc</span>
+            </div>
             <Input
               id="rm-title"
               autoFocus
               value={title}
               maxLength={MAX_TITLE_LENGTH}
-              placeholder="VD: Lập trình Web"
+              placeholder="vd: Lộ trình Frontend 2026"
               onChange={(e) => handleTitle(e.target.value)}
             />
             {error && <p className="text-xs text-destructive">{error}</p>}
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="rm-slug">Slug</Label>
+            <Input
+              id="rm-slug"
+              value={createSlugPreview(title)}
+              readOnly
+              aria-label="Slug được tạo từ tiêu đề"
+              className="bg-muted font-mono text-muted-foreground"
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="rm-description">Mô tả ngắn</Label>
+            <Textarea
+              id="rm-description"
+              rows={3}
+              value={description}
+              maxLength={MAX_DESCRIPTION_LENGTH}
+              placeholder="Một hoặc hai câu hiển thị trên thẻ và trang chi tiết"
+              onChange={(e) => setDescription(e.target.value)}
+            />
           </div>
 
           <div className="space-y-1.5">
@@ -137,7 +177,7 @@ export function CreateRoadmapDialog({
           </div>
 
           <div className="space-y-1.5">
-            <Label>Lĩnh vực (tùy chọn)</Label>
+            <Label>Lĩnh vực</Label>
             <FieldPicker
               role={role}
               value={fieldIds}
@@ -146,24 +186,18 @@ export function CreateRoadmapDialog({
             />
           </div>
 
-          <div className="space-y-1.5">
-            <Label htmlFor="rm-description">Mô tả (tùy chọn)</Label>
-            <Textarea
-              id="rm-description"
-              rows={3}
-              value={description}
-              maxLength={MAX_DESCRIPTION_LENGTH}
-              onChange={(e) => setDescription(e.target.value)}
-            />
-          </div>
+          <p className="text-xs text-muted-foreground">
+            Roadmap được tạo ở trạng thái bản nháp. Bạn có thể chỉnh sửa node
+            và xuất bản từ workspace.
+          </p>
         </div>
 
-        <DialogFooter>
-          <Button type="button" variant="ghost" onClick={onClose}>
+        <DialogFooter className="border-t bg-background px-6 py-4 sm:justify-between">
+          <Button type="button" variant="outline" onClick={onClose}>
             Hủy
           </Button>
-          <Button type="button" disabled={busy} onClick={() => void handleCreate()}>
-            {busy ? "Đang tạo..." : "Tạo roadmap"}
+          <Button type="button" disabled={busy || !title.trim()} onClick={() => void handleCreate()}>
+            {busy ? "Đang tạo..." : "Tạo bản nháp"}
           </Button>
         </DialogFooter>
       </DialogContent>

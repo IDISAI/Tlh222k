@@ -52,7 +52,9 @@ export function CategoryStrip({
 }) {
   const { fields } = useFields()
 
-  if (fields.length === 0) return null
+  const published = fields.filter((field) => field.publishStatus === "PUBLISHED")
+
+  if (published.length === 0) return null
 
   return (
     <div className="border-b border-[#ebebeb] dark:border-border">
@@ -60,7 +62,7 @@ export function CategoryStrip({
         <Tab active={selectedFieldId === null} onClick={() => onSelect(null)}>
           All
         </Tab>
-        {fields.map((field) => {
+        {published.map((field) => {
           const Icon = ICONS[field.slug] ?? Tag
           return (
             <Tab

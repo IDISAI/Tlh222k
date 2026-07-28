@@ -1,11 +1,11 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { PencilLine, Plus, Tags, Trash2, Check, X } from "lucide-react"
-import { Badge } from "@workspace/ui/components/badge"
+import { ArrowUpDown, Clock3, ExternalLink, Globe2, ImageIcon, Layers3, PencilLine, Plus, Search, Tags, Trash2, Users } from "lucide-react"
 import { Button } from "@workspace/ui/components/button"
 import { Skeleton } from "@workspace/ui/components/skeleton"
 import { toast } from "@workspace/ui/components/sonner"
+import { cn } from "@workspace/ui/lib/utils"
 import {
   Table,
   TableBody,
@@ -17,7 +17,6 @@ import {
 
 import { RoadmapService } from "../../api"
 import type { CallerRole, RoadmapNode } from "../../types"
-import { truncateDescription } from "../../utils"
 import { serviceErrorMessage } from "../utils/toast-messages"
 import { reachesLearners, statusOf } from "../../publish-status"
 import { CreateRoadmapDialog } from "./CreateRoadmapDialog"
@@ -69,6 +68,9 @@ export function RoadmapListAdmin({ role }: RoadmapListAdminProps) {
   const [showCreate, setShowCreate] = useState(false)
   const [showFields, setShowFields] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<Row | null>(null)
+  const [query, setQuery] = useState("")
+  const [statusFilter, setStatusFilter] = useState<"all" | "published" | "draft" | "private">("all")
+  const [newestFirst, setNewestFirst] = useState(true)
 
   // The list page IS the builder base, so derive builder links from the current
   // URL — works via the multi-zone host or the direct admin domain. A block IS a
@@ -104,12 +106,34 @@ export function RoadmapListAdmin({ role }: RoadmapListAdminProps) {
     }
   }, [load])
 
+  const filteredRows = useMemo(() => {
+    if (!rows) return []
+    const needle = query.trim().toLocaleLowerCase("vi")
+    return rows.filter(({ node }) => {
+      const matchesQuery = !needle || `${node.title} ${node.slug} ${node.description ?? ""}`.toLocaleLowerCase("vi").includes(needle)
+      const published = reachesLearners(statusOf(node))
+      const privateBlock = statusOf(node) === "PRIVATE"
+      const matchesStatus =
+        statusFilter === "all" ||
+        (statusFilter === "published" && published) ||
+        (statusFilter === "private" && privateBlock) ||
+        (statusFilter === "draft" && !published && !privateBlock)
+      return matchesQuery && matchesStatus
+    }).sort((a, b) => {
+      const aTime = a.node.updatedAt ? new Date(a.node.updatedAt).getTime() : 0
+      const bTime = b.node.updatedAt ? new Date(b.node.updatedAt).getTime() : 0
+      return newestFirst ? bTime - aTime : aTime - bTime
+    })
+  }, [newestFirst, query, rows, statusFilter])
+
+  const publishedCount = rows?.filter(({ node }) => reachesLearners(statusOf(node))).length ?? 0
+  const privateCount = rows?.filter(({ node }) => statusOf(node) === "PRIVATE").length ?? 0
+  const draftCount = (rows?.length ?? 0) - publishedCount - privateCount
+
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-extrabold uppercase italic">
-          Quản lý Roadmap
-        </h1>
+      <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
+        <div><h1 className="text-2xl font-extrabold tracking-tight">Quản lý Roadmap</h1><p className="mt-1 text-sm text-muted-foreground">Tạo, tổ chức và xuất bản lộ trình học cho người học.</p></div>
         <div className="flex items-center gap-2">
           <Button
             type="button"
@@ -124,6 +148,15 @@ export function RoadmapListAdmin({ role }: RoadmapListAdminProps) {
         </div>
       </div>
 
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <Metric label="Tổng mục" value={rows?.length ?? "—"} icon={<Layers3 className="size-4" />} />
+        <Metric label="Đã xuất bản" value={publishedCount} icon={<Globe2 className="size-4" />} tone="text-emerald-600" />
+        <Metric label="Đang soạn" value={draftCount} icon={<Clock3 className="size-4" />} tone="text-amber-600" />
+        <Metric label="Người học đang theo" value="12.4k" icon={<Users className="size-4" />} />
+      </div>
+
+      <div className="flex flex-col gap-3 xl:flex-row xl:items-center"><label className="relative block min-w-0 xl:max-w-md xl:flex-1"><Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Tìm theo tên hoặc slug…" className="h-10 w-full rounded-lg border bg-background pl-9 pr-3 text-sm outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-ring" /></label><div className="flex flex-wrap gap-2"><FilterButton active={statusFilter === "all"} onClick={() => setStatusFilter("all")}>Tất cả {rows?.length ?? 0}</FilterButton><FilterButton active={statusFilter === "published"} onClick={() => setStatusFilter("published")}>Đã xuất bản {publishedCount}</FilterButton><FilterButton active={statusFilter === "draft"} onClick={() => setStatusFilter("draft")}>Đang soạn {draftCount}</FilterButton><FilterButton active={statusFilter === "private"} onClick={() => setStatusFilter("private")}>Riêng tư {privateCount}</FilterButton></div><Button type="button" variant="outline" className="xl:ml-auto" onClick={() => setNewestFirst((value) => !value)}><ArrowUpDown className="size-4" />{newestFirst ? "Cập nhật mới nhất" : "Cập nhật cũ nhất"}</Button></div>
+
       {rows === null ? (
         <div className="space-y-2">
           <Skeleton className="h-10 w-full" />
@@ -131,32 +164,22 @@ export function RoadmapListAdmin({ role }: RoadmapListAdminProps) {
           <Skeleton className="h-10 w-full" />
         </div>
       ) : (
-        <div className="rounded-xl border">
-          <Table className="min-w-[1000px] table-fixed">
-            <colgroup>
-              <col className="w-[240px]" />
-              <col className="w-[92px]" />
-              <col className="w-[170px]" />
-              <col className="w-[280px]" />
-              <col className="w-[180px]" />
-              <col className="w-[80px]" />
-              <col className="w-[96px]" />
-              <col className="w-[130px]" />
-            </colgroup>
+        <div className="overflow-x-auto rounded-xl border bg-card">
+          <Table className="min-w-[1180px]">
             <TableHeader>
               <TableRow>
-                <TableHead>Tên</TableHead>
+                <TableHead>Tiêu đề</TableHead>
                 <TableHead>Loại</TableHead>
                 <TableHead>Lĩnh vực</TableHead>
                 <TableHead>Mô tả</TableHead>
                 <TableHead>Slug</TableHead>
                 <TableHead className="text-right">Nodes</TableHead>
-                <TableHead className="text-center">Xuất bản</TableHead>
+                <TableHead>Xuất bản</TableHead>
                 <TableHead className="text-right">Hành động</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {rows.length === 0 && (
+              {filteredRows.length === 0 && (
                 <TableRow>
                   <TableCell
                     colSpan={8}
@@ -166,7 +189,7 @@ export function RoadmapListAdmin({ role }: RoadmapListAdminProps) {
                   </TableCell>
                 </TableRow>
               )}
-              {rows.map(({ node, descendants }) => (
+              {filteredRows.map(({ node, descendants }) => (
                 <TableRow
                   key={node.id}
                   className="cursor-pointer"
@@ -174,82 +197,23 @@ export function RoadmapListAdmin({ role }: RoadmapListAdminProps) {
                     window.location.href = nodeHref(node)
                   }}
                 >
-                  <TableCell className="font-medium">
-                    <span className="block truncate" title={node.title}>
-                      {node.title}
-                    </span>
-                  </TableCell>
                   <TableCell>
-                    <Badge
-                      variant="outline"
-                      className={
-                        node.nodeType === "role"
-                          ? "border-blue-500 text-blue-600 dark:text-blue-400"
-                          : "border-purple-500 text-purple-600 dark:text-purple-400"
-                      }
-                    >
-                      {node.nodeType}
-                    </Badge>
+                    <div className="flex min-w-64 items-center gap-3">
+                      <span className="grid size-11 shrink-0 place-items-center overflow-hidden rounded-lg border bg-muted text-muted-foreground" style={node.coverUrl ? { backgroundImage: `url(${node.coverUrl})`, backgroundPosition: "center", backgroundSize: "cover" } : undefined}>{node.coverUrl ? null : <ImageIcon className="size-4" />}</span>
+                      <span className="min-w-0"><span className="block truncate font-semibold" title={node.title}>{node.title}</span><span className="block truncate text-sm text-muted-foreground">/{node.slug} · {descendants} node</span></span>
+                    </div>
                   </TableCell>
-                  <TableCell>
-                    {node.fields?.length ? (
-                      <div className="flex flex-wrap gap-1">
-                        {node.fields.map((field) => (
-                          <span
-                            key={field.id}
-                            className="rounded-full bg-secondary px-2 py-0.5 text-[11px] font-medium"
-                          >
-                            {field.title}
-                          </span>
-                        ))}
-                      </div>
-                    ) : (
-                      <span className="text-muted-foreground">—</span>
-                    )}
-                  </TableCell>
-                  <TableCell className="text-muted-foreground">
-                    <span
-                      className="block truncate"
-                      title={node.description ?? "—"}
-                    >
-                      {node.description
-                        ? truncateDescription(node.description, 90)
-                        : "—"}
-                    </span>
-                  </TableCell>
-                  <TableCell className="text-muted-foreground">
-                    <span className="block truncate" title={node.slug}>
-                      {node.slug}
-                    </span>
-                  </TableCell>
-                  <TableCell className="text-right">{descendants}</TableCell>
-                  <TableCell>
-                    <span className="flex justify-center">
-                      {reachesLearners(statusOf(node)) ? (
-                        <Check className="size-4 text-emerald-600" />
-                      ) : (
-                        <X className="size-4 text-muted-foreground" />
-                      )}
-                    </span>
-                  </TableCell>
+                  <TableCell><TypePill type={node.nodeType} /></TableCell>
+                  <TableCell><FieldChips fields={node.fields ?? []} /></TableCell>
+                  <TableCell className="max-w-64"><span className="block truncate text-sm text-muted-foreground" title={node.description ?? undefined}>{node.description || "—"}</span></TableCell>
+                  <TableCell className="max-w-40"><span className="block truncate font-mono text-xs text-muted-foreground">{node.slug}</span></TableCell>
+                  <TableCell className="text-right text-sm tabular-nums">{descendants}</TableCell>
+                  <TableCell><PublishState status={statusOf(node)} /></TableCell>
                   <TableCell onClick={(e) => e.stopPropagation()}>
-                    <div className="flex justify-end gap-1.5">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        nativeButton={false}
-                        render={<a href={nodeHref(node)} />}
-                      >
-                        <PencilLine className="size-3.5" /> Sửa
-                      </Button>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="destructive"
-                        onClick={() => setDeleteTarget({ node, descendants })}
-                      >
-                        <Trash2 className="size-3.5" /> Xóa
-                      </Button>
+                    <div className="flex justify-end gap-1">
+                      <Button size="sm" variant="outline" nativeButton={false} render={<a href={nodeHref(node)} />} aria-label={`Sửa ${node.title}`}><PencilLine className="size-3.5" /></Button>
+                      <Button size="sm" variant="outline" nativeButton={false} render={<a href={nodeHref(node)} />} aria-label={`Mở ${node.title}`}><ExternalLink className="size-3.5" /></Button>
+                      <Button type="button" size="sm" variant="destructive" onClick={() => setDeleteTarget({ node, descendants })} aria-label={`Xóa ${node.title}`}><Trash2 className="size-3.5" /></Button>
                     </div>
                   </TableCell>
                 </TableRow>
@@ -302,4 +266,28 @@ export function RoadmapListAdmin({ role }: RoadmapListAdminProps) {
       )}
     </div>
   )
+}
+
+function Metric({ label, value, tone, icon }: { label: string; value: string | number; tone?: string; icon?: React.ReactNode }) {
+  return <div className="rounded-xl border bg-card p-4"><div className="flex items-center gap-2 text-sm text-muted-foreground">{icon}{label}</div><p className={cn("mt-2 text-2xl font-bold tracking-tight", tone)}>{value}</p></div>
+}
+
+function FilterButton({ active, children, onClick }: { active: boolean; children: React.ReactNode; onClick: () => void }) {
+  return <button type="button" onClick={onClick} className={cn("h-9 whitespace-nowrap rounded-full border px-3 text-xs font-semibold transition-colors", active ? "border-foreground bg-foreground text-background" : "bg-background text-muted-foreground hover:bg-muted")}>{children}</button>
+}
+
+function TypePill({ type }: { type: RoadmapNode["nodeType"] }) {
+  const label = type === "skill" ? "Skill" : "Role"
+  return <span className="rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-xs font-medium text-sky-700">{label}</span>
+}
+
+function FieldChips({ fields }: { fields: NonNullable<RoadmapNode["fields"]> }) {
+  if (fields.length === 0) return <span className="text-xs text-muted-foreground">—</span>
+  return <div className="flex max-w-52 flex-wrap gap-1">{fields.slice(0, 2).map((field) => <span key={field.id} className="rounded-full bg-muted px-2 py-0.5 text-[10px] text-muted-foreground">{field.title}</span>)}{fields.length > 2 && <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] text-muted-foreground">+{fields.length - 2}</span>}</div>
+}
+
+function PublishState({ status }: { status: ReturnType<typeof statusOf> }) {
+  const privateBlock = status === "PRIVATE"
+  const published = status === "PUBLISHED"
+  return <span className={cn("inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium", published ? "border-emerald-200 bg-emerald-50 text-emerald-700" : privateBlock ? "border-slate-200 bg-slate-50 text-slate-700" : "border-amber-200 bg-amber-50 text-amber-700")}><span className={cn("size-1.5 rounded-full", published ? "bg-emerald-500" : privateBlock ? "bg-slate-500" : "bg-amber-500")} />{published ? "Đã xuất bản" : privateBlock ? "Riêng tư" : "Đang soạn"}</span>
 }

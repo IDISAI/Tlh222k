@@ -1,4 +1,7 @@
+"use client"
+
 import Link from "next/link"
+import { usePathname } from "next/navigation"
 import { DollarSign, Globe } from "lucide-react"
 
 const COLUMNS: { heading: string; links: string[] }[] = [
@@ -32,6 +35,7 @@ const COLUMNS: { heading: string; links: string[] }[] = [
  * pickers. Flat — the system's one shadow tier is not used here.
  */
 export function SiteFooter() {
+  if (usePathname() === "/") return null
   return (
     <footer className="border-t border-border bg-secondary">
       <div className="mx-auto grid max-w-[1280px] grid-cols-1 gap-6 px-5 py-12 sm:grid-cols-3 md:px-10">

@@ -25,6 +25,7 @@ import { useNotebookRuntime } from "../../runtime/use-notebook-runtime"
 import { useActiveHeading } from "../../viewer/hooks/useActiveHeading"
 import { headingSlugsByCell } from "../../utils/toc"
 import {
+  FallbackNotebookStore,
   HttpNotebookStore,
   LocalNotebookStore,
   type NotebookStore,
@@ -126,7 +127,12 @@ export function NotebookEditor({
     () =>
       store ??
       (KERNEL_SERVER_URL
-        ? new HttpNotebookStore(KERNEL_SERVER_URL, getToken)
+        ? apiBaseUrl !== undefined
+          ? new FallbackNotebookStore(
+              new HttpNotebookStore(KERNEL_SERVER_URL, getToken, 5_000),
+              new HttpNotebookStore(apiBaseUrl, getToken)
+            )
+          : new HttpNotebookStore(KERNEL_SERVER_URL, getToken)
         : apiBaseUrl !== undefined
           ? new HttpNotebookStore(apiBaseUrl, getToken)
           : new LocalNotebookStore()),

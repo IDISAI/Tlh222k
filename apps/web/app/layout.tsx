@@ -1,4 +1,3 @@
-import { Geist_Mono, Inter } from "next/font/google"
 import { ClerkProvider } from "@clerk/nextjs"
 
 import {
@@ -13,13 +12,6 @@ import { cn } from "@workspace/ui/lib/utils"
 import { SiteFooter } from "@/components/site-footer"
 import { SiteHeader } from "@/components/site-header"
 
-const inter = Inter({ subsets: ["latin"], variable: "--font-sans" })
-
-const fontMono = Geist_Mono({
-  subsets: ["latin"],
-  variable: "--font-mono",
-})
-
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -29,12 +21,7 @@ export default function RootLayout({
     <html
       lang="en"
       suppressHydrationWarning
-      className={cn(
-        "antialiased",
-        fontMono.variable,
-        "font-sans",
-        inter.variable
-      )}
+      className={cn("antialiased", "font-sans")}
     >
       <body className="flex min-h-screen flex-col">
         <ReloadOnBackForward />

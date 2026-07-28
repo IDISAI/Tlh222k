@@ -7,6 +7,7 @@ import {
   type ArticleType,
   type CallerRole,
   type Composition,
+  type CreateFieldInput,
   type CreateNodeInput,
   type CreateRoadmapInput,
   type EdgeKind,
@@ -17,6 +18,7 @@ import {
   type RoadmapEdge,
   type RoadmapGraph,
   type RoadmapNode,
+  type UpdateFieldInput,
   type UpdateNodeInput,
 } from "./types"
 import { getStore, persistStore } from "./mock/builder-store"
@@ -31,6 +33,8 @@ import { validateHierarchy } from "./utils/validate-hierarchy"
  * write here would hand back an id the backend never heard of.
  */
 const MOCK_FIELDS_UNAVAILABLE = "Lĩnh vực chỉ khả dụng khi kết nối backend"
+
+void MOCK_FIELDS_UNAVAILABLE
 
 const LATENCY_MS = 150
 const delay = (ms = LATENCY_MS) => new Promise((r) => setTimeout(r, ms))
@@ -107,7 +111,7 @@ export class RoadmapService {
         isPublished: true,
         publishStatus: "PUBLISHED",
         nodeCount: childCount.get(n.id) ?? 0,
-        fields: [],
+        fields: n.fields ?? [],
       }))
   }
 
@@ -122,7 +126,19 @@ export class RoadmapService {
   // ponytail: → `fields` query
   async listFields(): Promise<Field[]> {
     await delay()
-    return []
+    return clone(getStore().fields).sort(
+      (a, b) => a.order - b.order || a.title.localeCompare(b.title)
+    )
+  }
+
+  async listAdminFields(_callerRole: CallerRole): Promise<Field[]> {
+    return this.listFields()
+  }
+
+  async fieldBySlug(slug: string): Promise<Field | null> {
+    await delay()
+    const field = getStore().fields.find((item) => item.slug === slug)
+    return !field || field.publishStatus === "DRAFT" ? null : clone(field)
   }
 
   /**
@@ -131,28 +147,88 @@ export class RoadmapService {
    * the backend never heard of, so this refuses rather than lying.
    */
   // ponytail: → `createField` mutation
-  async createField(_title: string, callerRole: CallerRole): Promise<Field> {
-    assertCanWrite(callerRole)
-    await delay()
-    throw new RoadmapServiceError("VALIDATION", MOCK_FIELDS_UNAVAILABLE)
-  }
-
-  // ponytail: → `updateField` mutation
-  async updateField(
-    _id: string,
-    _title: string,
+  async createField(
+    input: CreateFieldInput | string,
     callerRole: CallerRole
   ): Promise<Field> {
     assertCanWrite(callerRole)
     await delay()
-    throw new RoadmapServiceError("VALIDATION", MOCK_FIELDS_UNAVAILABLE)
+    const data = typeof input === "string" ? { title: input } : input
+    const title = data.title.trim()
+    if (!title) throw new RoadmapServiceError("VALIDATION", "Field title is required")
+    const store = getStore()
+    const existing = store.fields.find(
+      (field) => field.title.localeCompare(title, undefined, { sensitivity: "accent" }) === 0
+    )
+    if (existing) return clone(existing)
+    const field: Field = {
+      id: newId("field"),
+      title,
+      slug: uniqueSlug(data.slug?.trim() || slugify(title), (value) =>
+        store.fields.some((item) => item.slug === value)
+      ),
+      order: store.fields.length,
+      description: data.description?.trim() || null,
+      imageUrl: data.imageUrl?.trim() || null,
+      publishStatus: data.publishStatus ?? "DRAFT",
+    }
+    store.fields.push(field)
+    persistStore()
+    return clone(field)
+  }
+
+  // ponytail: → `updateField` mutation
+  async updateField(
+    id: string,
+    input: UpdateFieldInput | string,
+    callerRole: CallerRole
+  ): Promise<Field> {
+    assertCanWrite(callerRole)
+    await delay()
+    const store = getStore()
+    const field = store.fields.find((item) => item.id === id)
+    if (!field) throw new RoadmapServiceError("NOT_FOUND")
+    const data = typeof input === "string" ? { title: input } : input
+    if (data.title !== undefined) {
+      const title = data.title.trim()
+      if (!title) throw new RoadmapServiceError("VALIDATION", "Field title is required")
+      field.title = title
+    }
+    if (data.slug !== undefined && data.slug !== field.slug) {
+      throw new RoadmapServiceError("VALIDATION", "Field slug cannot change after first save")
+    }
+    if (data.description !== undefined) field.description = data.description?.trim() || null
+    if (data.imageUrl !== undefined) field.imageUrl = data.imageUrl?.trim() || null
+    if (data.publishStatus !== undefined) {
+      const hasPublishedBlock = store.nodes.some((node) =>
+        !node.isDeleted && node.publishStatus === "PUBLISHED" && node.fields?.some((item) => item.id === id)
+      )
+      if (data.publishStatus !== "DRAFT" && (!field.description || !field.imageUrl?.startsWith("https://") || !hasPublishedBlock)) {
+        throw new RoadmapServiceError("VALIDATION", "Published or private Field needs description, HTTPS image, and one published block")
+      }
+      field.publishStatus = data.publishStatus
+    }
+    if (data.order !== undefined) field.order = data.order
+    persistStore()
+    return clone(field)
   }
 
   // ponytail: → `deleteField` mutation
-  async deleteField(_id: string, callerRole: CallerRole): Promise<boolean> {
+  async deleteField(id: string, callerRole: CallerRole): Promise<boolean> {
     assertCanWrite(callerRole)
     await delay()
-    throw new RoadmapServiceError("VALIDATION", MOCK_FIELDS_UNAVAILABLE)
+    const store = getStore()
+    const field = store.fields.find((item) => item.id === id)
+    if (!field) throw new RoadmapServiceError("NOT_FOUND")
+    if (field.publishStatus !== "DRAFT") {
+      throw new RoadmapServiceError("VALIDATION", "Only draft Fields can be deleted")
+    }
+    store.fields = store.fields.filter((item) => item.id !== id)
+    store.nodes.forEach((node) => {
+      node.fields = (node.fields ?? []).filter((item) => item.id !== id)
+    })
+    persistStore()
+    return true
   }
 
   // ponytail: → `roadmaps(includeUnpublished: true)` query — admin list (Req 1.1)
@@ -438,6 +514,10 @@ export class RoadmapService {
       node.linkedRoadmapId = input.linkedRoadmapId ?? null
     }
     if (input.isPublished !== undefined) node.isPublished = input.isPublished
+    if (input.fieldIds !== undefined) {
+      const ids = new Set(input.fieldIds)
+      node.fields = getStore().fields.filter((field) => ids.has(field.id))
+    }
 
     persistStore()
     emitRoadmapUpdate(node.roadmapId)

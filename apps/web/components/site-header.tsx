@@ -65,6 +65,9 @@ function ProductTabLink({
  */
 export function SiteHeader() {
   const pathname = usePathname()
+  // Field Explorer owns the complete viewport, including its dark utility bar.
+  // Keeping the product header here would create a second, conflicting nav.
+  if (pathname === "/") return null
   const isActive = (href: string) =>
     pathname === href || pathname.startsWith(`${href}/`)
 

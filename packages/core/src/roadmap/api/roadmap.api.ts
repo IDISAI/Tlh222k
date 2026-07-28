@@ -2,6 +2,7 @@ import type {
   ArticleType,
   CallerRole,
   Composition,
+  CreateFieldInput,
   CreateNodeInput,
   CreateRoadmapInput,
   EdgeKind,
@@ -13,6 +14,7 @@ import type {
   RoadmapEdge,
   RoadmapGraph,
   RoadmapNode,
+  UpdateFieldInput,
   UpdateNodeInput,
 } from "../types"
 import {
@@ -27,12 +29,12 @@ const ROADMAP_FIELDS = `
   id slug title description thumbnailUrl isPublished publishStatus nodeCount createdAt updatedAt
 `
 /** Every column of a discovery label. One place, so the next rename is one edit. */
-const FIELD_FIELDS = `id title slug order publishStatus`
+const FIELD_FIELDS = `id title slug order description imageUrl publishStatus`
 
 const NODE_FIELDS = `
   id roadmapId parentId title slug description nodeType notionPageId
   articleType jupyterUrl positionX positionY order status isDeleted
-  linkedRoadmapId isPublished publishStatus coverUrl level
+  linkedRoadmapId isPublished publishStatus coverUrl level visibility
   fields { ${FIELD_FIELDS} }
 `
 
@@ -87,15 +89,36 @@ export class RoadmapApi {
     return data.fields
   }
 
+  /** CMS never falls back to browser-local Field data. */
+  async listAdminFields(_callerRole: CallerRole): Promise<Field[]> {
+    const data = await gql<{ fields: Field[] }>(
+      `query { fields(includeUnpublished: true) { ${FIELD_FIELDS} } }`
+    )
+    return data.fields
+  }
+
+  /** Direct links may resolve a Private Field; Draft remains unreachable. */
+  async fieldBySlug(slug: string): Promise<Field | null> {
+    const data = await gql<{ field: Field | null }>(
+      `query ($slug: String!) { field(slug: $slug) { ${FIELD_FIELDS} } }`,
+      { slug }
+    )
+    return data.field
+  }
+
   /**
    * Find-or-create by title — the server dedupes case-insensitively, so the
    * picker can call this optimistically without checking for an existing label
    * first.
    */
-  async createField(title: string, _callerRole: CallerRole): Promise<Field> {
+  async createField(
+    input: CreateFieldInput | string,
+    _callerRole: CallerRole
+  ): Promise<Field> {
+    const inputValue = typeof input === "string" ? { title: input } : input
     const data = await gql<{ createField: Field }>(
-      `mutation ($title: String!) { createField(title: $title) { ${FIELD_FIELDS} } }`,
-      { title }
+      `mutation ($input: CreateFieldInput!) { createField(input: $input) { ${FIELD_FIELDS} } }`,
+      { input: inputValue }
     )
     return data.createField
   }
@@ -103,14 +126,15 @@ export class RoadmapApi {
   /** Retitle in place; every block carrying the label follows. */
   async updateField(
     id: string,
-    title: string,
+    input: UpdateFieldInput | string,
     _callerRole: CallerRole
   ): Promise<Field> {
+    const update = typeof input === "string" ? { title: input } : input
     const data = await gql<{ updateField: Field }>(
-      `mutation ($id: ID!, $title: String!) {
-         updateField(id: $id, title: $title) { ${FIELD_FIELDS} }
+      `mutation ($id: ID!, $input: UpdateFieldInput!) {
+         updateField(id: $id, input: $input) { ${FIELD_FIELDS} }
        }`,
-      { id, title }
+      { id, input: update }
     )
     return data.updateField
   }
@@ -178,6 +202,29 @@ export class RoadmapApi {
       `query { allNodes { ${NODE_FIELDS} } }`
     )
     return data.allNodes
+  }
+
+  /** Ordered roadmap-block memberships for one Field Workspace. */
+  async listFieldNodeIds(fieldId: string, _callerRole: CallerRole): Promise<string[]> {
+    const data = await gql<{ fieldNodeIds: string[] }>(
+      `query ($fieldId: ID!) { fieldNodeIds(fieldId: $fieldId) }`,
+      { fieldId }
+    )
+    return data.fieldNodeIds
+  }
+
+  async reorderFieldMembership(
+    fieldId: string,
+    nodeIds: string[],
+    _callerRole: CallerRole
+  ): Promise<boolean> {
+    const data = await gql<{ reorderFieldMembership: boolean }>(
+      `mutation ($fieldId: ID!, $nodeIds: [ID!]!) {
+        reorderFieldMembership(fieldId: $fieldId, nodeIds: $nodeIds)
+      }`,
+      { fieldId, nodeIds }
+    )
+    return data.reorderFieldMembership
   }
 
   async publicBlockGraph(id: string): Promise<RoadmapGraph | null> {

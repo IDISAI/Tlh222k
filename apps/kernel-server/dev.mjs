@@ -3,6 +3,8 @@ import { readFileSync } from "node:fs"
 import { dirname, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 
+import { hasHealthySvcApi, turboDevArgs } from "./dev-support.mjs"
+
 const kernelDir = dirname(fileURLToPath(import.meta.url))
 const repoRoot = resolve(kernelDir, "../..")
 
@@ -27,6 +29,10 @@ try {
 
 const kernelServerUrl =
   process.env.NEXT_PUBLIC_KERNEL_SERVER_URL || "http://localhost:3006"
+// JS-only local development always starts svc-api on 3005. Without this
+// public value, web/admin silently select the mock RoadmapService and users
+// see two different Field datasets in the same dev session.
+const svcApiUrl = process.env.NEXT_PUBLIC_SVC_API_URL || "http://localhost:3005"
 
 const enableBypass = process.env.ENABLE_DEV_AUTH_BYPASS === "true"
 const devAuthRoleVal = enableBypass
@@ -37,12 +43,24 @@ const devAuthRoleVal = enableBypass
 // only the apps they need (e.g. admin + svc-api) instead of the whole stack.
 const turboFilters = process.argv.filter((a) => a.startsWith("--filter"))
 
+const requestsSvcApi =
+  turboFilters.length === 0 || turboFilters.includes("--filter=svc-api")
+let reuseSvcApi = false
+
+// `pnpm dev:js` may restart while a previous svc-api remains live. Reuse only
+// verified GraphQL API; otherwise Turbo exits on EADDRINUSE and kills all UIs.
+if (!process.argv.includes("--dry-run") && !process.argv.includes("--check") && requestsSvcApi) {
+  reuseSvcApi = await hasHealthySvcApi(svcApiUrl)
+  if (reuseSvcApi) console.log(`Reusing healthy svc-api at ${svcApiUrl}`)
+}
+
 const commands = [
   {
     command: "pnpm",
-    args: ["turbo", "dev", ...turboFilters],
+    args: turboDevArgs(turboFilters, reuseSvcApi),
     env: {
       NEXT_PUBLIC_KERNEL_SERVER_URL: kernelServerUrl,
+      NEXT_PUBLIC_SVC_API_URL: svcApiUrl,
       NEXT_PUBLIC_DEV_AUTH_ROLE: devAuthRoleVal,
     },
   },

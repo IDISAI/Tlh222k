@@ -41,6 +41,11 @@ enum Level {
   ADVANCED
 }
 
+enum Visibility {
+  FREE
+  INTERNAL
+}
+
 type Roadmap {
   id: ID!
   slug: String!
@@ -77,6 +82,7 @@ type RoadmapNode {
   """The image standing in for this block wherever it is shown as a card."""
   coverUrl: String
   level: Level
+  visibility: Visibility!
   """
   Discovery labels this block carries. Many-to-many: a "Data Engineer" role
   can sit under both AI and Data, so it surfaces under either tab.
@@ -93,6 +99,8 @@ type Field {
   title: String!
   slug: String!
   order: Int!
+  description: String
+  imageUrl: String
   publishStatus: PublishStatus!
 }
 
@@ -129,14 +137,17 @@ type Query {
   roadmapGraph(slug: String!): RoadmapGraph
   roadmapGraphById(id: ID!): RoadmapGraph
   allNodes: [RoadmapNode!]!
+  """CMS-only ordered memberships for one Field Workspace."""
+  fieldNodeIds(fieldId: ID!): [ID!]!
   """
   Public LEGO inventory. `fieldIds` narrows to blocks carrying ANY of the given
   labels (OR, not AND) — the tab strip selects one at a time, and a block with
   two labels must appear under both.
   """
   publicBlocks(fieldIds: [ID!]): [RoadmapNode!]!
-  """Every discovery label, for the tab strip. Public — no auth."""
-  fields: [Field!]!
+  """Published discovery labels are public; CMS may request every status."""
+  fields(includeUnpublished: Boolean = false): [Field!]!
+  field(slug: String!): Field
   publicBlockGraph(id: ID!): RoadmapGraph
   myProgress: [RoadmapProgress!]!
   notionDoc(id: ID!): NotionDoc
@@ -155,10 +166,12 @@ type Mutation {
   title (case-insensitively) must return the EXISTING label rather than minting
   a duplicate "AI" / "ai" pair.
   """
-  createField(title: String!): Field!
+  createField(input: CreateFieldInput!): Field!
   """Retitle in place — every node carrying the label follows automatically."""
-  updateField(id: ID!, title: String!): Field!
+  updateField(id: ID!, input: UpdateFieldInput!): Field!
   deleteField(id: ID!): Boolean!
+  """Reorders all memberships of one Field without affecting other Fields."""
+  reorderFieldMembership(fieldId: ID!, nodeIds: [ID!]!): Boolean!
   createNode(input: CreateNodeInput!): RoadmapNode!
   updateNode(id: ID!, input: UpdateNodeInput!): RoadmapNode!
   deleteNode(id: ID!): Boolean!
@@ -205,6 +218,23 @@ input UpdateRoadmapInput {
   isPublished: Boolean
 }
 
+input CreateFieldInput {
+  title: String!
+  slug: String
+  description: String
+  imageUrl: String
+  publishStatus: PublishStatus
+}
+
+input UpdateFieldInput {
+  title: String
+  slug: String
+  description: String
+  imageUrl: String
+  publishStatus: PublishStatus
+  order: Int
+}
+
 input CreateNodeInput {
   roadmapId: ID!
   parentId: ID
@@ -220,6 +250,7 @@ input CreateNodeInput {
   order: Int
   coverUrl: String
   level: Level
+  visibility: Visibility
   fieldIds: [ID!]
 }
 
@@ -237,6 +268,7 @@ input UpdateNodeInput {
   isPublished: Boolean
   coverUrl: String
   level: Level
+  visibility: Visibility
   """Replaces the whole label set when present; omit to leave labels alone."""
   fieldIds: [ID!]
 }

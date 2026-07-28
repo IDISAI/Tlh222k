@@ -79,13 +79,13 @@ function Shape({ spec, animate }: { spec: ShapeSpec; animate: boolean }) {
  * click meant for the search pill sitting on top of it, and `aria-hidden` so
  * assistive tech skips it entirely.
  */
-export function HeroScene() {
+export function HeroScene({ layerClassName = "-z-10" }: { layerClassName?: string }) {
   const reducedMotion = usePrefersReducedMotion()
 
   return (
     <div
       aria-hidden
-      className="pointer-events-none absolute inset-0 -z-10 opacity-70"
+      className={`pointer-events-none absolute inset-0 opacity-70 ${layerClassName}`}
     >
       <Canvas
         camera={{ position: [0, 0, 6], fov: 45 }}

@@ -1,7 +1,7 @@
 import { verifyToken } from "@clerk/backend"
 import { RoadmapError } from "../common/roadmap-error"
 
-export type CallerRole = "viewer" | "admin" | "super-admin"
+export type CallerRole = "viewer" | "aio" | "admin" | "super-admin"
 
 export interface CurrentUser {
   userId: string
@@ -11,7 +11,7 @@ export interface CurrentUser {
 function normalizeRole(raw: unknown): CallerRole {
   if (typeof raw !== "string") return "viewer"
   const v = raw.trim().toLowerCase().replace(/_/g, "-")
-  return v === "admin" || v === "super-admin" ? v : "viewer"
+  return v === "aio" || v === "admin" || v === "super-admin" ? v : "viewer"
 }
 
 /**
@@ -55,6 +55,11 @@ export async function resolveUser(
 /** True for admin | super-admin callers. */
 export function isAdmin(user: CurrentUser | null): boolean {
   return user?.role === "admin" || user?.role === "super-admin"
+}
+
+/** Published Internal blocks stay discoverable, but only this audience may open them. */
+export function canAccessInternal(user: CurrentUser | null): boolean {
+  return user?.role === "aio" || user?.role === "admin" || user?.role === "super-admin"
 }
 
 /** Guard for write mutations (Req 1.4): admin | super-admin only. */

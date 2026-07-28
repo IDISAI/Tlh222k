@@ -90,6 +90,7 @@ export function slugify(input: string): string {
 export const PUBLISH_STATUSES = ["DRAFT", "PUBLISHED", "PRIVATE"] as const
 
 export type PublishStatus = (typeof PUBLISH_STATUSES)[number]
+export type Visibility = "FREE" | "INTERNAL"
 
 export function isPublishStatus(value: unknown): value is PublishStatus {
   return (
@@ -103,6 +104,12 @@ export function normalizePublishStatus(raw: unknown): PublishStatus {
   if (typeof raw !== "string") return "DRAFT"
   const value = raw.trim().toUpperCase()
   return isPublishStatus(value) ? value : "DRAFT"
+}
+
+export function normalizeVisibility(raw: unknown): Visibility {
+  return typeof raw === "string" && raw.trim().toUpperCase() === "INTERNAL"
+    ? "INTERNAL"
+    : "FREE"
 }
 
 /**

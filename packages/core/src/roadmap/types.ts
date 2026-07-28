@@ -46,6 +46,9 @@ export const MAX_DESCRIPTION_LENGTH = 500
  */
 export type CallerRole = "viewer" | "admin" | "super-admin"
 
+/** Access rule for a published block. Internal blocks are not learner-visible. */
+export type Visibility = "FREE" | "INTERNAL"
+
 /**
  * A discovery label ("Web Dev", "AI") rendered as a tab on /roadmaps. NOT a
  * hierarchy level — a Field owns no canvas and is never navigable; it only
@@ -57,8 +60,30 @@ export interface Field {
   title: string
   slug: string
   order: number
+  /** Editorial copy rendered in Field Explorer. */
+  description: string | null
+  /** One HTTPS image, shared by Explorer and CMS. */
+  imageUrl: string | null
   /** Draft, Published or Private. Only Published reaches learners. */
   publishStatus: PublishStatus
+}
+
+export interface CreateFieldInput {
+  title: string
+  slug?: string
+  description?: string | null
+  imageUrl?: string | null
+  publishStatus?: PublishStatus
+}
+
+export interface UpdateFieldInput {
+  title?: string
+  /** Fixed after initial save. */
+  slug?: string
+  description?: string | null
+  imageUrl?: string | null
+  publishStatus?: PublishStatus
+  order?: number
 }
 
 export interface Roadmap {
@@ -126,6 +151,8 @@ export interface RoadmapNode {
   coverUrl?: string | null
   /** Editorial difficulty; null means nobody has judged this block yet. */
   level?: Level | null
+  /** Internal blocks remain available to staff but never satisfy public Field rules. */
+  visibility?: Visibility
 }
 
 export interface RoadmapGraph {

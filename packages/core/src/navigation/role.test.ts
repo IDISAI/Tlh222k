@@ -5,6 +5,7 @@ import { devAuthRole } from "./role"
 describe("devAuthRole", () => {
   it("enables a configured role outside production", () => {
     expect(devAuthRole("development", "SUPER_ADMIN")).toBe("super-admin")
+    expect(devAuthRole("development", "aio")).toBe("aio")
     expect(devAuthRole("test", "viewer")).toBe("viewer")
   })
 

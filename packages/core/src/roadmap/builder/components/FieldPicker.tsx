@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useRef, useState } from "react"
-import { Check, Plus, X } from "lucide-react"
+import { Check, ChevronDown, Plus, X } from "lucide-react"
 import { Input } from "@workspace/ui/components/input"
 import { toast } from "@workspace/ui/components/sonner"
 import { cn } from "@workspace/ui/lib/utils"
@@ -51,6 +51,7 @@ export function FieldPicker({
   const [fields, setFields] = useState<Field[]>([])
   const [query, setQuery] = useState("")
   const [creating, setCreating] = useState(false)
+  const [open, setOpen] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -127,21 +128,45 @@ export function FieldPicker({
         </div>
       )}
 
-      <Input
-        ref={inputRef}
-        value={query}
-        disabled={disabled}
-        placeholder="Tìm hoặc tạo lĩnh vực…"
-        onChange={(e) => setQuery(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key !== "Enter") return
-          // Enter inside a dialog would otherwise submit the whole form.
-          e.preventDefault()
-          if (canCreate) void handleCreate()
-        }}
-      />
+      <div className="relative">
+        <Input
+          ref={inputRef}
+          value={query}
+          disabled={disabled}
+          placeholder="Tìm hoặc tạo lĩnh vực…"
+          aria-expanded={open}
+          aria-controls="field-picker-options"
+          className="pr-10"
+          onFocus={() => setOpen(true)}
+          onChange={(e) => {
+            setQuery(e.target.value)
+            setOpen(true)
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") {
+              setOpen(false)
+              inputRef.current?.blur()
+              return
+            }
+            if (e.key !== "Enter") return
+            // Enter inside a dialog would otherwise submit the whole form.
+            e.preventDefault()
+            if (canCreate) void handleCreate()
+          }}
+        />
+        <button
+          type="button"
+          aria-label={open ? "Đóng danh sách lĩnh vực" : "Mở danh sách lĩnh vực"}
+          aria-expanded={open}
+          disabled={disabled}
+          onClick={() => setOpen((value) => !value)}
+          className="absolute inset-y-0 right-0 grid w-10 place-items-center text-muted-foreground transition hover:text-foreground disabled:cursor-not-allowed"
+        >
+          <ChevronDown className={cn("size-4 transition-transform", open && "rotate-180")} />
+        </button>
+      </div>
 
-      <div className="max-h-40 overflow-y-auto rounded-md border">
+      {open && <div id="field-picker-options" className="max-h-40 overflow-y-auto rounded-md border">
         {matches.length === 0 && !canCreate ? (
           <p className="px-3 py-2 text-xs text-muted-foreground">
             {fields.length === 0
@@ -181,7 +206,7 @@ export function FieldPicker({
             {creating ? "Đang tạo…" : `Tạo "${query.trim()}"`}
           </button>
         )}
-      </div>
+      </div>}
     </div>
   )
 }
