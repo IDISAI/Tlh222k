@@ -760,6 +760,7 @@ export class RoadmapService {
       visibility?: Visibility
       /** Cover image URL; may be null. */
       coverUrl?: string | null
+      tags?: string[]
     },
     callerRole: CallerRole
   ): Promise<RoadmapNode> {
@@ -791,6 +792,7 @@ export class RoadmapService {
       coverUrl: input.coverUrl ?? null,
       level: input.level ?? null,
       visibility: input.visibility ?? "FREE",
+      tags: input.tags ?? [],
     }
     store.nodes.push(node)
     if (input.ownerId) {

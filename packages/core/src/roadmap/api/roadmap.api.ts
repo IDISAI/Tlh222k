@@ -36,7 +36,7 @@ const FIELD_FIELDS = `id title slug order description imageUrl publishStatus`
 const NODE_FIELDS = `
   id roadmapId parentId title slug description nodeType notionPageId
   articleType jupyterUrl positionX positionY order status isDeleted
-  linkedRoadmapId isPublished publishStatus coverUrl level visibility
+  linkedRoadmapId isPublished publishStatus coverUrl level visibility tags
   fields { ${FIELD_FIELDS} }
 `
 
@@ -435,6 +435,7 @@ export class RoadmapApi {
       level?: Level | null
       visibility?: Visibility
       coverUrl?: string | null
+      tags?: string[]
     },
     role: CallerRole
   ): Promise<RoadmapNode> {
@@ -456,6 +457,7 @@ export class RoadmapApi {
           level: input.level,
           visibility: input.visibility,
           coverUrl: input.coverUrl,
+          tags: input.tags,
         },
         role
       )
@@ -478,6 +480,7 @@ export class RoadmapApi {
         level: input.level,
         visibility: input.visibility,
         coverUrl: input.coverUrl,
+        tags: input.tags,
       },
       role
     )

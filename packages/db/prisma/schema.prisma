@@ -71,6 +71,11 @@ model Node {
   /// count. Null means nobody has judged this block yet, which is a real
   /// state — defaulting it would put a judgement in an editor's mouth.
   level           String?
+  /// Editorial, free-text tags — a different axis from Field (Field is the
+  /// discovery grouping shown as a scene; a tag is a lighter, admin-typed
+  /// facet used to narrow the roadmap picker). Empty array, never null, so
+  /// every reader can iterate it without an extra guard.
+  tags            String[] @default([])
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 

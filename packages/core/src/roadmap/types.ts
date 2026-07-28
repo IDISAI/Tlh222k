@@ -257,6 +257,8 @@ export interface CreateNodeInput {
   level?: Level | null
   /** FREE/INTERNAL; defaults to FREE when omitted. */
   visibility?: Visibility
+  /** Editorial free-text tags. Narrower than a Field; used by the picker's tag filter. */
+  tags?: string[]
   /** Discovery labels to attach on create. */
   fieldIds?: string[]
 }

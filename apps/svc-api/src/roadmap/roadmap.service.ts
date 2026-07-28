@@ -117,6 +117,7 @@ export interface NodeDto {
   coverUrl: string | null
   level: Level | null
   visibility: Visibility
+  tags: string[]
   /**
    * Discovery labels. Empty when the caller's query did not `include` them —
    * the GraphQL field is a non-null list, so callers see `[]`, never null.
@@ -247,6 +248,7 @@ export interface CreateNodeInput {
   coverUrl?: string | null
   level?: string | null
   visibility?: Visibility | null
+  tags?: string[] | null
   fieldIds?: string[] | null
 }
 
@@ -265,6 +267,8 @@ export interface UpdateNodeInput {
   coverUrl?: string | null
   level?: string | null
   visibility?: Visibility | null
+  /** Replaces the whole tag list when present; `undefined` leaves it alone. */
+  tags?: string[] | null
   /** Replaces the whole label set when present; `undefined` leaves it alone. */
   fieldIds?: string[] | null
 }
@@ -745,6 +749,7 @@ export class RoadmapService implements OnModuleInit {
             positionY: input.positionY,
             order,
             coverUrl: normalizeHttpUrl(input.coverUrl),
+            tags: input.tags ? [...new Set(input.tags.map((t) => t.trim()).filter(Boolean))] : undefined,
             level: normalizeLevel(input.level),
             visibility: normalizeVisibility(input.visibility),
           },
@@ -839,6 +844,10 @@ export class RoadmapService implements OnModuleInit {
               coverUrl:
                 input.coverUrl !== undefined
                   ? normalizeHttpUrl(input.coverUrl)
+                  : undefined,
+              tags:
+                input.tags !== undefined && input.tags !== null
+                  ? [...new Set(input.tags.map((t) => t.trim()).filter(Boolean))]
                   : undefined,
               // An explicit null clears the level; omitting it leaves it alone.
               level:
@@ -1119,6 +1128,7 @@ export class RoadmapService implements OnModuleInit {
           ? publishStatusFromLegacy(n.isPublished)
           : normalizePublishStatus(n.publishStatus),
       coverUrl: n.coverUrl ?? null,
+      tags: n.tags ?? [],
       // Narrowed here rather than trusted: the column is a plain string, and an
       // unreadable value means "unjudged", not a level nothing can render.
       level: normalizeLevel(n.level),

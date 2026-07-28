@@ -83,6 +83,8 @@ type RoadmapNode {
   coverUrl: String
   level: Level
   visibility: Visibility!
+  """Editorial free-text tags, narrower than a Field — used by the roadmap picker's tag filter."""
+  tags: [String!]!
   """
   Discovery labels this block carries. Many-to-many: a "Data Engineer" role
   can sit under both AI and Data, so it surfaces under either tab.
@@ -251,6 +253,7 @@ input CreateNodeInput {
   coverUrl: String
   level: Level
   visibility: Visibility
+  tags: [String!]
   fieldIds: [ID!]
 }
 
@@ -269,6 +272,8 @@ input UpdateNodeInput {
   coverUrl: String
   level: Level
   visibility: Visibility
+  """Replaces the whole tag list when present; omit to leave tags alone."""
+  tags: [String!]
   """Replaces the whole label set when present; omit to leave labels alone."""
   fieldIds: [ID!]
 }
