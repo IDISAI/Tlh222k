@@ -6,7 +6,7 @@ import { ArrowDown, ArrowUp, Check, ExternalLink, ImageIcon, Plus, Save, Search,
 import { Button } from "@workspace/ui/components/button"
 import { Input } from "@workspace/ui/components/input"
 import { cn } from "@workspace/ui/lib/utils"
-import { fieldPublishEligibility, reorderFieldMemberIds, RoadmapService, roadmapBackendEnabled, slugify, type CallerRole, type Field, type PublishStatus, type RoadmapNode } from "@workspace/core"
+import { fieldPublishEligibility, orphanedFieldMemberIds, reorderFieldMemberIds, RoadmapService, roadmapBackendEnabled, slugify, type CallerRole, type Field, type PublishStatus, type RoadmapNode } from "@workspace/core"
 import { FIELD_DESCRIPTION_MAX, FIELD_DESCRIPTION_WARN } from "@workspace/core"
 
 import { BASE_PATH } from "@/lib/paths"
@@ -212,7 +212,23 @@ export function FieldWorkspace({ id, role }: { id: string; role: CallerRole }) {
 
   const remove = async () => {
     if (field.publishStatus !== "DRAFT" || deleting) return
-    if (!window.confirm(`Xóa bản nháp “${field.title}”? Roadmap blocks vẫn được giữ lại.`)) return
+    // Every node's own `.fields` is already the full cross-Field membership
+    // list, loaded once with `nodes` — flatten it into the (fieldId, nodeId)
+    // pairs the pure orphan-detection function expects, rather than adding a
+    // second fetch just to reshape data already in memory.
+    const allMemberships = nodes.flatMap((node) =>
+      (node.fields ?? []).map((f) => ({ fieldId: f.id, nodeId: node.id }))
+    )
+    const orphanIds = orphanedFieldMemberIds(field.id, allMemberships)
+    const orphanTitles = orphanIds
+      .map((nodeId) => nodesById.get(nodeId)?.title)
+      .filter((title): title is string => Boolean(title))
+    const warning = orphanTitles.length
+      ? `
+
+${orphanTitles.length} roadmap sẽ không còn thuộc lĩnh vực nào và biến mất khỏi trang khám phá: ${orphanTitles.join(", ")}.`
+      : ""
+    if (!window.confirm(`Xóa bản nháp "${field.title}"? Roadmap blocks vẫn được giữ lại.${warning}`)) return
     setDeleting(true); setError("")
     try {
       await service.deleteField(field.id, role)
