@@ -1,9 +1,10 @@
 "use client"
 
-import { useLayoutEffect, useRef, useState } from "react"
+import { useEffect, useLayoutEffect, useRef, useState } from "react"
 import dynamic from "next/dynamic"
+import { useSearchParams } from "next/navigation"
 import gsap from "gsap"
-import { RoadmapList } from "@workspace/core"
+import { RoadmapList, useFields } from "@workspace/core"
 
 import { FieldFilterStrip } from "@/components/roadmaps/field-filter-strip"
 import { SearchPill } from "@/components/roadmaps/search-pill"
@@ -26,6 +27,23 @@ export function RoadmapsBrowser() {
   const [query, setQuery] = useState("")
   const [fieldId, setFieldId] = useState<string | null>(null)
   const heroRef = useRef<HTMLElement>(null)
+  // An Explore Field CTA on the Explorer links here as `?field=<slug>` — that
+  // is a promise the filter strip arrives already applied, not just that the
+  // URL carries the slug. Fields load async, so this resolves the slug to an
+  // id the moment both the param and the field list are available, and only
+  // acts once: a visitor who clears the filter by hand should not have it
+  // silently reapplied by a stale query string still sitting in the URL.
+  const fieldSlugParam = useSearchParams().get("field")
+  const { fields } = useFields()
+  const appliedFieldParam = useRef(false)
+  useEffect(() => {
+    if (!fieldSlugParam || appliedFieldParam.current || fields.length === 0) return
+    const match = fields.find((field) => field.slug === fieldSlugParam)
+    if (match) {
+      setFieldId(match.id)
+      appliedFieldParam.current = true
+    }
+  }, [fieldSlugParam, fields])
   const reducedMotion = usePrefersReducedMotion()
   // The headline runs ~860px at its 34px size, so the shapes only have a clear
   // band to sit in once the viewport is comfortably wider than that. 1128px is
