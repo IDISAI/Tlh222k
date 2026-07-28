@@ -239,6 +239,11 @@ export function RoadmapListAdmin({ role }: RoadmapListAdminProps) {
           onCreated={() => {
             // Stay on the list and refresh — no redirect into the new roadmap.
             setShowCreate(false)
+            // A search or status filter active at creation time would hide the
+            // new Draft row immediately after making it — clear both so what
+            // was just created is the thing the admin sees.
+            setQuery("")
+            setStatusFilter("all")
             void load()
           }}
         />

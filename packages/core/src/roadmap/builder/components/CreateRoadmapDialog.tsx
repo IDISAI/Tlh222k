@@ -68,6 +68,7 @@ export function CreateRoadmapDialog({
   const [level, setLevel] = useState<Level | "">("")
   const [visibility, setVisibility] = useState<Visibility>("FREE")
   const [coverUrl, setCoverUrl] = useState("")
+  const [tagsInput, setTagsInput] = useState("")
   const [error, setError] = useState("")
   const [busy, setBusy] = useState(false)
 
@@ -97,6 +98,10 @@ export function CreateRoadmapDialog({
           level: level || null,
           visibility,
           coverUrl: coverUrl.trim() || null,
+          tags: tagsInput
+            .split(",")
+            .map((tag) => tag.trim())
+            .filter(Boolean),
         },
         role
       )
@@ -202,6 +207,17 @@ export function CreateRoadmapDialog({
           <div className="space-y-1.5">
             <Label htmlFor="rm-cover">Ảnh bìa (URL HTTPS)</Label>
             <Input id="rm-cover" type="url" value={coverUrl} onChange={(event) => setCoverUrl(event.target.value)} placeholder="https://…" />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="rm-tags">Thẻ</Label>
+            <Input
+              id="rm-tags"
+              value={tagsInput}
+              onChange={(event) => setTagsInput(event.target.value)}
+              placeholder="frontend, web, scripting"
+            />
+            <p className="text-xs text-muted-foreground">Cách nhau bằng dấu phẩy.</p>
           </div>
 
           <p className="text-xs text-muted-foreground">
