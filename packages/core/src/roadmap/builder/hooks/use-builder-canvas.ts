@@ -346,12 +346,15 @@ export function useBuilderCanvas(
             )
           })
         }
-        // Sync publish state to Notion document if available
-        if (input.isPublished !== undefined && onSyncPublish) {
+        // Sync publish state to Notion document if available. The document
+        // only has a boolean, so Private collapses to "not published" here —
+        // the same lossy translation as everywhere else this boundary is
+        // crossed, not an oversight.
+        if (input.publishStatus !== undefined && onSyncPublish) {
           const notionKey = previous.notionPageId || previous.slug
           if (notionKey) {
             Promise.resolve(
-              onSyncPublish(notionKey, input.isPublished)
+              onSyncPublish(notionKey, reachesLearners(input.publishStatus))
             ).catch(console.error)
           }
         }
@@ -431,9 +434,11 @@ export function useBuilderCanvas(
     try {
       const updated = await service.updateRoadmap(
         roadmap.id,
-        // The boolean is still the only input the API takes; the status is
-        // derived from it server-side until #40 removes it.
-        { isPublished: !reachesLearners(statusOf(roadmap)) },
+        {
+          publishStatus: reachesLearners(statusOf(roadmap))
+            ? "DRAFT"
+            : "PUBLISHED",
+        },
         role
       )
       setRoadmap(updated)

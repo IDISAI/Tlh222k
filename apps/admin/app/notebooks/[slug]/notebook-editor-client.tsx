@@ -5,6 +5,9 @@ import { useAuth } from "@clerk/nextjs"
 import {
   NotebookEditor,
   RoadmapService,
+  publishStatusFromLegacy,
+  reachesLearners,
+  statusOf,
   useTraceEngines,
   type CallerRole,
   type TraceLanguage,
@@ -91,8 +94,12 @@ function NotebookEditorInner({
   const syncArticlePublish = useCallback(
     async (notebookSlug: string, published: boolean) => {
       const article = await findArticle(notebookSlug)
-      if (!article || article.isPublished === published) return
-      await roadmap.updateNode(article.id, { isPublished: published }, role)
+      if (!article || reachesLearners(statusOf(article)) === published) return
+      await roadmap.updateNode(
+        article.id,
+        { publishStatus: publishStatusFromLegacy(published) },
+        role
+      )
     },
     [findArticle, roadmap, role]
   )

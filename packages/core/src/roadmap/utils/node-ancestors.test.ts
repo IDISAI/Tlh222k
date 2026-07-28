@@ -20,7 +20,7 @@ function node(
     order: 0,
     status: "locked",
     isDeleted: false,
-    isPublished: true,
+    publishStatus: "PUBLISHED",
     description: null,
     notionPageId: null,
     articleType: null,

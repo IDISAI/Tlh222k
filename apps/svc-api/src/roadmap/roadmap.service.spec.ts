@@ -21,7 +21,7 @@ function node(id: string, roadmapId: string, parentId: string | null = null) {
     order: 0,
     isDeleted: false,
     linkedRoadmapId: null,
-    isPublished: false,
+    publishStatus: "DRAFT",
   }
 }
 

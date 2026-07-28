@@ -202,7 +202,7 @@ export function BuilderPage({
                     className="w-full"
                     onClick={() =>
                       void canvas.updateNodeMeta(owner.id, {
-                        isPublished: false,
+                        publishStatus: "DRAFT",
                       })
                     }
                   >
@@ -221,7 +221,7 @@ export function BuilderPage({
                     className="w-full"
                     onClick={() =>
                       void canvas.updateNodeMeta(owner.id, {
-                        isPublished: true,
+                        publishStatus: "PUBLISHED",
                       })
                     }
                   >

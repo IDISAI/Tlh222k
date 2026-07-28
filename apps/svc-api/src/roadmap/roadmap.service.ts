@@ -9,6 +9,7 @@ import {
   MAX_TITLE_LENGTH,
   NODE_TYPES,
   isNodeType,
+  legacyIsPublished,
   normalizeHttpUrl,
   normalizeFieldDescription,
   normalizeLevel,
@@ -87,7 +88,6 @@ export interface RoadmapDto {
   title: string
   description: string | null
   thumbnailUrl: string | null
-  isPublished: boolean
   publishStatus: PublishStatus
   nodeCount: number
   createdAt?: string | null
@@ -112,7 +112,6 @@ export interface NodeDto {
   isDeleted: boolean
   childrenCount: number
   linkedRoadmapId: string | null
-  isPublished: boolean
   publishStatus: PublishStatus
   coverUrl: string | null
   level: Level | null
@@ -156,13 +155,11 @@ const FIELD_ORDER_BY: Prisma.FieldOrderByWithRelationInput[] = [
 
 /**
  * Read a row's status. The column is a plain string, so it is narrowed here
- * rather than trusted; a row written before the column existed falls back to
- * what its boolean says, so no gate ever sees an empty status.
+ * rather than trusted — an unreadable value falls to DRAFT, same as an
+ * unreadable role falls to viewer: a gate must never see an empty status.
  */
-function statusOf(row: { publishStatus?: string | null; isPublished: boolean }) {
-  return row.publishStatus == null
-    ? publishStatusFromLegacy(row.isPublished)
-    : normalizePublishStatus(row.publishStatus)
+function statusOf(row: { publishStatus: string }) {
+  return normalizePublishStatus(row.publishStatus)
 }
 
 /** A label as Postgres hands it back — `publishStatus` is a plain column. */
@@ -212,7 +209,7 @@ export interface UpdateRoadmapInput {
   title?: string | null
   description?: string | null
   thumbnailUrl?: string | null
-  isPublished?: boolean | null
+  publishStatus?: PublishStatus | null
 }
 
 export interface CreateFieldInput {
@@ -263,7 +260,7 @@ export interface UpdateNodeInput {
   order?: number | null
   parentId?: string | null
   linkedRoadmapId?: string | null
-  isPublished?: boolean | null
+  publishStatus?: PublishStatus | null
   coverUrl?: string | null
   level?: string | null
   visibility?: Visibility | null
@@ -326,19 +323,32 @@ export class RoadmapService implements OnModuleInit {
         select: { id: true, slug: true, isPublished: true },
       })
       for (const doc of docs) {
-        await this.prisma.node.updateMany({
-          where: {
-            OR: [
-              { notionPageId: doc.id },
-              ...(doc.slug ? [{ slug: doc.slug }] : []),
-            ],
-            isPublished: !doc.isPublished,
-          },
-          data: {
-            isPublished: doc.isPublished,
-            publishStatus: publishStatusFromLegacy(doc.isPublished),
-          },
-        })
+        const linkedTo = {
+          OR: [
+            { notionPageId: doc.id },
+            ...(doc.slug ? [{ slug: doc.slug }] : []),
+          ],
+        }
+        // A Document only ever has two states, so it can assert "published" or
+        // "not published" — never Private, which is a deliberate admin choice
+        // orthogonal to the source document. Bringing the node down to Draft
+        // whenever it merely isn't Published (the old boolean-shaped check)
+        // would flip a Private node back to Draft the moment its document goes
+        // unpublished, silently discarding that choice. So the sync is
+        // one-directional per fact: published pulls a Draft/Private node up,
+        // unpublished only pulls a Published node down — Private is never a
+        // node this loop touches.
+        if (doc.isPublished) {
+          await this.prisma.node.updateMany({
+            where: { ...linkedTo, publishStatus: { not: "PUBLISHED" } },
+            data: { publishStatus: "PUBLISHED" },
+          })
+        } else {
+          await this.prisma.node.updateMany({
+            where: { ...linkedTo, publishStatus: "PUBLISHED" },
+            data: { publishStatus: "DRAFT" },
+          })
+        }
       }
     } catch (err) {
       console.error("Failed to sync publish states on startup:", err)
@@ -434,7 +444,6 @@ export class RoadmapService implements OnModuleInit {
       title: node.title,
       description: node.description,
       thumbnailUrl: null,
-      isPublished: true,
       // Synthetic wrapper around one block: it carries the block's own status
       // rather than a hardcoded one, so a private block cannot be dressed as
       // published by the shape used to render it.
@@ -582,7 +591,6 @@ export class RoadmapService implements OnModuleInit {
       title: node.title,
       description: node.description,
       thumbnailUrl: null,
-      isPublished: true,
       // Synthetic wrapper around one block: it carries the block's own status
       // rather than a hardcoded one, so a private block cannot be dressed as
       // published by the shape used to render it.
@@ -645,8 +653,7 @@ export class RoadmapService implements OnModuleInit {
         title: input.title.trim().slice(0, MAX_TITLE_LENGTH),
         description: input.description?.trim() || null,
         thumbnailUrl: input.thumbnailUrl ?? null,
-        isPublished: false,
-        publishStatus: publishStatusFromLegacy(false),
+        publishStatus: "DRAFT",
       },
     })
     await this.events.emit(created.id)
@@ -676,16 +683,9 @@ export class RoadmapService implements OnModuleInit {
           input.thumbnailUrl !== undefined
             ? input.thumbnailUrl || null
             : undefined,
-        isPublished:
-          input.isPublished !== undefined && input.isPublished !== null
-            ? input.isPublished
-            : undefined,
-        // The boolean is still the only way in from the API, so the status
-        // follows it. Nothing may write one without the other, or the two
-        // forms drift and whichever a reader picks decides what is public.
         publishStatus:
-          input.isPublished !== undefined && input.isPublished !== null
-            ? publishStatusFromLegacy(input.isPublished)
+          input.publishStatus !== undefined && input.publishStatus !== null
+            ? input.publishStatus
             : undefined,
       },
       include: {
@@ -833,13 +833,9 @@ export class RoadmapService implements OnModuleInit {
                 input.linkedRoadmapId !== undefined
                   ? (input.linkedRoadmapId ?? null)
                   : undefined,
-              isPublished:
-                input.isPublished !== undefined && input.isPublished !== null
-                  ? input.isPublished
-                  : undefined,
               publishStatus:
-                input.isPublished !== undefined && input.isPublished !== null
-                  ? publishStatusFromLegacy(input.isPublished)
+                input.publishStatus !== undefined && input.publishStatus !== null
+                  ? input.publishStatus
                   : undefined,
               coverUrl:
                 input.coverUrl !== undefined
@@ -903,14 +899,16 @@ export class RoadmapService implements OnModuleInit {
             }
           }
 
-          // Title sync only — publish lives on the Document editor (same
-          // pattern as Jupyter notebook EditorToolbar), not on node edit.
-          // Keep isPublished dual-write for callers that still set it.
+          // Title sync, plus publish state for callers that still set it from
+          // node edit (the block-level Xuất bản/Hủy xuất bản toggle) even
+          // though the Document editor is the primary place for it. Documents
+          // keep only a boolean, so PRIVATE collapses to false here — a
+          // deliberate, lossy translation, not an oversight.
           if (node.notionPageId) {
             const docData: { title?: string; isPublished?: boolean } = {}
             if (input.title != null) docData.title = u.title
-            if (input.isPublished != null)
-              docData.isPublished = input.isPublished
+            if (input.publishStatus != null)
+              docData.isPublished = legacyIsPublished(input.publishStatus)
             if (Object.keys(docData).length > 0) {
               await tx.document.updateMany({
                 where: { id: node.notionPageId },
@@ -1072,8 +1070,7 @@ export class RoadmapService implements OnModuleInit {
       title: string
       description: string | null
       thumbnailUrl: string | null
-      isPublished: boolean
-      publishStatus?: string
+      publishStatus: string
       createdAt?: Date
       updatedAt?: Date
     },
@@ -1085,14 +1082,7 @@ export class RoadmapService implements OnModuleInit {
       title: r.title,
       description: r.description,
       thumbnailUrl: r.thumbnailUrl,
-      isPublished: r.isPublished,
-      // Both forms are read while the boolean still exists. The stored status
-      // wins when present; a row that predates the column falls back to what
-      // its boolean implies, so no caller ever sees an empty status.
-      publishStatus:
-        r.publishStatus === undefined
-          ? publishStatusFromLegacy(r.isPublished)
-          : normalizePublishStatus(r.publishStatus),
+      publishStatus: normalizePublishStatus(r.publishStatus),
       nodeCount,
       createdAt: r.createdAt ? r.createdAt.toISOString() : null,
       updatedAt: r.updatedAt ? r.updatedAt.toISOString() : null,
@@ -1122,11 +1112,7 @@ export class RoadmapService implements OnModuleInit {
       isDeleted: n.isDeleted,
       childrenCount,
       linkedRoadmapId: n.linkedRoadmapId,
-      isPublished: n.isPublished,
-      publishStatus:
-        n.publishStatus === undefined
-          ? publishStatusFromLegacy(n.isPublished)
-          : normalizePublishStatus(n.publishStatus),
+      publishStatus: normalizePublishStatus(n.publishStatus),
       coverUrl: n.coverUrl ?? null,
       tags: n.tags ?? [],
       // Narrowed here rather than trusted: the column is a plain string, and an

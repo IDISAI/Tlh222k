@@ -44,22 +44,21 @@ export function reachesLearners(status: PublishStatus): boolean {
 }
 
 /**
- * Read a record's status while both forms still exist. The stored status wins;
- * a record written before the column existed falls back to what its boolean
- * says. Nothing that gates visibility should read either field directly, or the
- * two drift and whichever a screen happens to pick decides what is public.
+ * Read a record's status. Narrowed here rather than trusted — a payload that
+ * omitted the field, or a value this system doesn't recognise, falls to
+ * DRAFT. Nothing that gates visibility should read the raw field directly, or
+ * a gate and a badge built from the same data can end up disagreeing.
  */
 export function statusOf(record: {
   publishStatus?: PublishStatus | string | null
-  isPublished?: boolean | null
 }): PublishStatus {
-  if (record.publishStatus != null) {
-    return normalizePublishStatus(record.publishStatus)
-  }
-  return publishStatusFromLegacy(record.isPublished === true)
+  return normalizePublishStatus(record.publishStatus)
 }
 
-/** Backfill and read-side translation while the legacy boolean still exists. */
+/**
+ * Backfill translation, and the read side of the Document sync boundary — a
+ * Document still carries only a boolean.
+ */
 export function publishStatusFromLegacy(isPublished: boolean): PublishStatus {
   return isPublished ? "PUBLISHED" : "DRAFT"
 }

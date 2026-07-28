@@ -1,4 +1,5 @@
 import type { Composition, Field, Roadmap, RoadmapNode } from "../types"
+import { reachesLearners, statusOf } from "../publish-status"
 import { MOCK_NODES } from "./nodes.mock"
 import { MOCK_ROADMAPS } from "./roadmaps.mock"
 
@@ -35,7 +36,9 @@ function seed(): BuilderStore {
     { id: "field-web", title: "Web development", slug: "web-development", order: 2, description: "Make useful, resilient products for the web.", imageUrl: "https://images.unsplash.com/photo-1498050108023-c5249f4df085?auto=format&fit=crop&w=1800&q=85", publishStatus: "PUBLISHED" },
   ]
   const publishedRoadmapIds = new Set(
-    roadmaps.filter((roadmap) => roadmap.isPublished).map((roadmap) => roadmap.id)
+    roadmaps
+      .filter((roadmap) => reachesLearners(statusOf(roadmap)))
+      .map((roadmap) => roadmap.id)
   )
   return {
     roadmaps,
@@ -82,13 +85,21 @@ export function getStore(): BuilderStore {
   if (!Array.isArray(store.fields)) store.fields = seed().fields
   // Backfill persisted stores created before Field Explorer needed a block's
   // explicit publish status. This is local-only migration, no data loss.
+  //
+  // A browser's localStorage payload from before this migration existed can
+  // still carry the old `isPublished` boolean the current types no longer
+  // declare — read it defensively as unknown legacy shape, same as the
+  // "Corrupt / legacy payload" handling just above.
   const publishedRoadmapIds = new Set(
-    store.roadmaps.filter((roadmap) => roadmap.isPublished).map((roadmap) => roadmap.id)
+    store.roadmaps
+      .filter(
+        (roadmap) => (roadmap as unknown as { isPublished?: boolean }).isPublished
+      )
+      .map((roadmap) => roadmap.id)
   )
   store.nodes.forEach((node) => {
     if (node.publishStatus === undefined) {
       node.publishStatus = publishedRoadmapIds.has(node.roadmapId) ? "PUBLISHED" : "DRAFT"
-      node.isPublished = node.publishStatus === "PUBLISHED"
     }
   })
   return store

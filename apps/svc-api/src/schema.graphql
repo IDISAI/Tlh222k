@@ -52,7 +52,6 @@ type Roadmap {
   title: String!
   description: String
   thumbnailUrl: String
-  isPublished: Boolean!
   publishStatus: PublishStatus!
   nodeCount: Int!
   createdAt: String
@@ -77,7 +76,6 @@ type RoadmapNode {
   isDeleted: Boolean!
   childrenCount: Int!
   linkedRoadmapId: ID
-  isPublished: Boolean!
   publishStatus: PublishStatus!
   """The image standing in for this block wherever it is shown as a card."""
   coverUrl: String
@@ -217,7 +215,7 @@ input UpdateRoadmapInput {
   title: String
   description: String
   thumbnailUrl: String
-  isPublished: Boolean
+  publishStatus: PublishStatus
 }
 
 input CreateFieldInput {
@@ -268,7 +266,7 @@ input UpdateNodeInput {
   order: Int
   parentId: ID
   linkedRoadmapId: ID
-  isPublished: Boolean
+  publishStatus: PublishStatus
   coverUrl: String
   level: Level
   visibility: Visibility

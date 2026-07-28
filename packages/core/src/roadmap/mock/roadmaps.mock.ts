@@ -18,7 +18,6 @@ export const MOCK_ROADMAPS: Roadmap[] = [
     description:
       "Học HTML, CSS và JavaScript rồi tiến tới các framework hiện đại như React để xây dựng giao diện người dùng tương tác, có khả năng truy cập tốt, hiệu năng cao và responsive trên mọi thiết bị.",
     thumbnailUrl: "https://placehold.co/600x338/6366f1/ffffff?text=Frontend",
-    isPublished: true,
     publishStatus: "PUBLISHED",
     nodeCount: MOCK_NODES.frontend?.length ?? 0,
     fields: [],
@@ -34,7 +33,6 @@ export const MOCK_ROADMAPS: Roadmap[] = [
     description: "Node.js, cơ sở dữ liệu, thiết kế API và xác thực.",
     // No thumbnail → card must render a placeholder.
     thumbnailUrl: null,
-    isPublished: true,
     publishStatus: "PUBLISHED",
     nodeCount: MOCK_NODES.backend?.length ?? 0,
     fields: [],
@@ -49,7 +47,6 @@ export const MOCK_ROADMAPS: Roadmap[] = [
     title: "DevOps",
     description: "Linux, Docker, CI/CD và Kubernetes cho vận hành hiện đại.",
     thumbnailUrl: "https://placehold.co/600x338/10b981/ffffff?text=DevOps",
-    isPublished: true,
     publishStatus: "PUBLISHED",
     nodeCount: MOCK_NODES.devops?.length ?? 0,
     fields: [],
@@ -66,7 +63,6 @@ export const MOCK_ROADMAPS: Roadmap[] = [
     title: "AI Engineer",
     description: "Bản nháp lộ trình AI Engineer — chưa xuất bản.",
     thumbnailUrl: null,
-    isPublished: false,
     publishStatus: "DRAFT",
     nodeCount: MOCK_NODES["ai-engineer"]?.length ?? 0,
     fields: [],

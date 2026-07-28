@@ -15,6 +15,7 @@ import {
   type Level,
   type NodeStatus,
   type NodeType,
+  type PublishStatus,
   type Roadmap,
   type RoadmapEdge,
   type RoadmapGraph,
@@ -110,7 +111,6 @@ export class RoadmapService {
         title: n.title,
         description: n.description,
         thumbnailUrl: null,
-        isPublished: true,
         publishStatus: "PUBLISHED",
         nodeCount: childCount.get(n.id) ?? 0,
         fields: n.fields ?? [],
@@ -313,7 +313,6 @@ export class RoadmapService {
             title: node.title,
             description: node.description,
             thumbnailUrl: null,
-            isPublished: true,
             publishStatus: "PUBLISHED",
             nodeCount: subtree.length,
             fields: [],
@@ -355,7 +354,6 @@ export class RoadmapService {
         title: node.title,
         description: node.description,
         thumbnailUrl: null,
-        isPublished: true,
         publishStatus: "PUBLISHED",
         nodeCount: roadmapNodes.length,
         fields: [],
@@ -408,7 +406,6 @@ export class RoadmapService {
       title: input.title.trim().slice(0, MAX_TITLE_LENGTH),
       description: input.description?.trim() || null,
       thumbnailUrl: input.thumbnailUrl ?? null,
-      isPublished: false,
       publishStatus: "DRAFT",
       nodeCount: 0,
       fields: [],
@@ -425,7 +422,7 @@ export class RoadmapService {
   // ponytail: → `updateRoadmap` mutation
   async updateRoadmap(
     id: string,
-    input: Partial<CreateRoadmapInput> & { isPublished?: boolean },
+    input: Partial<CreateRoadmapInput> & { publishStatus?: PublishStatus },
     callerRole: CallerRole
   ): Promise<Roadmap> {
     assertCanWrite(callerRole)
@@ -441,7 +438,9 @@ export class RoadmapService {
     if (input.thumbnailUrl !== undefined) {
       roadmap.thumbnailUrl = input.thumbnailUrl || null
     }
-    if (input.isPublished !== undefined) roadmap.isPublished = input.isPublished
+    if (input.publishStatus !== undefined) {
+      roadmap.publishStatus = input.publishStatus
+    }
     roadmap.updatedAt = new Date().toISOString() // bump on every write
     persistStore()
     emitRoadmapUpdate(id)
@@ -534,7 +533,9 @@ export class RoadmapService {
     if (input.linkedRoadmapId !== undefined) {
       node.linkedRoadmapId = input.linkedRoadmapId ?? null
     }
-    if (input.isPublished !== undefined) node.isPublished = input.isPublished
+    if (input.publishStatus !== undefined) {
+      node.publishStatus = input.publishStatus
+    }
     if (input.fieldIds !== undefined) {
       const ids = new Set(input.fieldIds)
       node.fields = getStore().fields.filter((field) => ids.has(field.id))

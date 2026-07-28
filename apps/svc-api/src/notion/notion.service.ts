@@ -4,6 +4,7 @@ import type { Document, Prisma } from "@prisma/client"
 import { PrismaService } from "../prisma/prisma.service"
 import { RoadmapError } from "../common/roadmap-error"
 import { assertCanWrite, isAdmin, type CurrentUser } from "../auth/clerk"
+import { publishStatusFromLegacy } from "../roadmap/hierarchy"
 
 export interface NotionDoc {
   id: string
@@ -145,7 +146,7 @@ export class NotionService {
             ...(parent.slug ? [{ slug: parent.slug }] : []),
           ],
         },
-        data: { isPublished: true },
+        data: { publishStatus: "PUBLISHED" },
       })
       await this.publishParentsUpward(parent.parentDocumentId)
     }
@@ -173,10 +174,13 @@ export class NotionService {
         },
       })
       
-      // Keep Node isPublished and title in sync with the backing Document
+      // Keep Node publishStatus and title in sync with the backing Document.
+      // A Document only ever carries a boolean, so this translation is the
+      // same lossy one used at every other Document/Node boundary.
       if (fields.isPublished != null || fields.title != null) {
-        const updateData: { isPublished?: boolean; title?: string } = {}
-        if (fields.isPublished != null) updateData.isPublished = fields.isPublished
+        const updateData: { publishStatus?: string; title?: string } = {}
+        if (fields.isPublished != null)
+          updateData.publishStatus = publishStatusFromLegacy(fields.isPublished)
         if (fields.title != null) updateData.title = fields.title
         
         await this.prisma.node.updateMany({

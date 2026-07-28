@@ -28,7 +28,7 @@ import { gql } from "./client"
 
 // Field selections matching the domain types (childrenCount is server-only).
 const ROADMAP_FIELDS = `
-  id slug title description thumbnailUrl isPublished publishStatus nodeCount createdAt updatedAt
+  id slug title description thumbnailUrl publishStatus nodeCount createdAt updatedAt
 `
 /** Every column of a discovery label. One place, so the next rename is one edit. */
 const FIELD_FIELDS = `id title slug order description imageUrl publishStatus`
@@ -36,7 +36,7 @@ const FIELD_FIELDS = `id title slug order description imageUrl publishStatus`
 const NODE_FIELDS = `
   id roadmapId parentId title slug description nodeType notionPageId
   articleType jupyterUrl positionX positionY order status isDeleted
-  linkedRoadmapId isPublished publishStatus coverUrl level visibility tags
+  linkedRoadmapId publishStatus coverUrl level visibility tags
   fields { ${FIELD_FIELDS} }
 `
 
@@ -73,7 +73,6 @@ export class RoadmapApi {
       title: n.title,
       description: n.description,
       thumbnailUrl: null,
-      isPublished: true,
       // `publicBlocks` only ever returns published blocks, but the card carries
       // the block's own status rather than a hardcoded one so a later screen
       // that reuses this shape cannot be misled by it.
@@ -257,7 +256,7 @@ export class RoadmapApi {
 
   async updateRoadmap(
     id: string,
-    input: Partial<CreateRoadmapInput> & { isPublished?: boolean },
+    input: Partial<CreateRoadmapInput> & { publishStatus?: PublishStatus },
     _callerRole: CallerRole
   ): Promise<Roadmap> {
     const data = await gql<{ updateRoadmap: Roadmap }>(

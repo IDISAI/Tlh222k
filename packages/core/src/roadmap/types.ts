@@ -92,11 +92,9 @@ export interface Roadmap {
   title: string
   description: string | null
   thumbnailUrl: string | null
-  isPublished: boolean
   /**
    * Draft, Published or Private. Named apart from `status`, which on a block
-   * means the viewer's own progress. Carried beside `isPublished` until every
-   * reader has moved across.
+   * means the viewer's own progress.
    */
   publishStatus: PublishStatus
   nodeCount: number
@@ -143,8 +141,6 @@ export interface RoadmapNode {
   isDeleted?: boolean
   /** Roadmap auto-created for role/skill nodes (notion-article-node Req 11). */
   linkedRoadmapId?: string | null
-  /** Publish state synced with the linked Document (notion-article-node Req 7). */
-  isPublished?: boolean
   /** Draft, Published or Private. See the note on `Roadmap.publishStatus`. */
   publishStatus?: PublishStatus
   /** Image standing in for this block wherever it renders as a card. */
@@ -267,7 +263,7 @@ export type UpdateNodeInput = Partial<
   Omit<CreateNodeInput, "roadmapId" | "nodeType" | "slug">
 > & {
   linkedRoadmapId?: string | null
-  isPublished?: boolean
+  publishStatus?: PublishStatus
 }
 
 // ── Service errors ──────────────────────────────────────────────────────────
