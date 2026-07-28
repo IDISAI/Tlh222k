@@ -12,6 +12,7 @@ import {
   type CreateRoadmapInput,
   type EdgeKind,
   type Field,
+  type Level,
   type NodeStatus,
   type NodeType,
   type Roadmap,
@@ -20,6 +21,7 @@ import {
   type RoadmapNode,
   type UpdateFieldInput,
   type UpdateNodeInput,
+  type Visibility,
 } from "./types"
 import { getStore, persistStore } from "./mock/builder-store"
 import { reachesLearners, statusOf } from "./publish-status"
@@ -211,6 +213,25 @@ export class RoadmapService {
     if (data.order !== undefined) field.order = data.order
     persistStore()
     return clone(field)
+  }
+
+  /** Ordered roadmap-block memberships for one Field Workspace. */
+  async listFieldNodeIds(fieldId: string, _callerRole: CallerRole): Promise<string[]> {
+    await delay()
+    const store = getStore()
+    return store.nodes
+      .filter((node) => !node.isDeleted && node.fields?.some((item) => item.id === fieldId))
+      .map((node) => node.id)
+  }
+
+  async reorderFieldMembership(
+    _fieldId: string,
+    _nodeIds: string[],
+    _callerRole: CallerRole
+  ): Promise<boolean> {
+    await delay()
+    // The mock store does not persist membership order; accept the call silently.
+    return true
   }
 
   // ponytail: → `deleteField` mutation
@@ -733,6 +754,12 @@ export class RoadmapService {
       positionY: number
       /** Accepted for signature parity; the mock has no label store. */
       fieldIds?: string[]
+      /** Editorial difficulty; null means "nobody has judged this yet". */
+      level?: Level | null
+      /** FREE/INTERNAL; defaults to FREE when omitted. */
+      visibility?: Visibility
+      /** Cover image URL; may be null. */
+      coverUrl?: string | null
     },
     callerRole: CallerRole
   ): Promise<RoadmapNode> {
@@ -761,6 +788,9 @@ export class RoadmapService {
       positionY: input.positionY,
       order: store.nodes.length,
       status: "locked",
+      coverUrl: input.coverUrl ?? null,
+      level: input.level ?? null,
+      visibility: input.visibility ?? "FREE",
     }
     store.nodes.push(node)
     if (input.ownerId) {

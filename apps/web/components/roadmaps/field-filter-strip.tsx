@@ -36,14 +36,16 @@ const ICONS: Record<string, ComponentType<{ className?: string }>> = {
 }
 
 /**
- * Horizontally scrollable label tabs under the hero. `null` means "All" — the
+ * Horizontally scrollable Field tabs under the hero. `null` means "All" — the
  * unfiltered catalogue — and is always the first tab so there is a way back
  * from a filter that matches nothing.
  *
- * Renders nothing when no labels exist: an empty strip is chrome with no
- * function, and the mock backend has no labels at all.
+ * The rule is the same as the Field Explorer (#50): only Published Fields
+ * appear, in the order editors arranged them. Renders nothing when no such
+ * Fields exist: an empty strip is chrome with no function, and the mock
+ * backend has no labels at all.
  */
-export function CategoryStrip({
+export function FieldFilterStrip({
   selectedFieldId,
   onSelect,
 }: {

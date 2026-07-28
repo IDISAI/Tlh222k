@@ -7,6 +7,7 @@ import type {
   CreateRoadmapInput,
   EdgeKind,
   Field,
+  Level,
   NodeStatus,
   NodeType,
   PublishStatus,
@@ -16,6 +17,7 @@ import type {
   RoadmapNode,
   UpdateFieldInput,
   UpdateNodeInput,
+  Visibility,
 } from "../types"
 import {
   deriveCompositionFromNodes,
@@ -430,6 +432,9 @@ export class RoadmapApi {
       positionX: number
       positionY: number
       fieldIds?: string[]
+      level?: Level | null
+      visibility?: Visibility
+      coverUrl?: string | null
     },
     role: CallerRole
   ): Promise<RoadmapNode> {
@@ -448,6 +453,9 @@ export class RoadmapApi {
           positionX: input.positionX,
           positionY: input.positionY,
           fieldIds: input.fieldIds,
+          level: input.level,
+          visibility: input.visibility,
+          coverUrl: input.coverUrl,
         },
         role
       )
@@ -467,6 +475,9 @@ export class RoadmapApi {
         positionX: input.positionX,
         positionY: input.positionY,
         fieldIds: input.fieldIds,
+        level: input.level,
+        visibility: input.visibility,
+        coverUrl: input.coverUrl,
       },
       role
     )

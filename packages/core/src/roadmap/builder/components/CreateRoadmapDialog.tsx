@@ -22,7 +22,9 @@ import {
   MAX_DESCRIPTION_LENGTH,
   MAX_TITLE_LENGTH,
   type CallerRole,
+  type Level,
   type RoadmapNode,
+  type Visibility,
 } from "../../types"
 import { serviceErrorMessage } from "../utils/toast-messages"
 import { FieldPicker } from "./FieldPicker"
@@ -63,6 +65,9 @@ export function CreateRoadmapDialog({
   const [description, setDescription] = useState("")
   const [nodeType, setNodeType] = useState<"role" | "skill">("role")
   const [fieldIds, setFieldIds] = useState<string[]>([])
+  const [level, setLevel] = useState<Level | "">("")
+  const [visibility, setVisibility] = useState<Visibility>("FREE")
+  const [coverUrl, setCoverUrl] = useState("")
   const [error, setError] = useState("")
   const [busy, setBusy] = useState(false)
 
@@ -89,6 +94,9 @@ export function CreateRoadmapDialog({
           positionX: 0,
           positionY: 0,
           fieldIds,
+          level: level || null,
+          visibility,
+          coverUrl: coverUrl.trim() || null,
         },
         role
       )
@@ -184,6 +192,16 @@ export function CreateRoadmapDialog({
               onChange={setFieldIds}
               disabled={busy}
             />
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className="space-y-1.5"><Label htmlFor="rm-level">Cấp độ</Label><select id="rm-level" value={level} onChange={(event) => setLevel(event.target.value as Level | "")} className="h-10 w-full rounded-md border bg-background px-3 text-sm"><option value="">Chưa chọn</option><option value="BASIC">Cơ bản</option><option value="INTERMEDIATE">Trung cấp</option><option value="ADVANCED">Nâng cao</option></select></label>
+            <label className="space-y-1.5"><Label htmlFor="rm-visibility">Quyền xem</Label><select id="rm-visibility" value={visibility} onChange={(event) => setVisibility(event.target.value as Visibility)} className="h-10 w-full rounded-md border bg-background px-3 text-sm"><option value="FREE">Miễn phí</option><option value="INTERNAL">Nội bộ AIO</option></select></label>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="rm-cover">Ảnh bìa (URL HTTPS)</Label>
+            <Input id="rm-cover" type="url" value={coverUrl} onChange={(event) => setCoverUrl(event.target.value)} placeholder="https://…" />
           </div>
 
           <p className="text-xs text-muted-foreground">

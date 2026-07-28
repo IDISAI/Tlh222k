@@ -153,6 +153,16 @@ export interface RoadmapNode {
   level?: Level | null
   /** Internal blocks remain available to staff but never satisfy public Field rules. */
   visibility?: Visibility
+  /** ISO 8601 last-update time. Present on list responses. */
+  updatedAt?: string
+  /** ISO 8601 create time. */
+  createdAt?: string
+  /** ID of the creator. */
+  authorId?: string
+  /** Display name of the creator. */
+  authorName?: string
+  /** Editorial tags. */
+  tags?: string[]
 }
 
 export interface RoadmapGraph {
@@ -245,6 +255,8 @@ export interface CreateNodeInput {
   order?: number
   coverUrl?: string | null
   level?: Level | null
+  /** FREE/INTERNAL; defaults to FREE when omitted. */
+  visibility?: Visibility
   /** Discovery labels to attach on create. */
   fieldIds?: string[]
 }

@@ -5,7 +5,7 @@ import dynamic from "next/dynamic"
 import gsap from "gsap"
 import { RoadmapList } from "@workspace/core"
 
-import { CategoryStrip } from "@/components/roadmaps/category-strip"
+import { FieldFilterStrip } from "@/components/roadmaps/field-filter-strip"
 import { SearchPill } from "@/components/roadmaps/search-pill"
 import { useMediaQuery } from "@/hooks/use-media-query"
 import { usePrefersReducedMotion } from "@/hooks/use-prefers-reduced-motion"
@@ -71,7 +71,7 @@ export function RoadmapsBrowser() {
       </section>
 
       <div className="mt-6">
-        <CategoryStrip selectedFieldId={fieldId} onSelect={setFieldId} />
+        <FieldFilterStrip selectedFieldId={fieldId} onSelect={setFieldId} />
       </div>
 
       <main className="mx-auto w-full max-w-[1280px] flex-1 px-5 pb-16 pt-8 md:px-10">

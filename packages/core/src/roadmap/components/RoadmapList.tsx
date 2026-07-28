@@ -84,7 +84,7 @@ export function RoadmapList({
         </p>
         <p className="text-sm text-muted-foreground">
           {filtered
-            ? "Try another keyword or category."
+            ? "Try another keyword or switch Fields."
             : "Check back soon — new paths are published regularly."}
         </p>
       </div>
