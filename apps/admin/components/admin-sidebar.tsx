@@ -12,7 +12,7 @@ export function AdminSidebar({ role }: { role: string | null }) {
   const [collapsed, setCollapsed] = useState(false)
 
   return (
-    <aside className={cn("sticky top-0 hidden h-screen shrink-0 flex-col border-r bg-white transition-[width] duration-200 md:flex", collapsed ? "w-[68px]" : "w-60")}>
+    <aside className={cn("sticky top-0 hidden h-screen shrink-0 flex-col border-r bg-card transition-[width] duration-200 md:flex", collapsed ? "w-[68px]" : "w-60")}>
       <div className={cn("flex h-16 items-center", collapsed ? "justify-center" : "justify-between px-4")}>
         <a href={`${BASE_PATH}/fields`} aria-label="lh222k CMS" className="flex items-center gap-2 text-xl font-extrabold tracking-[-1px]">
           <span>{collapsed ? "lh" : "lh222k"}</span>{!collapsed && <span className="rounded-full border px-2 py-0.5 text-[10px] font-bold text-muted-foreground">CMS</span>}

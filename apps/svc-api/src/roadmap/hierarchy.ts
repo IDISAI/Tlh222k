@@ -148,3 +148,19 @@ export function normalizeLevel(raw: unknown): Level | null {
   const value = raw.trim().toUpperCase()
   return isLevel(value) ? value : null
 }
+
+/**
+ * A Field's description is the subtitle over its full-viewport image, so it is
+ * capped to what that scene holds. Mirrors `field-limits.ts` in the shared
+ * package, duplicated for the same reason the other domain constants are.
+ *
+ * The form's maxLength only stops a person typing. An API caller is not
+ * typing, so the cap has to hold here too.
+ */
+export const FIELD_DESCRIPTION_MAX = 160
+
+export function normalizeFieldDescription(raw: unknown): string | null {
+  if (typeof raw !== "string") return null
+  const trimmed = raw.trim().slice(0, FIELD_DESCRIPTION_MAX)
+  return trimmed || null
+}

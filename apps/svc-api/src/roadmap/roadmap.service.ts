@@ -10,6 +10,7 @@ import {
   NODE_TYPES,
   isNodeType,
   normalizeHttpUrl,
+  normalizeFieldDescription,
   normalizeLevel,
   normalizePublishStatus,
   publishStatusFromLegacy,
@@ -1176,7 +1177,7 @@ export class RoadmapService implements OnModuleInit {
         title: trimmed,
         slug: input.slug?.trim() || (await this.uniqueFieldSlug(trimmed)),
         order: count,
-        description: input.description?.trim() || null,
+        description: normalizeFieldDescription(input.description),
         imageUrl: input.imageUrl?.trim() || null,
         publishStatus: input.publishStatus ?? "DRAFT",
       },
@@ -1223,7 +1224,7 @@ export class RoadmapService implements OnModuleInit {
     if (input.publishStatus === "PUBLISHED" || input.publishStatus === "PRIVATE") {
       const description = input.description === undefined
         ? existing.description
-        : input.description?.trim() || null
+        : normalizeFieldDescription(input.description)
       const imageUrl = input.imageUrl === undefined
         ? existing.imageUrl
         : input.imageUrl?.trim() || null

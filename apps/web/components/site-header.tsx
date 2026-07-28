@@ -17,11 +17,9 @@ type ProductTab = {
   isNew?: boolean
 }
 
-const TABS: ProductTab[] = [
-  { href: "/roadmaps", label: "Roadmaps", icon: Map },
-  { href: "/notebooks", label: "Notebooks", icon: NotebookPen },
-  { href: "/community", label: "Community", icon: Users, isNew: true },
-]
+// Only routes that exist. `/notebooks` resolves a notebook by slug and has no
+// index, and `/community` was never built - both answered 404 from the nav.
+const TABS: ProductTab[] = [{ href: "/roadmaps", label: "Roadmaps", icon: Map }]
 
 function ProductTabLink({
   tab: { href, label, icon: Icon, isNew },

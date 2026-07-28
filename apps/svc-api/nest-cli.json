@@ -6,7 +6,12 @@
     "deleteOutDir": true,
     "assets": ["**/*.graphql"],
     "watchAssets": true,
-    "builder": "tsc",
+    "builder": {
+      "type": "swc",
+      "options": {
+        "copyFiles": true
+      }
+    },
     "typeCheck": false
   }
 }

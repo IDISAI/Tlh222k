@@ -1,6 +1,6 @@
 "use client"
 
-import { ClerkLoaded, SignInButton, SignOutButton, UserButton, useAuth } from "@clerk/nextjs"
+import { ClerkLoaded, SignInButton, UserButton, useAuth } from "@clerk/nextjs"
 import { devAuthRole } from "@workspace/core"
 
 export function AuthHeader({ tone = "default" }: { tone?: "default" | "on-dark" }) {
@@ -31,21 +31,10 @@ function ClerkAuthHeader({ tone }: { tone: "default" | "on-dark" }) {
   return (
     <ClerkLoaded>
       {isSignedIn ? (
-        <span className="flex items-center gap-1.5">
-          <UserButton />
-          <SignOutButton>
-            <button
-              type="button"
-              className={
-                tone === "on-dark"
-                  ? "rounded-full border border-white/45 bg-black/65 px-3 py-2 text-xs font-semibold text-white shadow-lg backdrop-blur-sm transition hover:bg-black/80"
-                  : "rounded-md border px-3 py-1 text-sm font-medium transition-colors hover:bg-muted"
-              }
-            >
-              Đăng xuất
-            </button>
-          </SignOutButton>
-        </span>
+        // Clerk's own avatar menu already carries sign-out, so a second button
+        // beside it offers the same action twice and leaves the user guessing
+        // whether they differ.
+        <UserButton />
       ) : (
         <SignInButton mode="redirect">
           <button

@@ -76,3 +76,10 @@ tools/pw-notion/state.json
 tools/pw-notion/shots/
 tools/pw-notion/*.mjs
 .env*
+
+# Local dev-runner output and scratch plans, never part of a build.
+.zcode/
+*.dev.err.log
+*.dev.out.log
+.*-dev.err.log
+.*-dev.out.log
