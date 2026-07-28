@@ -1249,8 +1249,9 @@ export class RoadmapService implements OnModuleInit {
 
     const updated = await this.prisma.field.update({
       where: { id },
-      // The slug is derived from the title, so it has to move with it or links
-      // built from the old slug would point at a label that reads differently.
+      // Deliberately never writes slug: a saved Field's slug is a promise to
+      // everyone who has already linked to it, so retitling never moves it.
+      // `input.slug` is only honoured by createField, before the Field exists.
       data: {
         ...(trimmed ? { title: trimmed } : {}),
         ...(input.description !== undefined ? { description: input.description?.trim() || null } : {}),
