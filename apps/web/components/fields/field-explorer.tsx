@@ -20,6 +20,7 @@ import {
   ScanLine,
 } from "lucide-react"
 import {
+  fieldRoadmapCta,
   RoadmapService,
   type Field,
   useFields,
@@ -214,10 +215,7 @@ export function FieldExplorer() {
       roadmap.fields.some((field) => field.id === active.id)
     ) ?? []
   const roadmapCount = fieldRoadmaps.length
-  const fieldHref =
-    roadmapCount === 1 && fieldRoadmaps[0]
-      ? `/roadmap/${fieldRoadmaps[0].id}`
-      : `/roadmaps?field=${encodeURIComponent(active.slug)}`
+  const cta = fieldRoadmapCta(active, fieldRoadmaps)
   const rail = zen || galleryRail
   const selectByIndex = (nextIndex: number) => {
     const next = visible[nextIndex]
@@ -345,22 +343,21 @@ export function FieldExplorer() {
           {active.description ||
             "Khám phá các roadmap được tuyển chọn trong lĩnh vực này."}
         </p>
-        {roadmapCount > 0 ? (
+        {!cta.disabled && cta.href ? (
           <Link
-            href={fieldHref}
-            className="mt-8 inline-flex items-center gap-2 rounded-full bg-[#ff385c] px-6 py-4 text-sm font-bold shadow-[0_10px_30px_rgba(255,56,92,.22)] transition hover:bg-[#e31c5f]"
+            href={cta.href}
+            className="mt-8 inline-flex items-center gap-2 rounded-lg bg-primary px-6 py-4 text-sm font-bold shadow-float transition hover:bg-[var(--color-primary-active)]"
           >
-            {roadmapCount === 1
-              ? "Khám phá roadmap"
-              : `Xem ${roadmapCount} roadmap`}{" "}
+            {cta.label}{" "}
             <ArrowRight className="size-4" />
           </Link>
         ) : (
           <span
             aria-disabled="true"
-            className="mt-8 inline-flex cursor-not-allowed items-center gap-2 rounded-full bg-[#ffd1da] px-6 py-4 text-sm font-bold text-white"
+            title={cta.reason ?? undefined}
+            className="mt-8 inline-flex cursor-not-allowed items-center gap-2 rounded-lg bg-[var(--color-primary-disabled)] px-6 py-4 text-sm font-bold text-white"
           >
-            Chưa có roadmap <ArrowRight className="size-4" />
+            {cta.label} <ArrowRight className="size-4" />
           </span>
         )}
       </section>
@@ -385,7 +382,7 @@ export function FieldExplorer() {
             className={cn(
               "group w-[76px] shrink-0 overflow-hidden rounded-xl border border-white/35 bg-black/20 text-left transition hover:border-white/70 sm:w-[82px]",
               rail && "h-[70px] w-[78px]",
-              field.id === active.id && "border-[#ff385c] ring-1 ring-[#ff385c]"
+              field.id === active.id && "border-primary ring-1 ring-primary"
             )}
           >
             <span
@@ -430,7 +427,7 @@ export function FieldExplorer() {
             max={Math.max(visible.length - 1, 0)}
             value={index}
             onChange={(event) => selectByIndex(Number(event.target.value))}
-            className="h-1 flex-1 cursor-pointer accent-[#ff385c]"
+            className="h-1 flex-1 cursor-pointer accent-primary"
           />
           <span className="text-[10px] font-bold text-white">
             {index + 1}/{visible.length}
