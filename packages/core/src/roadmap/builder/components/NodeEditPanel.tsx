@@ -5,6 +5,7 @@ import { Badge } from "@workspace/ui/components/badge"
 import { Button } from "@workspace/ui/components/button"
 import { Input } from "@workspace/ui/components/input"
 import { Label } from "@workspace/ui/components/label"
+import { RequiredMark } from "@workspace/ui/components/required-mark"
 import {
   Sheet,
   SheetContent,
@@ -123,11 +124,12 @@ export function NodeEditPanel({ node, onClose, onSave }: NodeEditPanelProps) {
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="edit-title">Tiêu đề *</Label>
+            <Label htmlFor="edit-title">Tiêu đề<RequiredMark /></Label>
             <Input
               id="edit-title"
               value={title}
               maxLength={MAX_TITLE_LENGTH}
+              aria-required="true"
               onChange={(e) => {
                 setTitle(e.target.value)
                 if (titleError) setTitleError("")
@@ -190,7 +192,7 @@ export function NodeEditPanel({ node, onClose, onSave }: NodeEditPanelProps) {
           {isArticle && (
             <div className="space-y-4 border-t pt-4">
               <div className="space-y-1.5">
-                <Label>Loại tài liệu *</Label>
+                <Label>Loại tài liệu<RequiredMark /></Label>
                 <div className="flex gap-2">
                   {(["notion", "jupyter"] as const).map((type) => (
                     <Button

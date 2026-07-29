@@ -12,6 +12,7 @@ import {
 } from "@workspace/ui/components/dialog"
 import { Input } from "@workspace/ui/components/input"
 import { Label } from "@workspace/ui/components/label"
+import { RequiredMark } from "@workspace/ui/components/required-mark"
 import { toast } from "@workspace/ui/components/sonner"
 import { Textarea } from "@workspace/ui/components/textarea"
 
@@ -137,15 +138,13 @@ export function CreateRoadmapDialog({
 
         <div className="space-y-5 px-6 pb-2">
           <div className="space-y-1.5">
-            <div className="flex items-center justify-between">
-              <Label htmlFor="rm-title">Tiêu đề</Label>
-              <span className="text-xs text-destructive">Bắt buộc</span>
-            </div>
+            <Label htmlFor="rm-title">Tiêu đề<RequiredMark /></Label>
             <Input
               id="rm-title"
               autoFocus
               value={title}
               maxLength={MAX_TITLE_LENGTH}
+              aria-required="true"
               placeholder="vd: Lộ trình Frontend 2026"
               onChange={(e) => handleTitle(e.target.value)}
             />
