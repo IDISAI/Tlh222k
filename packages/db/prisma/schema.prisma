@@ -71,6 +71,11 @@ model Node {
   /// facet used to narrow the roadmap picker). Empty array, never null, so
   /// every reader can iterate it without an extra guard.
   tags            String[] @default([])
+  /// The Clerk user id of whoever created this block — "Người phụ trách" is
+  /// the creator, not a chosen assignee, so this is stamped server-side from
+  /// the auth context on create and is never a client-settable input. Mirrors
+  /// `Document.authorId`, which follows the same rule.
+  authorId        String?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 

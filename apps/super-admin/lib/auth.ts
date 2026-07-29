@@ -13,7 +13,11 @@ declare global {
 
 /** True when a Clerk session is present. */
 export async function getIsAuthenticated(): Promise<boolean> {
-  if (devAuthRole(process.env.NODE_ENV, process.env.NEXT_PUBLIC_DEV_AUTH_ROLE)) {
+  if (devAuthRole(
+    process.env.NODE_ENV,
+    process.env.NEXT_PUBLIC_DEV_AUTH_ROLE,
+    process.env.NEXT_PUBLIC_ENABLE_DEV_AUTH_BYPASS
+  )) {
     return true
   }
   const { userId } = await auth()
@@ -27,7 +31,8 @@ export async function getIsAuthenticated(): Promise<boolean> {
 export async function getRole(): Promise<UserRole> {
   const devRole = devAuthRole(
     process.env.NODE_ENV,
-    process.env.NEXT_PUBLIC_DEV_AUTH_ROLE
+    process.env.NEXT_PUBLIC_DEV_AUTH_ROLE,
+    process.env.NEXT_PUBLIC_ENABLE_DEV_AUTH_BYPASS
   )
   if (devRole) return devRole
   const { sessionClaims } = await auth()

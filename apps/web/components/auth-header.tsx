@@ -8,7 +8,8 @@ export function AuthHeader({ tone = "default" }: { tone?: "default" | "on-dark" 
   // Show the impersonated role instead.
   const dev = devAuthRole(
     process.env.NODE_ENV,
-    process.env.NEXT_PUBLIC_DEV_AUTH_ROLE
+    process.env.NEXT_PUBLIC_DEV_AUTH_ROLE,
+    process.env.NEXT_PUBLIC_ENABLE_DEV_AUTH_BYPASS
   )
   if (dev !== null) {
     return (

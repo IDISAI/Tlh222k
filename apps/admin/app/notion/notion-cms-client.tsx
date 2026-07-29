@@ -5,26 +5,15 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { ArrowUpDown, BookOpen, Clock3, ExternalLink, FileText, Globe, ImageIcon, PencilLine, Plus, Search, Trash2, Users, X } from "lucide-react"
 
-import type { NotionDoc } from "@workspace/core"
+import { RoadmapService, type NotionDoc, type RoadmapNode } from "@workspace/core"
 import { Button } from "@workspace/ui/components/button"
 import { Input } from "@workspace/ui/components/input"
 import { cn } from "@workspace/ui/lib/utils"
 import { toast } from "@workspace/ui/components/sonner"
 
-import { archive, create, getSearch } from "./actions"
+import { archive, createDocumentForNode, getSearch } from "./actions"
 
 const PUBLIC_WEB_ORIGIN = process.env.NEXT_PUBLIC_WEB_URL ?? "http://localhost:3000"
-
-function slugify(value: string) {
-  return value
-    .trim()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .replace(/đ/g, "d")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-}
 
 export function NotionCmsClient() {
   const router = useRouter()
@@ -35,6 +24,20 @@ export function NotionCmsClient() {
   const [filter, setFilter] = useState<"all" | "published" | "draft">("all")
   const [newestFirst, setNewestFirst] = useState(true)
   const [createOpen, setCreateOpen] = useState(false)
+  const [chapterId, setChapterId] = useState("")
+  const [chapters, setChapters] = useState<RoadmapNode[]>([])
+
+  // Every document must be filed under a chapter so an admin can always tell
+  // which roadmap it belongs to.
+  const roadmap = useMemo(() => new RoadmapService(), [])
+  useEffect(() => {
+    void roadmap
+      .listNodes()
+      .then((nodes) =>
+        setChapters(nodes.filter((n) => n.nodeType === "chapter" && !n.isDeleted))
+      )
+      .catch(() => setChapters([]))
+  }, [roadmap])
 
   const refresh = useCallback(async () => {
     try {
@@ -68,13 +71,25 @@ export function NotionCmsClient() {
   const drafts = rootDocuments.filter((document) => !document.isPublished).length
 
   const createDocument = async () => {
-    const slug = slugify(title)
-    if (!slug) return
+    if (!title.trim() || !chapterId) return
     setBusy(true)
     try {
-      const document = await create({ title: title.trim(), slug })
+      // The article Node records "this document belongs to this chapter" —
+      // created first, then the Document is filed under the Node's own slug
+      // (join key), mirroring the roadmap-canvas notion-article-node flow.
+      const chapter = chapters.find((c) => c.id === chapterId)
+      const node = await roadmap.createArticle(
+        { chapterId, title: title.trim(), articleType: "notion" },
+        "admin"
+      )
+      const doc = await createDocumentForNode(node.slug, node.title, chapter?.slug ?? undefined)
+      if (!doc) {
+        toast.warning("Bài viết đã được tạo nhưng chưa tạo được trang Notion liên kết.")
+        return
+      }
+      await roadmap.updateNode(node.id, { notionPageId: doc.id }, "admin")
       toast.success("Đã tạo tài liệu nháp")
-      router.push(`/notion/${document.slug ?? slug}`)
+      router.push(`/notion/${node.slug}`)
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Tạo tài liệu thất bại")
     } finally {
@@ -144,7 +159,7 @@ export function NotionCmsClient() {
         )}
       </section>
       <p className="text-sm text-muted-foreground">Hiển thị {visibleDocuments.length} / {rootDocuments.length} mục</p>
-      {createOpen && <div role="dialog" aria-modal="true" aria-labelledby="create-document-title" className="fixed inset-0 z-50 grid place-items-center bg-black/45 p-4"><section className="w-full max-w-md rounded-2xl bg-background p-6 shadow-2xl"><div className="flex items-start justify-between"><div><h2 id="create-document-title" className="text-xl font-bold">Tạo tài liệu mới</h2><p className="mt-1 text-sm text-muted-foreground">Bản nháp được lưu tự động khi bạn bắt đầu soạn.</p></div><button type="button" onClick={() => setCreateOpen(false)} aria-label="Đóng"><X className="size-5" /></button></div><label className="mt-6 block text-sm font-semibold">Tên tài liệu<Input autoFocus value={title} onChange={(event) => setTitle(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void createDocument() }} className="mt-2 h-11" placeholder="VD: Learning Resources" /></label><div className="mt-6 flex justify-end gap-2"><Button variant="outline" onClick={() => setCreateOpen(false)}>Hủy</Button><Button disabled={busy || !slugify(title)} className="bg-[#ff385c] hover:bg-[#e31c5f]" onClick={() => void createDocument()}>Tạo bản nháp</Button></div></section></div>}
+      {createOpen && <div role="dialog" aria-modal="true" aria-labelledby="create-document-title" className="fixed inset-0 z-50 grid place-items-center bg-black/45 p-4"><section className="w-full max-w-md rounded-2xl bg-background p-6 shadow-2xl"><div className="flex items-start justify-between"><div><h2 id="create-document-title" className="text-xl font-bold">Tạo tài liệu mới</h2><p className="mt-1 text-sm text-muted-foreground">Bản nháp được lưu tự động khi bạn bắt đầu soạn.</p></div><button type="button" onClick={() => setCreateOpen(false)} aria-label="Đóng"><X className="size-5" /></button></div><label className="mt-6 block text-sm font-semibold">Tên tài liệu<Input autoFocus value={title} onChange={(event) => setTitle(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void createDocument() }} className="mt-2 h-11" placeholder="VD: Learning Resources" /></label><label className="mt-4 block text-sm font-semibold">Thuộc chapter<span className="ml-1 text-xs font-normal text-destructive">Bắt buộc</span><select value={chapterId} onChange={(event) => setChapterId(event.target.value)} className="mt-2 h-11 w-full rounded-md border bg-background px-3 text-sm"><option value="">{chapters.length === 0 ? "Chưa có chapter nào" : "Chọn chapter…"}</option>{chapters.map((chapter) => <option key={chapter.id} value={chapter.id}>{chapter.title}</option>)}</select><span className="mt-1 block text-xs font-normal text-muted-foreground">Để admin biết tài liệu này thuộc roadmap nào.</span></label><div className="mt-6 flex justify-end gap-2"><Button variant="outline" onClick={() => setCreateOpen(false)}>Hủy</Button><Button disabled={busy || !title.trim() || !chapterId} className="bg-[#ff385c] hover:bg-[#e31c5f]" onClick={() => void createDocument()}>{busy ? "Đang tạo…" : "Tạo bản nháp"}</Button></div></section></div>}
     </main>
   )
 }

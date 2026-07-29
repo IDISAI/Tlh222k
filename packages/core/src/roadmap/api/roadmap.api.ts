@@ -36,7 +36,7 @@ const FIELD_FIELDS = `id title slug order description imageUrl publishStatus`
 const NODE_FIELDS = `
   id roadmapId parentId title slug description nodeType notionPageId
   articleType jupyterUrl positionX positionY order status isDeleted
-  linkedRoadmapId publishStatus coverUrl level visibility tags
+  linkedRoadmapId publishStatus coverUrl level visibility tags authorId
   fields { ${FIELD_FIELDS} }
 `
 

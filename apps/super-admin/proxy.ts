@@ -6,7 +6,8 @@ const PUBLIC_PREFIX =
   process.env.NODE_ENV === "production" ? "/super-admin" : ""
 const devRole = devAuthRole(
   process.env.NODE_ENV,
-  process.env.NEXT_PUBLIC_DEV_AUTH_ROLE
+  process.env.NEXT_PUBLIC_DEV_AUTH_ROLE,
+  process.env.NEXT_PUBLIC_ENABLE_DEV_AUTH_BYPASS
 )
 
 const isSignIn = createRouteMatcher([

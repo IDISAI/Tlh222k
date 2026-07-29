@@ -40,7 +40,8 @@ export default function RootLayout({
   // hosted JS (blocked by the localhost-only preview / headless QA sandbox).
   const devBypass = devAuthRole(
     process.env.NODE_ENV,
-    process.env.NEXT_PUBLIC_DEV_AUTH_ROLE
+    process.env.NEXT_PUBLIC_DEV_AUTH_ROLE,
+    process.env.NEXT_PUBLIC_ENABLE_DEV_AUTH_BYPASS
   )
   // `dynamic`: render Clerk at request time. Without it the statically
   // prerendered /_not-found boundary calls auth() with no middleware context

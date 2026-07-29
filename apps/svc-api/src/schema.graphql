@@ -83,6 +83,8 @@ type RoadmapNode {
   visibility: Visibility!
   """Editorial free-text tags, narrower than a Field — used by the roadmap picker's tag filter."""
   tags: [String!]!
+  """Clerk id of whoever created this block. Stamped server-side on create; never a mutation input."""
+  authorId: ID
   """
   Discovery labels this block carries. Many-to-many: a "Data Engineer" role
   can sit under both AI and Data, so it surfaces under either tab.

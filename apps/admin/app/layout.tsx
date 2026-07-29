@@ -18,7 +18,8 @@ export default async function RootLayout({
   const isAuthed = await getIsAuthenticated()
   const devBypass = devAuthRole(
     process.env.NODE_ENV,
-    process.env.NEXT_PUBLIC_DEV_AUTH_ROLE
+    process.env.NEXT_PUBLIC_DEV_AUTH_ROLE,
+    process.env.NEXT_PUBLIC_ENABLE_DEV_AUTH_BYPASS
   )
 
   const tree = (

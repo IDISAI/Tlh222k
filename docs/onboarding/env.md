@@ -32,8 +32,10 @@ cp packages/db/.env.example       packages/db/.env
   local mock/localStorage roadmap service. Set it to `http://localhost:3005` to
   use the real backend. `NEXT_PUBLIC_SVC_ROADMAP_URL` is the legacy name, still
   honored as a fallback after the `svc-roadmap` -> `svc-api` rename.
-- `NEXT_PUBLIC_DEV_AUTH_ROLE` is a dev-only Clerk bypass. Comment it out when
-  testing real login. It is ignored in production.
+- `NEXT_PUBLIC_DEV_AUTH_ROLE` is a dev-only Clerk bypass, gated by
+  `NEXT_PUBLIC_ENABLE_DEV_AUTH_BYPASS`. Set the bypass flag to `false` to
+  force real Clerk login regardless of the role value. Both are ignored in
+  production.
 
 ## How To Get Keys
 

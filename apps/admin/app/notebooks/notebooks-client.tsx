@@ -22,7 +22,9 @@ import {
 import {
   FallbackNotebookStore,
   HttpNotebookStore,
+  RoadmapService,
   type NotebookSummary,
+  type RoadmapNode,
 } from "@workspace/core"
 import { devAuthRole } from "@workspace/core/navigation/role"
 import { slugify } from "@workspace/core/notebook/utils/slugify"
@@ -34,7 +36,11 @@ const KERNEL_SERVER_URL = process.env.NEXT_PUBLIC_KERNEL_SERVER_URL
 const PUBLIC_WEB_ORIGIN = process.env.NEXT_PUBLIC_WEB_URL ?? "http://localhost:3000"
 
 export function NotebooksIndexClient() {
-  const isDev = devAuthRole(process.env.NODE_ENV, process.env.NEXT_PUBLIC_DEV_AUTH_ROLE) !== null
+  const isDev = devAuthRole(
+    process.env.NODE_ENV,
+    process.env.NEXT_PUBLIC_DEV_AUTH_ROLE,
+    process.env.NEXT_PUBLIC_ENABLE_DEV_AUTH_BYPASS
+  ) !== null
   return isDev ? <NotebooksIndex getToken={async () => "dev-token"} /> : <ClerkNotebooksIndex />
 }
 
@@ -54,16 +60,32 @@ function NotebooksIndex({ getToken }: { getToken: () => Promise<string | null> }
   }, [getToken])
   const [notebooks, setNotebooks] = useState<NotebookSummary[] | null>(null)
   const [title, setTitle] = useState("")
+  const [chapterId, setChapterId] = useState("")
+  const [creating, setCreating] = useState(false)
   const [query, setQuery] = useState("")
   const [filter, setFilter] = useState<"all" | "published" | "draft">("all")
   const [newestFirst, setNewestFirst] = useState(true)
   const [createOpen, setCreateOpen] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [chapters, setChapters] = useState<RoadmapNode[]>([])
 
   const refresh = useCallback(() => {
     void store.list().then(setNotebooks).catch((cause: unknown) => setError(cause instanceof Error ? cause.message : "Không tải được danh sách"))
   }, [store])
   useEffect(refresh, [refresh])
+
+  // Every notebook must be filed under a chapter so an admin can always tell
+  // which roadmap it belongs to — loaded once, reused across every open of
+  // the create dialog.
+  const roadmap = useMemo(() => new RoadmapService(), [])
+  useEffect(() => {
+    void roadmap
+      .listNodes()
+      .then((nodes) =>
+        setChapters(nodes.filter((n) => n.nodeType === "chapter" && !n.isDeleted))
+      )
+      .catch(() => setChapters([]))
+  }, [roadmap])
 
   const slug = slugify(title)
   const published = (notebooks ?? []).filter((item) => item.published).length
@@ -76,9 +98,26 @@ function NotebooksIndex({ getToken }: { getToken: () => Promise<string | null> }
       return matchesQuery && matchesFilter
     }).sort((a, b) => (newestFirst ? new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime() : new Date(a.updatedAt).getTime() - new Date(b.updatedAt).getTime()))
   }, [filter, newestFirst, notebooks, query])
-  const createNotebook = () => {
-    if (!slug) return
-    router.push(`/notebooks/${slug}?title=${encodeURIComponent(title.trim())}`)
+  const createNotebook = async () => {
+    if (!slug || !chapterId) return
+    setCreating(true)
+    setError(null)
+    try {
+      // The article Node is the thing that records "this notebook belongs to
+      // this chapter" — created first so the notebook is never without one.
+      // Its own slugify may collide/adjust the title, so the notebook is
+      // filed under whatever slug the Node actually got, not the raw title.
+      const node = await roadmap.createArticle(
+        { chapterId, title: title.trim(), articleType: "jupyter" },
+        "admin"
+      )
+      router.push(`/notebooks/${node.slug}?title=${encodeURIComponent(title.trim())}`)
+    } catch (cause) {
+      setError(
+        cause instanceof Error ? cause.message : "Không thể tạo notebook"
+      )
+      setCreating(false)
+    }
   }
 
   return <main className="mx-auto w-full max-w-[1480px] space-y-6 p-6 lg:p-8">
@@ -102,7 +141,7 @@ function NotebooksIndex({ getToken }: { getToken: () => Promise<string | null> }
       {notebooks === null ? <p className="p-8 text-sm text-muted-foreground">Đang tải notebook…</p> : visible.length === 0 ? <p className="p-10 text-center text-sm text-muted-foreground">Chưa có notebook phù hợp.</p> : <ul className="divide-y">{visible.map((item) => <li key={item.slug} className="grid gap-3 px-5 py-4 lg:grid-cols-[minmax(280px,1fr)_180px_160px_150px_120px] lg:items-center"><Link href={`/notebooks/${item.slug}`} className="flex min-w-0 items-center gap-3"><span className="grid size-11 shrink-0 place-items-center rounded-lg border border-dashed bg-muted/60 text-muted-foreground"><ImageIcon className="size-4" /></span><span className="min-w-0"><p className="truncate font-semibold hover:underline">{item.title || item.slug}</p><p className="mt-0.5 truncate text-sm text-muted-foreground">/{item.slug} · Notebook</p></span></Link><Status published={item.published} /><span className="inline-flex items-center gap-2 text-sm"><span className="grid size-7 place-items-center rounded-full bg-violet-600 text-[10px] font-bold text-white">AD</span>Admin</span><time className="text-sm text-muted-foreground">{formatUpdated(item.updatedAt)}</time><div className="flex justify-end gap-1"><Link href={`/notebooks/${item.slug}`} aria-label={`Sửa ${item.slug}`} className="grid size-8 place-items-center rounded-md hover:bg-muted"><PencilLine className="size-4" /></Link><a href={`${PUBLIC_WEB_ORIGIN}/notebooks/${item.slug}`} target="_blank" rel="noreferrer" aria-label={`Xem trước ${item.slug}`} className="grid size-8 place-items-center rounded-md hover:bg-muted"><ExternalLink className="size-4" /></a><button type="button" aria-label={`Xóa ${item.slug}`} className="grid size-8 place-items-center rounded-md text-destructive hover:bg-destructive/10" onClick={() => { if (confirm(`Xóa notebook “${item.title || item.slug}”?`)) void store.remove(item.slug).then(refresh).catch((cause: unknown) => setError(cause instanceof Error ? cause.message : "Xóa thất bại")) }}><Trash2 className="size-4" /></button></div></li>)}</ul>}
     </section>
     <p className="text-sm text-muted-foreground">Hiển thị {visible.length} / {notebooks?.length ?? 0} mục</p>
-    {createOpen && <div role="dialog" aria-modal="true" aria-labelledby="create-notebook-title" className="fixed inset-0 z-50 grid place-items-center bg-black/45 p-4"><section className="w-full max-w-md rounded-2xl bg-background p-6 shadow-2xl"><div className="flex items-start justify-between"><div><h2 id="create-notebook-title" className="text-xl font-bold">Tạo notebook mới</h2><p className="mt-1 text-sm text-muted-foreground">Đặt tên rồi mở trình soạn để tạo bản nháp đầu tiên.</p></div><button type="button" onClick={() => setCreateOpen(false)} aria-label="Đóng"><X className="size-5" /></button></div><label className="mt-6 block text-sm font-semibold">Tên notebook<Input autoFocus value={title} onChange={(event) => setTitle(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") createNotebook() }} className="mt-2 h-11" placeholder="VD: Intro to NumPy" /></label>{slug && <p className="mt-2 text-xs text-muted-foreground">Đường dẫn: /notebooks/{slug}</p>}<div className="mt-6 flex justify-end gap-2"><Button variant="outline" onClick={() => setCreateOpen(false)}>Hủy</Button><Button disabled={!slug} className="bg-[#ff385c] hover:bg-[#e31c5f]" onClick={createNotebook}>Mở trình soạn</Button></div></section></div>}
+    {createOpen && <div role="dialog" aria-modal="true" aria-labelledby="create-notebook-title" className="fixed inset-0 z-50 grid place-items-center bg-black/45 p-4"><section className="w-full max-w-md rounded-2xl bg-background p-6 shadow-2xl"><div className="flex items-start justify-between"><div><h2 id="create-notebook-title" className="text-xl font-bold">Tạo notebook mới</h2><p className="mt-1 text-sm text-muted-foreground">Đặt tên rồi mở trình soạn để tạo bản nháp đầu tiên.</p></div><button type="button" onClick={() => setCreateOpen(false)} aria-label="Đóng"><X className="size-5" /></button></div><label className="mt-6 block text-sm font-semibold">Tên notebook<Input autoFocus value={title} onChange={(event) => setTitle(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void createNotebook() }} className="mt-2 h-11" placeholder="VD: Intro to NumPy" /></label>{slug && <p className="mt-2 text-xs text-muted-foreground">Đường dẫn: /notebooks/{slug}</p>}<label className="mt-4 block text-sm font-semibold">Thuộc chapter<span className="ml-1 text-xs font-normal text-destructive">Bắt buộc</span><select value={chapterId} onChange={(event) => setChapterId(event.target.value)} className="mt-2 h-11 w-full rounded-md border bg-background px-3 text-sm"><option value="">{chapters.length === 0 ? "Chưa có chapter nào" : "Chọn chapter…"}</option>{chapters.map((chapter) => <option key={chapter.id} value={chapter.id}>{chapter.title}</option>)}</select><span className="mt-1 block text-xs font-normal text-muted-foreground">Để admin biết notebook này thuộc roadmap nào.</span></label><div className="mt-6 flex justify-end gap-2"><Button variant="outline" onClick={() => setCreateOpen(false)}>Hủy</Button><Button disabled={!slug || !chapterId || creating} className="bg-[#ff385c] hover:bg-[#e31c5f]" onClick={() => void createNotebook()}>{creating ? "Đang tạo…" : "Mở trình soạn"}</Button></div></section></div>}
   </main>
 }
 

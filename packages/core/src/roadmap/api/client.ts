@@ -99,7 +99,8 @@ function makeClient(): ApolloClient<NormalizedCacheObject> {
     const headers = (prevContext.headers ?? {}) as Record<string, string>
     const devRole = devAuthRole(
       process.env.NODE_ENV,
-      process.env.NEXT_PUBLIC_DEV_AUTH_ROLE
+      process.env.NEXT_PUBLIC_DEV_AUTH_ROLE,
+      process.env.NEXT_PUBLIC_ENABLE_DEV_AUTH_BYPASS
     )
     const token = devRole ? `dev:${devRole}` : await getClerkToken()
     return {

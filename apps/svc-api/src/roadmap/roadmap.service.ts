@@ -117,6 +117,8 @@ export interface NodeDto {
   level: Level | null
   visibility: Visibility
   tags: string[]
+  /** Clerk id of whoever created this block. Stamped on create, never on update. */
+  authorId: string | null
   /**
    * Discovery labels. Empty when the caller's query did not `include` them —
    * the GraphQL field is a non-null list, so callers see `[]`, never null.
@@ -752,6 +754,10 @@ export class RoadmapService implements OnModuleInit {
             tags: input.tags ? [...new Set(input.tags.map((t) => t.trim()).filter(Boolean))] : undefined,
             level: normalizeLevel(input.level),
             visibility: normalizeVisibility(input.visibility),
+            // "Người phụ trách" is the creator, not a chosen assignee — stamped
+            // from the auth context, never a client-supplied input, same rule
+            // Document.authorId already follows.
+            authorId: user?.userId ?? null,
           },
           // Echo the labels back so the admin picker renders them straight
           // after create instead of blanking.
@@ -1115,6 +1121,7 @@ export class RoadmapService implements OnModuleInit {
       publishStatus: normalizePublishStatus(n.publishStatus),
       coverUrl: n.coverUrl ?? null,
       tags: n.tags ?? [],
+      authorId: n.authorId ?? null,
       // Narrowed here rather than trusted: the column is a plain string, and an
       // unreadable value means "unjudged", not a level nothing can render.
       level: normalizeLevel(n.level),

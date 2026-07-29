@@ -194,7 +194,10 @@ Rules:
   (`http://localhost:3006` in dev). If empty, web falls back to committed
   `.ipynb` fixtures and the admin editor uses per-browser localStorage.
 - `NEXT_PUBLIC_DEV_AUTH_ROLE` is a dev-only Clerk bypass and is ignored in
-  production. The Go kernel-server has a matching `DEV_AUTH_ROLE` env var.
+  production. It only takes effect when `NEXT_PUBLIC_ENABLE_DEV_AUTH_BYPASS`
+  is `"true"` — set that to `"false"` to force real Clerk sign-in/sign-out in
+  a dev environment regardless of the role value. The Go kernel-server has its
+  own matching pair, `DEV_AUTH_ROLE` / `ENABLE_DEV_AUTH_BYPASS`.
 
 Full guide: [docs/onboarding/env.md](docs/onboarding/env.md).
 

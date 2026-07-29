@@ -205,6 +205,15 @@ export function CreateRoadmapDialog({
           </div>
 
           <div className="space-y-1.5">
+            <Label>Người phụ trách</Label>
+            {/* No picker: the person in charge is whoever creates the block,
+                stamped server-side from the auth context. Nothing to choose. */}
+            <p className="rounded-md border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
+              Bạn — người tạo roadmap này
+            </p>
+          </div>
+
+          <div className="space-y-1.5">
             <Label htmlFor="rm-cover">Ảnh bìa (URL HTTPS)</Label>
             <Input id="rm-cover" type="url" value={coverUrl} onChange={(event) => setCoverUrl(event.target.value)} placeholder="https://…" />
           </div>
