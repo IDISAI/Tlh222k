@@ -23,8 +23,8 @@ type ContentItem = {
 }
 
 const contentItems: ContentItem[] = [
-  { href: `${BASE_PATH}/fields`, label: "Lĩnh vực", icon: BookOpen, countKey: "fields" },
   { href: ROADMAPS_PATH, label: "Roadmaps", icon: Map, countKey: "roadmaps" },
+  { href: `${BASE_PATH}/fields`, label: "Lĩnh vực", icon: BookOpen, countKey: "fields" },
   { href: NOTEBOOK_BASE_PATH, label: "Notebooks", icon: FileText },
   { href: NOTION_BASE_PATH, label: "Tài liệu", icon: FileText },
   // Library currently opens the document CMS. Keep it navigable without
@@ -137,10 +137,10 @@ export function AdminNavigation({ collapsed = false }: { collapsed?: boolean }) 
 export function AdminBreadcrumb() {
   const pathname = usePathname()
   const section =
-    pathname.startsWith(ROADMAPS_PATH) ? "Roadmaps" :
     pathname.startsWith(NOTEBOOK_BASE_PATH) ? "Notebooks" :
     pathname.startsWith(NOTION_BASE_PATH) ? "Tài liệu" :
-    "Lĩnh vực"
+    pathname.startsWith(`${BASE_PATH}/fields`) ? "Lĩnh vực" :
+    "Roadmaps"
 
   return (
     <div className="text-sm text-muted-foreground">
