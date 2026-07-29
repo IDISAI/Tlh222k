@@ -1,8 +1,8 @@
 import { redirect } from "next/navigation"
-import { RoadmapListAdmin } from "@workspace/core"
 
 import { getRole } from "@/lib/auth"
 import { FORBIDDEN_PATH, ROADMAPS_PATH } from "@/lib/paths"
+import { RoadmapListClient } from "./roadmap-list-client"
 
 export const metadata = { title: "Quản lý Roadmap" }
 
@@ -14,7 +14,7 @@ export default async function RoadmapsPage() {
 
   return (
     <div className="container mx-auto px-4 py-8">
-      <RoadmapListAdmin role={role} builderBasePath={ROADMAPS_PATH} />
+      <RoadmapListClient role={role} builderBasePath={ROADMAPS_PATH} />
     </div>
   )
 }

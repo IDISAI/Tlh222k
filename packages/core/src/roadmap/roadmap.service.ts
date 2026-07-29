@@ -540,6 +540,7 @@ export class RoadmapService {
       const ids = new Set(input.fieldIds)
       node.fields = getStore().fields.filter((field) => ids.has(field.id))
     }
+    node.updatedAt = new Date().toISOString()
 
     persistStore()
     emitRoadmapUpdate(node.roadmapId)
@@ -773,6 +774,7 @@ export class RoadmapService {
     const store = getStore()
     const id = newId("nd")
     const title = input.title.trim().slice(0, MAX_TITLE_LENGTH)
+    const now = new Date().toISOString()
     const node: RoadmapNode = {
       id,
       roadmapId: id, // self-owned: the block IS its own roadmap
@@ -794,6 +796,8 @@ export class RoadmapService {
       level: input.level ?? null,
       visibility: input.visibility ?? "FREE",
       tags: input.tags ?? [],
+      createdAt: now,
+      updatedAt: now,
     }
     store.nodes.push(node)
     if (input.ownerId) {

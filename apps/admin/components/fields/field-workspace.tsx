@@ -6,7 +6,7 @@ import { ArrowDown, ArrowUp, Check, ExternalLink, ImageIcon, Plus, Save, Search,
 import { Button } from "@workspace/ui/components/button"
 import { Input } from "@workspace/ui/components/input"
 import { cn } from "@workspace/ui/lib/utils"
-import { fieldPublishEligibility, orphanedFieldMemberIds, reorderFieldMemberIds, RoadmapService, roadmapBackendEnabled, slugify, type CallerRole, type Field, type PublishStatus, type RoadmapNode } from "@workspace/core"
+import { CoverUploadField, fieldPublishEligibility, orphanedFieldMemberIds, reorderFieldMemberIds, RoadmapService, roadmapBackendEnabled, slugify, type CallerRole, type Field, type PublishStatus, type RoadmapNode } from "@workspace/core"
 import { FIELD_DESCRIPTION_MAX, FIELD_DESCRIPTION_WARN } from "@workspace/core"
 
 import { BASE_PATH } from "@/lib/paths"
@@ -97,27 +97,21 @@ export function FieldWorkspace({ id, role }: { id: string; role: CallerRole }) {
     setField(next)
   }
 
-  const uploadImage = async (file: File | undefined) => {
-    if (!file) return
-    setError("")
-    try {
-      const bitmap = await createImageBitmap(file)
-      const policy = inspectFieldImage({ name: file.name, size: file.size, type: file.type, width: bitmap.width, height: bitmap.height })
-      bitmap.close()
-      if (!policy.ok) throw new Error(fieldImageMessage(policy.code))
-      const form = new FormData()
-      form.set("file", file)
-      // #47: when a Field already has an image, replacing it must delete the
-      // old Blob so we don't leak a file nobody references. New Fields keep the
-      // plain upload path.
-      const previous = !isNew ? field.imageUrl : null
-      const uploaded = previous
-        ? await replaceFieldCover(form, previous)
-        : await uploadFieldCover(form)
-      update("imageUrl", uploaded.url)
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Không thể tải ảnh lên.")
-    }
+  const uploadCover = async (file: File): Promise<string> => {
+    const bitmap = await createImageBitmap(file)
+    const policy = inspectFieldImage({ name: file.name, size: file.size, type: file.type, width: bitmap.width, height: bitmap.height })
+    bitmap.close()
+    if (!policy.ok) throw new Error(fieldImageMessage(policy.code))
+    const form = new FormData()
+    form.set("file", file)
+    // #47: when a Field already has an image, replacing it must delete the
+    // old Blob so we don't leak a file nobody references. New Fields keep the
+    // plain upload path.
+    const previous = !isNew ? field.imageUrl : null
+    const uploaded = previous
+      ? await replaceFieldCover(form, previous)
+      : await uploadFieldCover(form)
+    return uploaded.url
   }
 
   const save = async () => {
@@ -249,7 +243,7 @@ ${orphanTitles.length} roadmap sẽ không còn thuộc lĩnh vực nào và bi�
     <div className="grid min-h-[calc(100vh-115px)] lg:grid-cols-[340px_minmax(0,1fr)]">
       <aside className="border-b p-4 lg:border-b-0 lg:border-r lg:p-5"><h1 className="text-xl font-bold tracking-tight">Thông tin lĩnh vực</h1><p className="mt-1 text-sm leading-5 text-muted-foreground">Ảnh được dùng cho cả thumbnail và nền toàn màn hình ở trang chủ.</p>
         <div className="mt-7 space-y-4"><label className="block text-sm font-semibold">Tiêu đề<Input className="mt-2 h-11" value={field.title} onChange={(event) => update("title", event.target.value)} /></label><label className="block text-sm font-semibold">Slug<span className="float-right text-xs font-normal text-muted-foreground">{isNew ? "Cố định sau lần lưu đầu" : "Slug đã cố định để giữ liên kết"}</span>{isNew ? <Input className="mt-2 h-10 font-normal" value={field.slug} onChange={(event) => { setSlugTouched(true); update("slug", event.target.value) }} placeholder="ai" /> : <span className="mt-2 block rounded-lg border bg-muted/30 px-3 py-2.5 text-sm font-normal text-muted-foreground">/ {field.slug}</span>}</label><label className="block text-sm font-semibold">Mô tả<span className={cn("float-right text-xs font-normal", (field.description?.length ?? 0) >= FIELD_DESCRIPTION_WARN ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground")}>{field.description?.length ?? 0}/{FIELD_DESCRIPTION_MAX}</span><textarea value={field.description ?? ""} maxLength={FIELD_DESCRIPTION_MAX} onChange={(event) => update("description", event.target.value)} className="mt-2 min-h-24 w-full resize-y rounded-lg border bg-background px-3 py-2 text-sm font-normal outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-ring" placeholder="Mô tả lĩnh vực cho người học…" /></label>
-          <label className="block text-sm font-semibold">Thứ tự hiển thị<Input type="number" min={0} value={field.order} onChange={(event) => update("order", Math.max(0, Number(event.target.value) || 0))} className="mt-2 h-10 font-normal" /><span className="mt-1 block text-xs font-normal text-muted-foreground">Số nhỏ hiển thị trước trong Field Explorer.</span></label><label className="block text-sm font-semibold">Ảnh nền<span className="mt-2 flex aspect-[3/1.15] items-center justify-center rounded-lg border border-dashed bg-muted/35 text-center text-xs font-normal text-muted-foreground" style={field.imageUrl ? { backgroundImage: `linear-gradient(#0006,#0006),url(${field.imageUrl})`, backgroundPosition: "center", backgroundSize: "cover", color: "white" } : undefined}><span><ImageIcon className="mx-auto mb-1 size-5" />{field.imageUrl ? "Ảnh nền đang dùng" : "JPG hoặc WebP, tỷ lệ 3:2"}</span></span><Input type="file" accept="image/jpeg,image/webp" onChange={(event) => void uploadImage(event.currentTarget.files?.[0])} className="mt-2 h-10 cursor-pointer pt-1.5 font-normal" /><span className="mt-1 block text-xs font-normal text-muted-foreground">Tối thiểu 2400×1600, dưới 2 MB. Ảnh chỉ được cập nhật bằng upload đã kiểm tra.</span></label>
+          <label className="block text-sm font-semibold">Thứ tự hiển thị<Input type="number" min={0} value={field.order} onChange={(event) => update("order", Math.max(0, Number(event.target.value) || 0))} className="mt-2 h-10 font-normal" /><span className="mt-1 block text-xs font-normal text-muted-foreground">Số nhỏ hiển thị trước trong Field Explorer.</span></label><CoverUploadField id="field-cover" label="Ảnh nền" imageUrl={field.imageUrl} aspectClassName="aspect-[3/1.15]" placeholderHint="JPG hoặc WebP, tỷ lệ 3:2" helpText="Tối thiểu 2400×1600, dưới 2 MB. Ảnh chỉ được cập nhật bằng upload đã kiểm tra." disabled={saving} upload={uploadCover} onUploaded={(url) => update("imageUrl", url)} />
         </div>
       </aside>
 

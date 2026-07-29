@@ -32,6 +32,8 @@ interface RoadmapListAdminProps {
   builderBasePath?: string
   /** Accepted for API compatibility; no longer used (no author column). */
   authorBasePath?: string
+  /** Validates and persists a roadmap block's cover image, returning its URL. */
+  uploadCover: (file: File) => Promise<string>
 }
 
 /** A roadmap-node row: a role/skill node (a role/skill node IS a roadmap). */
@@ -62,7 +64,7 @@ function descendantCount(nodes: RoadmapNode[], rootId: string): number {
  * sidebar shows, in table form. Client-fetched so the localStorage-backed mock
  * store is authoritative.
  */
-export function RoadmapListAdmin({ role }: RoadmapListAdminProps) {
+export function RoadmapListAdmin({ role, uploadCover }: RoadmapListAdminProps) {
   const service = useMemo(() => new RoadmapService(), [])
   const [rows, setRows] = useState<Row[] | null>(null)
   const [showCreate, setShowCreate] = useState(false)
@@ -235,6 +237,7 @@ export function RoadmapListAdmin({ role }: RoadmapListAdminProps) {
       {showCreate && (
         <CreateRoadmapDialog
           role={role}
+          uploadCover={uploadCover}
           onClose={() => setShowCreate(false)}
           onCreated={() => {
             // Stay on the list and refresh — no redirect into the new roadmap.

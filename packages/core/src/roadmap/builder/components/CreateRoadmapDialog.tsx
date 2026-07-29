@@ -27,6 +27,7 @@ import {
   type Visibility,
 } from "../../types"
 import { serviceErrorMessage } from "../utils/toast-messages"
+import { CoverUploadField } from "./CoverUploadField"
 import { FieldPicker } from "./FieldPicker"
 
 /** A roadmap is a role or a skill (a role/skill node IS a roadmap block). */
@@ -52,6 +53,8 @@ interface CreateRoadmapDialogProps {
   role: CallerRole
   onClose: () => void
   onCreated: (node: RoadmapNode) => void
+  /** Validates and persists a roadmap block's cover image, returning its URL. */
+  uploadCover: (file: File) => Promise<string>
 }
 
 /** "+ Tạo roadmap mới" (Req 1.1) — creates an unpublished draft. */
@@ -59,6 +62,7 @@ export function CreateRoadmapDialog({
   role,
   onClose,
   onCreated,
+  uploadCover,
 }: CreateRoadmapDialogProps) {
   const service = useMemo(() => new RoadmapService(), [])
   const [title, setTitle] = useState("")
@@ -213,10 +217,18 @@ export function CreateRoadmapDialog({
             </p>
           </div>
 
-          <div className="space-y-1.5">
-            <Label htmlFor="rm-cover">Ảnh bìa (URL HTTPS)</Label>
-            <Input id="rm-cover" type="url" value={coverUrl} onChange={(event) => setCoverUrl(event.target.value)} placeholder="https://…" />
-          </div>
+          <CoverUploadField
+            id="rm-cover"
+            label="Ảnh bìa"
+            imageUrl={coverUrl || null}
+            aspectClassName="aspect-video"
+            placeholderHint="JPG, PNG hoặc WebP"
+            helpText="Tối thiểu 320×240, dưới 3 MB."
+            disabled={busy}
+            accept="image/jpeg,image/webp,image/png"
+            upload={uploadCover}
+            onUploaded={setCoverUrl}
+          />
 
           <div className="space-y-1.5">
             <Label htmlFor="rm-tags">Thẻ</Label>
