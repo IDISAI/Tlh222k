@@ -1,11 +1,18 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useState } from "react"
-import { ArrowLeft } from "lucide-react"
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react"
+import { ArrowLeft, Search } from "lucide-react"
 import { Button } from "@workspace/ui/components/button"
 import { Skeleton } from "@workspace/ui/components/skeleton"
+import { cn } from "@workspace/ui/lib/utils"
 
-import type { RoadmapGraph, RoadmapNode } from "../types"
+import type { NodeType, RoadmapGraph, RoadmapNode } from "../types"
 import { RoadmapService } from "../api"
 import { NodeDetailDialog, ViewerCanvas } from "../builder"
 import { subscribeRoadmapUpdates } from "../utils/update-signal"
@@ -32,6 +39,11 @@ export interface RoadmapViewerProps {
    * (default, read-only workspace); admin → its own "/notion" editor zone.
    */
   notionBasePath?: string
+  /** Web injects its auth control; admin already owns auth in the outer shell. */
+  headerActions?: ReactNode
+  /** Admin/super-admin render inside a 64px shell header. */
+  embedded?: boolean
+  homeHref?: string
 }
 
 /**
@@ -50,10 +62,16 @@ export function RoadmapViewer({
   readOnlyBadge = false,
   notebookBasePath = "/notebooks",
   notionBasePath = "/notion",
+  headerActions,
+  embedded = false,
+  homeHref = "/",
 }: RoadmapViewerProps) {
   const [graph, setGraph] = useState<RoadmapGraph | null>(initialGraph)
   const [loading, setLoading] = useState(initialGraph === null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [query, setQuery] = useState("")
+  const [nodeType, setNodeType] = useState<"all" | NodeType>("all")
+  const [author, setAuthor] = useState("all")
 
   // LEGO per-block viewer: `slug` is the block NODE id from the home card.
   // Resolve its single-level composition; fall back to the legacy slug graph.
@@ -99,6 +117,32 @@ export function RoadmapViewer({
   const nodes = useMemo<RoadmapNode[]>(() => graph?.nodes ?? [], [graph])
   const selectedNode = nodes.find((n) => n.id === selectedId) ?? null
   const ownerId = graph?.roadmap.id
+  const authorOptions = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          nodes
+            .map((node) => node.authorName || node.authorId)
+            .filter((value): value is string => Boolean(value))
+        )
+      ),
+    [nodes]
+  )
+  const visibleNodes = useMemo(() => {
+    const needle = query.trim().toLocaleLowerCase("vi")
+    return nodes.filter((node) => {
+      if (node.id === ownerId) return true
+      if (needle && !node.title.toLocaleLowerCase("vi").includes(needle))
+        return false
+      if (nodeType !== "all" && node.nodeType !== nodeType) return false
+      if (
+        author !== "all" &&
+        (node.authorName || node.authorId || "") !== author
+      )
+        return false
+      return true
+    })
+  }, [author, nodeType, nodes, ownerId, query])
 
   // Double-click any node → open the right detail sidebar, exactly like the
   // admin builder (CompositionCanvas `onNodeDoubleClick`). Drilling into a
@@ -109,28 +153,81 @@ export function RoadmapViewer({
   }, [])
 
   return (
-    <div className="flex h-[calc(100svh-57px)] flex-col">
-      <div className="flex items-center gap-3 border-b px-4 py-3">
-        {backHref && (
-          <Button
-            type="button"
-            size="sm"
-            variant="ghost"
-            nativeButton={false}
-            render={<a href={backHref} />}
+    <div
+      className={cn(
+        "flex flex-col bg-background",
+        embedded ? "h-[calc(100svh-64px)]" : "h-svh"
+      )}
+    >
+      <header className="grid min-h-[76px] grid-cols-[1fr_auto_1fr] items-center gap-4 border-b border-border px-4 sm:px-8">
+        <div className="flex min-w-0 items-center gap-3">
+          <a
+            href={homeHref}
+            className="shrink-0 text-[22px] font-bold tracking-[-.5px]"
           >
-            <ArrowLeft className="size-4" /> Quay lại
-          </Button>
-        )}
-        <h1 className="min-w-0 truncate text-lg font-extrabold uppercase italic">
-          {graph?.roadmap.title ?? (loading ? "Đang tải..." : "Roadmap")}
-        </h1>
-        {readOnlyBadge && (
-          <span className="rounded-full border px-2 py-0.5 text-xs text-muted-foreground">
-            chỉ xem
+            lh222k
+          </a>
+          {backHref && (
+            <Button
+              type="button"
+              size="icon-sm"
+              variant="ghost"
+              nativeButton={false}
+              render={<a href={backHref} aria-label="Quay lại" />}
+            >
+              <ArrowLeft className="size-4" />
+            </Button>
+          )}
+          {readOnlyBadge && (
+            <span className="hidden rounded-full border border-border px-2.5 py-1 text-[11px] font-semibold text-muted-foreground sm:inline-flex">
+              Chỉ xem
+            </span>
+          )}
+        </div>
+
+        <div className="hidden h-12 items-center overflow-hidden rounded-full border border-border bg-background shadow-float md:flex">
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Tìm một node"
+            aria-label="Tìm một node"
+            className="h-full w-36 bg-transparent px-4 text-sm outline-none lg:w-48"
+          />
+          <span className="h-6 w-px bg-border" />
+          <select
+            value={nodeType}
+            onChange={(event) =>
+              setNodeType(event.target.value as "all" | NodeType)
+            }
+            aria-label="Lọc theo loại node"
+            className="h-full bg-transparent px-3 text-sm font-medium outline-none"
+          >
+            <option value="all">Loại</option>
+            <option value="role">Role</option>
+            <option value="skill">Skill</option>
+            <option value="chapter">Chapter</option>
+          </select>
+          <span className="h-6 w-px bg-border" />
+          <select
+            value={author}
+            onChange={(event) => setAuthor(event.target.value)}
+            aria-label="Lọc theo tác giả"
+            className="h-full bg-transparent px-3 text-sm font-medium outline-none"
+          >
+            <option value="all">Tác giả</option>
+            {authorOptions.map((value) => (
+              <option key={value} value={value}>
+                {value}
+              </option>
+            ))}
+          </select>
+          <span className="grid size-12 place-items-center rounded-full bg-primary text-primary-foreground">
+            <Search className="size-4" />
           </span>
-        )}
-      </div>
+        </div>
+
+        <div className="flex items-center justify-end">{headerActions}</div>
+      </header>
 
       <div className="relative flex-1">
         {loading ? (
@@ -140,8 +237,9 @@ export function RoadmapViewer({
           </div>
         ) : graph ? (
           <ViewerCanvas
-            nodes={nodes}
+            nodes={visibleNodes}
             ownerId={ownerId}
+            onNodeClick={handleNodeOpen}
             onNodeDoubleClick={handleNodeOpen}
             className="h-full w-full"
           />

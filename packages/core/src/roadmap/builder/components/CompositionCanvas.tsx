@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import {
   Background,
   Controls,
@@ -128,7 +128,7 @@ function CompositionCanvasInner({
             x: canvas.composition?.ownerX ?? owner.positionX,
             y: canvas.composition?.ownerY ?? owner.positionY,
           },
-        data: { node: owner },
+        data: { node: owner, isOwner: true },
         draggable: true,
         selectable: true,
       })
@@ -138,7 +138,7 @@ function CompositionCanvasInner({
           id: m.node.id,
           type: "builderNode",
           position: existing ? existing.position : { x: m.x, y: m.y },
-          data: { node: m.node },
+          data: { node: m.node, isOwner: false },
           draggable: true,
           selected: existing?.selected ?? false,
         })
@@ -180,7 +180,7 @@ function CompositionCanvasInner({
         canvas.moveMember(n.id, n.position)
       }
     },
-    [canvas, ownerId]
+    [canvas]
   )
 
   /** Cutting an edge on the canvas removes that link (other edges stay). */
@@ -191,7 +191,7 @@ function CompositionCanvasInner({
     [canvas]
   )
 
-  const onNodeDoubleClick = useCallback(
+  const onNodeOpen = useCallback(
     (_event: React.MouseEvent, rfNode: Node) => {
       const domain =
         canvas.ownerNode?.id === rfNode.id
@@ -320,14 +320,15 @@ function CompositionCanvasInner({
           onNodeDragStart={onNodeDragStart}
           onNodeDragStop={onNodeDragStop}
           onEdgesDelete={onEdgesDelete}
-          onNodeDoubleClick={onNodeDoubleClick}
+          onNodeClick={onNodeOpen}
+          onNodeDoubleClick={onNodeOpen}
           onPaneContextMenu={onPaneContextMenu}
           onNodeContextMenu={onNodeContextMenu}
           onEdgeContextMenu={onEdgeContextMenu}
           onDragOver={onDragOver}
           onDrop={onDrop}
         >
-          <Background />
+          <Background color="var(--border)" gap={20} size={1} />
           <Controls />
           <MiniMap
             pannable

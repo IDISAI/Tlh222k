@@ -6,6 +6,7 @@ import {
   ChevronRight,
   ExternalLink,
   FileText,
+  ImageIcon,
   PencilLine,
   Plus,
 } from "lucide-react"
@@ -168,7 +169,7 @@ interface NodeDetailDialogProps {
   /**
    * Admin-builder base ("/roadmaps"). When set, a role/skill/chapter block
    * navigates to its OWN composition canvas (`{base}/{id}`); omitted in viewer
-   * zones → `/roadmap/{slug}` as before.
+   * zones → `/roadmaps/{slug}`.
    */
   builderBasePath?: string
   /**
@@ -256,7 +257,7 @@ export function NodeDetailDialog({
       <SheetContent
         side="right"
         showOverlay={false}
-        className="flex w-full flex-col gap-0 p-0 sm:max-w-[420px]"
+        className="flex w-full flex-col gap-0 border-l border-border bg-background p-0 sm:max-w-[380px]"
       >
         <SheetHeader className="border-b dark:border-zinc-800">
           <SheetTitle className="flex items-center gap-2">
@@ -270,6 +271,22 @@ export function NodeDetailDialog({
         </SheetHeader>
 
         <div className="flex-1 space-y-4 overflow-y-auto p-6 text-sm">
+          <div className="aspect-[16/9] overflow-hidden rounded-[14px] border border-border bg-muted">
+            {node.coverUrl ? (
+              <img
+                src={node.coverUrl}
+                alt=""
+                className="size-full object-cover"
+              />
+            ) : (
+              <div className="grid size-full place-items-center text-muted-foreground">
+                <span className="flex flex-col items-center gap-2 text-xs">
+                  <ImageIcon className="size-6" />
+                  Chưa có ảnh bìa
+                </span>
+              </div>
+            )}
+          </div>
           {node.description && (
             <div className="space-y-1">
               <Label>Mô tả</Label>
@@ -496,7 +513,8 @@ export function NodeDetailDialog({
               title={!navUrl ? navigationBlockedMessage(node) : undefined}
               onClick={handleNavigate}
             >
-              <ExternalLink className="size-4" /> Điều hướng
+              <ExternalLink className="size-4" />{" "}
+              {isArticle ? "Mở nội dung" : "Mở canvas"}
             </Button>
           )}
           {!readOnly && (

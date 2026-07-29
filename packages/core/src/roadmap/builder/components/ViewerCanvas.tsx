@@ -115,6 +115,7 @@ function ViewerCanvasInner({
         data: {
           node: owner,
           viewerMode: true,
+          isOwner: true,
           onDoubleClick: () => onNodeDoubleClick?.(owner),
         },
         draggable: false,
@@ -132,6 +133,7 @@ function ViewerCanvasInner({
             data: {
               node,
               viewerMode: true,
+              isOwner: false,
               onDoubleClick: () => onNodeDoubleClick?.(node),
             },
             draggable: false,
@@ -152,6 +154,7 @@ function ViewerCanvasInner({
         data: {
           node: n,
           viewerMode: true,
+          isOwner: n.id === ownerId,
           onDoubleClick: () => onNodeDoubleClick?.(n),
         },
         draggable: false,
@@ -214,7 +217,7 @@ function ViewerCanvasInner({
             onNodeDoubleClick?.((rfNode.data as { node: RoadmapNode }).node)
           }
         >
-          <Background />
+          <Background color="var(--border)" gap={20} size={1} />
           <Controls showInteractive={false} />
           <MiniMap
             pannable

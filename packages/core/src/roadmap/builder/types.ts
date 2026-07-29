@@ -11,6 +11,8 @@ export type BuilderFlowNode = Node<
      * (notion-article-node Req 6.2).
      */
     viewerMode?: boolean
+    /** Owner card receives the scarce Rausch label on viewer and builder. */
+    isOwner?: boolean
     /** Optional double-click handler to bypass React Flow event swallowing. */
     onDoubleClick?: () => void
   },
