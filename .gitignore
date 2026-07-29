@@ -83,3 +83,6 @@ tools/pw-notion/*.mjs
 *.dev.out.log
 .*-dev.err.log
 .*-dev.out.log
+
+# vercel env sync
+scripts/vercel-env/manifest.json
