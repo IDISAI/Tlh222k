@@ -124,7 +124,7 @@ export function FieldManagerDialog({
           )}
           {fields?.length === 0 && (
             <p className="py-4 text-center text-sm text-muted-foreground">
-              Chưa có lĩnh vực nào. Tạo từ ô lĩnh vực khi thêm/sửa roadmap.
+              Chưa có lĩnh vực nào. Tạo lĩnh vực trong Workspace trước.
             </p>
           )}
 
