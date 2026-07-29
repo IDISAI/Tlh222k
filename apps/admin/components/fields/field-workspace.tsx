@@ -35,6 +35,11 @@ export function FieldWorkspace({ id, role }: { id: string; role: CallerRole }) {
   const [deleting, setDeleting] = useState(false)
   const [savedSnapshot, setSavedSnapshot] = useState("")
   const [slugTouched, setSlugTouched] = useState(false)
+  // Roadmaps picked before the Field itself has been saved (no real id yet
+  // to attach them to). Held locally and attached in one pass right after
+  // `createField` succeeds, so the picker works from the very first visit
+  // to /fields/new instead of forcing a save first.
+  const [pendingMemberIds, setPendingMemberIds] = useState<string[]>([])
 
   const load = async () => {
     if (!roadmapBackendEnabled()) throw new Error("CMS cần svc-api. Đặt NEXT_PUBLIC_SVC_API_URL trước khi dùng Field.")
@@ -84,7 +89,12 @@ export function FieldWorkspace({ id, role }: { id: string; role: CallerRole }) {
   if (!field) return <div className="grid min-h-[50vh] place-items-center px-5 text-center text-sm text-muted-foreground">{error ? <p role="alert" className="max-w-md rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-destructive">{error}</p> : "Đang tải Field Workspace…"}</div>
 
   const nodesById = new Map(nodes.map((node) => [node.id, node]))
-  const membership = membershipIds
+  // An unsaved Field has no id to persist membership against, so its picks
+  // live in `pendingMemberIds` until save(); a saved Field reads the real
+  // ordered join from `membershipIds`. Everything else in this component
+  // reads through `currentMemberIds` so it doesn't need to know which.
+  const currentMemberIds = isNew ? pendingMemberIds : membershipIds
+  const membership = currentMemberIds
     .map((nodeId) => nodesById.get(nodeId))
     .filter((node): node is RoadmapNode => Boolean(node))
   const publishedRoadmap = membership.some((node) => node.publishStatus === "PUBLISHED")
@@ -126,13 +136,31 @@ export function FieldWorkspace({ id, role }: { id: string; role: CallerRole }) {
         : await service.updateField(field.id, { title: field.title, description: field.description, imageUrl: field.imageUrl, publishStatus: field.publishStatus, order: field.order }, role)
       setField(saved)
       setSavedSnapshot(snapshot(saved))
-      if (isNew) { window.location.assign(`${BASE_PATH}/fields/${saved.id}`); return }
+      if (isNew) {
+        // Attach whatever was picked before the Field had a real id. Best
+        // effort per roadmap: the Field itself is already safely created, so
+        // one failed attach must not block landing on it — it can be redone
+        // from the now-real Workspace page, same as #47's cover-cleanup.
+        for (const nodeId of pendingMemberIds) {
+          const node = nodesById.get(nodeId)
+          if (!node) continue
+          const fieldIds = [...new Set([...(node.fields ?? []).map((item) => item.id), saved.id])]
+          await service.updateNode(nodeId, { fieldIds }, role).catch(() => {})
+        }
+        window.location.assign(`${BASE_PATH}/fields/${saved.id}`)
+        return
+      }
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Không thể lưu lĩnh vực.")
     } finally { setSaving(false) }
   }
 
   const toggle = async (node: RoadmapNode) => {
+    if (isNew) {
+      // Nothing persisted yet — just drop it from the local staging list.
+      setPendingMemberIds((current) => current.filter((id) => id !== node.id))
+      return
+    }
     const selected = node.fields?.some((item) => item.id === field.id) ?? false
     const fieldIds = selected
       ? (node.fields ?? []).filter((item) => item.id !== field.id).map((item) => item.id)
@@ -155,6 +183,12 @@ export function FieldWorkspace({ id, role }: { id: string; role: CallerRole }) {
 
   const addSelected = async () => {
     if (pickerSelection.length === 0) return
+    if (isNew) {
+      // Stage locally; save() attaches these once the Field has a real id.
+      setPendingMemberIds((current) => [...new Set([...current, ...pickerSelection])])
+      setPickerOpen(false)
+      return
+    }
     setError("")
     try {
       for (const nodeId of pickerSelection) {
@@ -183,8 +217,13 @@ export function FieldWorkspace({ id, role }: { id: string; role: CallerRole }) {
   }
 
   const moveMembershipTo = async (activeId: string, overId: string) => {
-    const next = reorderFieldMemberIds(membershipIds, activeId, overId)
-    if (next.join("|") === membershipIds.join("|")) return
+    const next = reorderFieldMemberIds(currentMemberIds, activeId, overId)
+    if (next.join("|") === currentMemberIds.join("|")) return
+    if (isNew) {
+      // No Field id to persist an order against yet — just reorder locally.
+      setPendingMemberIds(next)
+      return
+    }
     setMembershipIds(next)
     setError("")
     try {
@@ -196,10 +235,10 @@ export function FieldWorkspace({ id, role }: { id: string; role: CallerRole }) {
   }
 
   const moveMembership = async (nodeId: string, direction: -1 | 1) => {
-    const index = membershipIds.indexOf(nodeId)
+    const index = currentMemberIds.indexOf(nodeId)
     const target = index + direction
-    if (index < 0 || target < 0 || target >= membershipIds.length) return
-    const overId = membershipIds[target]
+    if (index < 0 || target < 0 || target >= currentMemberIds.length) return
+    const overId = currentMemberIds[target]
     if (!overId) return
     await moveMembershipTo(nodeId, overId)
   }
@@ -247,11 +286,11 @@ ${orphanTitles.length} roadmap sẽ không còn thuộc lĩnh vực nào và bi�
         </div>
       </aside>
 
-      <section className="relative min-h-[600px] overflow-hidden bg-[radial-gradient(#d7d7d7_1px,transparent_1px)] dark:bg-[radial-gradient(#3a3a3a_1px,transparent_1px)] bg-[size:18px_18px] p-5 lg:p-7"><div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="font-bold">Roadmap trong lĩnh vực</h2><p className="text-sm text-muted-foreground">{isNew ? "Lưu lĩnh vực nháp trước khi thêm roadmap." : `${membership.length} roadmap · block có thể thuộc nhiều lĩnh vực.`}</p></div><button type="button" disabled={isNew} onClick={openPicker} className="inline-flex items-center gap-1.5 rounded-lg border bg-card px-3 py-2 text-xs font-semibold shadow-sm hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"><Plus className="size-4" />Thêm roadmap</button></div>
+      <section className="relative min-h-[600px] overflow-hidden bg-[radial-gradient(#d7d7d7_1px,transparent_1px)] dark:bg-[radial-gradient(#3a3a3a_1px,transparent_1px)] bg-[size:18px_18px] p-5 lg:p-7"><div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="font-bold">Roadmap trong lĩnh vực</h2><p className="text-sm text-muted-foreground">{isNew ? (membership.length > 0 ? `${membership.length} roadmap sẽ được gắn khi bạn lưu lĩnh vực.` : "Chọn roadmap để gắn — sẽ được lưu cùng lúc bạn bấm Tạo lĩnh vực.") : `${membership.length} roadmap · block có thể thuộc nhiều lĩnh vực.`}</p></div><button type="button" onClick={openPicker} className="inline-flex items-center gap-1.5 rounded-lg border bg-card px-3 py-2 text-xs font-semibold shadow-sm hover:bg-muted"><Plus className="size-4" />Thêm roadmap</button></div>
         {membership.length === 0 && <p className="mt-5 rounded-xl border border-dashed bg-card/60 p-5 text-sm text-muted-foreground">Lĩnh vực chưa có roadmap nên người học chưa có điểm đến. Thêm ít nhất một roadmap đã xuất bản trước khi xuất bản lĩnh vực.</p>}
         {error && <p role="alert" className="mt-3 rounded-lg border border-destructive/25 bg-destructive/5 px-3 py-2 text-sm text-destructive">{error}</p>}
         {lastDetached && <p role="status" className="mt-3 flex items-center justify-between gap-3 rounded-lg border bg-card px-3 py-2 text-sm shadow-sm"><span>Đã gỡ <strong>{lastDetached.title}</strong> khỏi lĩnh vực.</span><button type="button" onClick={() => void undoDetach()} className="font-semibold text-[#d6284f] underline">Hoàn tác</button></p>}
-        {!isNew && !membershipOrderReady && <p className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-200">Danh sách đang đồng bộ thứ tự lĩnh vực. Tải lại khi backend hoàn tất để sắp xếp roadmap.</p>}<div className="mt-5 flex flex-wrap gap-4">{membership.map((node, index) => <RoadmapCard key={node.id} node={node} nodeCount={nodes.filter((item) => item.parentId === node.id).length} reorderable={membershipOrderReady} dragging={membershipOrderReady && draggingNodeId === node.id} onDragStart={() => membershipOrderReady && setDraggingNodeId(node.id)} onDragEnd={() => setDraggingNodeId(null)} onDrop={() => { if (membershipOrderReady && draggingNodeId) void moveMembershipTo(draggingNodeId, node.id); setDraggingNodeId(null) }} onRemove={() => void toggle(node)} onMoveUp={membershipOrderReady && index > 0 ? () => void moveMembership(node.id, -1) : undefined} onMoveDown={membershipOrderReady && index < membership.length - 1 ? () => void moveMembership(node.id, 1) : undefined} />)}<button type="button" disabled={isNew} onClick={openPicker} className="grid h-[210px] w-[240px] place-items-center rounded-2xl border border-dashed bg-card/55 text-sm font-medium text-muted-foreground transition hover:bg-card disabled:cursor-not-allowed disabled:opacity-50"><span className="text-center"><Plus className="mx-auto mb-3 size-7" />Thêm roadmap</span></button></div>
+        {!isNew && !membershipOrderReady && <p className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-200">Danh sách đang đồng bộ thứ tự lĩnh vực. Tải lại khi backend hoàn tất để sắp xếp roadmap.</p>}<div className="mt-5 flex flex-wrap gap-4">{membership.map((node, index) => { const reorderable = isNew || membershipOrderReady; return <RoadmapCard key={node.id} node={node} nodeCount={nodes.filter((item) => item.parentId === node.id).length} reorderable={reorderable} dragging={reorderable && draggingNodeId === node.id} onDragStart={() => reorderable && setDraggingNodeId(node.id)} onDragEnd={() => setDraggingNodeId(null)} onDrop={() => { if (reorderable && draggingNodeId) void moveMembershipTo(draggingNodeId, node.id); setDraggingNodeId(null) }} onRemove={() => void toggle(node)} onMoveUp={reorderable && index > 0 ? () => void moveMembership(node.id, -1) : undefined} onMoveDown={reorderable && index < membership.length - 1 ? () => void moveMembership(node.id, 1) : undefined} /> })}<button type="button" onClick={openPicker} className="grid h-[210px] w-[240px] place-items-center rounded-2xl border border-dashed bg-card/55 text-sm font-medium text-muted-foreground transition hover:bg-card"><span className="text-center"><Plus className="mx-auto mb-3 size-7" />Thêm roadmap</span></button></div>
         <div className="absolute bottom-5 right-5 flex items-center gap-2 rounded-full border bg-card px-3 py-2 text-xs shadow-lg"><span className="text-muted-foreground">Trạng thái</span>{(["DRAFT", "PUBLISHED", "PRIVATE"] as const).map((status) => <button key={status} type="button" onClick={() => update("publishStatus", status)} className={cn("rounded-full px-2.5 py-1 font-semibold", field.publishStatus === status ? "bg-foreground text-background" : "text-muted-foreground hover:bg-muted")}>{STATUS_LABEL[status]}</button>)}</div>
       </section>
     </div>
@@ -276,7 +315,7 @@ ${orphanTitles.length} roadmap sẽ không còn thuộc lĩnh vực nào và bi�
         if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus() }
         else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus() }
       }
-      return <div role="dialog" aria-modal="true" aria-labelledby="roadmap-picker-title" className="fixed inset-0 z-50 flex justify-end bg-black/25" onKeyDown={trapTab}><section ref={pickerDialogRef} tabIndex={-1} className="flex h-full w-full max-w-md flex-col overflow-y-auto bg-background p-5 shadow-2xl"><div className="flex items-center justify-between"><div><h2 id="roadmap-picker-title" className="text-lg font-bold">Thêm roadmap</h2><p className="mt-1 text-sm text-muted-foreground">Chọn một hoặc nhiều block rồi xác nhận.</p></div><button type="button" onClick={() => setPickerOpen(false)} aria-label="Đóng"><X className="size-5" /></button></div><label className="relative mt-5 block"><Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" /><Input autoFocus value={pickerQuery} onChange={(event) => setPickerQuery(event.target.value)} className="h-10 pl-9" placeholder="Tìm theo tên hoặc slug…" /></label>{allTags.length > 0 && <div className="mt-3 flex flex-wrap gap-1.5"><button type="button" onClick={() => setPickerTag(null)} className={cn("rounded-full border px-2.5 py-1 text-xs font-semibold", pickerTag === null ? "border-foreground bg-foreground text-background" : "text-muted-foreground hover:bg-muted")}>Tất cả</button>{allTags.map((tag) => <button key={tag} type="button" onClick={() => setPickerTag((current) => current === tag ? null : tag)} className={cn("rounded-full border px-2.5 py-1 text-xs font-semibold", pickerTag === tag ? "border-foreground bg-foreground text-background" : "text-muted-foreground hover:bg-muted")}>{tag}</button>)}</div>}<div className="mt-4 flex-1 space-y-2">{pickerResults.map((node) => { const attached = membershipIds.includes(node.id); const selected = pickerSelection.includes(node.id); return <button key={node.id} type="button" disabled={attached} onClick={() => setPickerSelection((current) => selected ? current.filter((item) => item !== node.id) : [...current, node.id])} className={cn("flex w-full items-center gap-3 rounded-xl border p-3 text-left transition hover:bg-muted disabled:cursor-not-allowed disabled:opacity-55", selected && "border-[#ff385c] bg-[#fff6f8] dark:bg-[#ff385c]/10")}><span className="grid size-11 shrink-0 place-items-center rounded-lg bg-muted" style={node.coverUrl ? { backgroundImage: `url(${node.coverUrl})`, backgroundPosition: "center", backgroundSize: "cover" } : undefined}>{!node.coverUrl && <ImageIcon className="size-4 text-muted-foreground" />}</span><span className="min-w-0 flex-1"><span className="block truncate text-sm font-semibold">{node.title}</span><span className="block truncate text-xs text-muted-foreground">{node.description || "Chưa có mô tả"} · {nodes.filter((item) => item.parentId === node.id).length} block · {node.level || "Chưa chọn cấp độ"}</span></span><span className={cn("grid size-5 place-items-center rounded-full border", (attached || selected) && "border-[#ff385c] bg-[#ff385c] text-white")}>{(attached || selected) && <Check className="size-3" />}</span></button> })}{pickerResults.length === 0 && <p className="rounded-lg border border-dashed p-4 text-center text-sm text-muted-foreground">Không có roadmap phù hợp. <button type="button" onClick={() => { setPickerQuery(""); setPickerTag(null) }} className="font-semibold text-foreground underline">Xóa tìm kiếm</button></p>}</div><div className="mt-5 flex items-center justify-between border-t pt-4"><span className="text-sm text-muted-foreground">Đã chọn {pickerSelection.length} roadmap</span><div className="flex gap-2"><Button type="button" variant="outline" onClick={() => setPickerOpen(false)}>Hủy</Button><Button type="button" disabled={pickerSelection.length === 0} className="bg-[#ff385c] hover:bg-[#e31c5f]" onClick={() => void addSelected()}>Thêm đã chọn</Button></div></div></section></div>
+      return <div role="dialog" aria-modal="true" aria-labelledby="roadmap-picker-title" className="fixed inset-0 z-50 flex justify-end bg-black/25" onKeyDown={trapTab}><section ref={pickerDialogRef} tabIndex={-1} className="flex h-full w-full max-w-md flex-col overflow-y-auto bg-background p-5 shadow-2xl"><div className="flex items-center justify-between"><div><h2 id="roadmap-picker-title" className="text-lg font-bold">Thêm roadmap</h2><p className="mt-1 text-sm text-muted-foreground">Chọn một hoặc nhiều block rồi xác nhận.</p></div><button type="button" onClick={() => setPickerOpen(false)} aria-label="Đóng"><X className="size-5" /></button></div><label className="relative mt-5 block"><Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" /><Input autoFocus value={pickerQuery} onChange={(event) => setPickerQuery(event.target.value)} className="h-10 pl-9" placeholder="Tìm theo tên hoặc slug…" /></label>{allTags.length > 0 && <div className="mt-3 flex flex-wrap gap-1.5"><button type="button" onClick={() => setPickerTag(null)} className={cn("rounded-full border px-2.5 py-1 text-xs font-semibold", pickerTag === null ? "border-foreground bg-foreground text-background" : "text-muted-foreground hover:bg-muted")}>Tất cả</button>{allTags.map((tag) => <button key={tag} type="button" onClick={() => setPickerTag((current) => current === tag ? null : tag)} className={cn("rounded-full border px-2.5 py-1 text-xs font-semibold", pickerTag === tag ? "border-foreground bg-foreground text-background" : "text-muted-foreground hover:bg-muted")}>{tag}</button>)}</div>}<div className="mt-4 flex-1 space-y-2">{pickerResults.map((node) => { const attached = currentMemberIds.includes(node.id); const selected = pickerSelection.includes(node.id); return <button key={node.id} type="button" disabled={attached} onClick={() => setPickerSelection((current) => selected ? current.filter((item) => item !== node.id) : [...current, node.id])} className={cn("flex w-full items-center gap-3 rounded-xl border p-3 text-left transition hover:bg-muted disabled:cursor-not-allowed disabled:opacity-55", selected && "border-[#ff385c] bg-[#fff6f8] dark:bg-[#ff385c]/10")}><span className="grid size-11 shrink-0 place-items-center rounded-lg bg-muted" style={node.coverUrl ? { backgroundImage: `url(${node.coverUrl})`, backgroundPosition: "center", backgroundSize: "cover" } : undefined}>{!node.coverUrl && <ImageIcon className="size-4 text-muted-foreground" />}</span><span className="min-w-0 flex-1"><span className="block truncate text-sm font-semibold">{node.title}</span><span className="block truncate text-xs text-muted-foreground">{node.description || "Chưa có mô tả"} · {nodes.filter((item) => item.parentId === node.id).length} block · {node.level || "Chưa chọn cấp độ"}</span></span><span className={cn("grid size-5 place-items-center rounded-full border", (attached || selected) && "border-[#ff385c] bg-[#ff385c] text-white")}>{(attached || selected) && <Check className="size-3" />}</span></button> })}{pickerResults.length === 0 && <p className="rounded-lg border border-dashed p-4 text-center text-sm text-muted-foreground">Không có roadmap phù hợp. <button type="button" onClick={() => { setPickerQuery(""); setPickerTag(null) }} className="font-semibold text-foreground underline">Xóa tìm kiếm</button></p>}</div><div className="mt-5 flex items-center justify-between border-t pt-4"><span className="text-sm text-muted-foreground">Đã chọn {pickerSelection.length} roadmap</span><div className="flex gap-2"><Button type="button" variant="outline" onClick={() => setPickerOpen(false)}>Hủy</Button><Button type="button" disabled={pickerSelection.length === 0} className="bg-[#ff385c] hover:bg-[#e31c5f]" onClick={() => void addSelected()}>Thêm đã chọn</Button></div></div></section></div>
     })()}
   </main>
 }
