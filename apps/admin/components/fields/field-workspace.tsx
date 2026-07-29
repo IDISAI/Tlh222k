@@ -10,8 +10,8 @@ import { fieldPublishEligibility, orphanedFieldMemberIds, reorderFieldMemberIds,
 import { FIELD_DESCRIPTION_MAX, FIELD_DESCRIPTION_WARN } from "@workspace/core"
 
 import { BASE_PATH } from "@/lib/paths"
-import { deleteFieldCover, replaceFieldCover, uploadFieldCover } from "@/app/fields/actions"
-import { inspectFieldImage } from "@/app/fields/field-image-policy"
+import { deleteFieldCover, replaceFieldCover, uploadFieldCover } from "@/app/(dashboard)/fields/actions"
+import { inspectFieldImage } from "@/app/(dashboard)/fields/field-image-policy"
 
 const STATUS_LABEL: Record<PublishStatus, string> = { DRAFT: "Nháp", PUBLISHED: "Đã xuất bản", PRIVATE: "Riêng tư" }
 const PUBLIC_WEB_ORIGIN = process.env.NEXT_PUBLIC_WEB_URL ?? "http://localhost:3000"
