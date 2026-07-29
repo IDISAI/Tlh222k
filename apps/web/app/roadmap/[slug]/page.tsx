@@ -3,6 +3,7 @@ import { notFound } from "next/navigation"
 import { RoadmapService, RoadmapServiceError, RoadmapViewer } from "@workspace/core"
 
 import { getIsAuthenticated } from "@/lib/auth"
+import { AuthHeader } from "@/components/auth-header"
 
 // Always render fresh: the roadmap's published state and nodes are edited in
 // the admin CMS, so this route must never be served from a stale cache.
@@ -48,6 +49,7 @@ export default async function RoadmapDetailPage({
       isAuthenticated={isAuthenticated}
       initialGraph={graph}
       backHref="/roadmaps"
+      headerActions={<AuthHeader />}
     />
   )
 }

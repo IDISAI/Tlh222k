@@ -81,7 +81,7 @@ export const RoadmapCard: FC<{ roadmap: Roadmap }> = ({ roadmap }) => {
         >
           <Heart
             className="size-6 stroke-2 text-white"
-            fill={saved ? "#ff385c" : "rgba(0,0,0,.5)"}
+            fill={saved ? "var(--primary)" : "rgba(0,0,0,.5)"}
           />
         </button>
       </div>
@@ -89,7 +89,7 @@ export const RoadmapCard: FC<{ roadmap: Roadmap }> = ({ roadmap }) => {
       <div className="pt-3">
         <h3 className="mb-[3px] text-base font-semibold">
           <a
-            href={`/roadmap/${roadmap.id}`}
+            href={`/roadmaps/${roadmap.id}`}
             className="after:absolute after:inset-0 after:content-['']"
           >
             {roadmap.title}

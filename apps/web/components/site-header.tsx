@@ -3,7 +3,7 @@
 import type { ComponentType } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { Map, NotebookPen, Users } from "lucide-react"
+import { Map } from "lucide-react"
 import { ThemeToggle } from "@workspace/core"
 import { cn } from "@workspace/ui/lib/utils"
 
@@ -65,7 +65,13 @@ export function SiteHeader() {
   const pathname = usePathname()
   // Field Explorer owns the complete viewport, including its dark utility bar.
   // Keeping the product header here would create a second, conflicting nav.
-  if (pathname === "/") return null
+  if (
+    pathname === "/" ||
+    pathname.startsWith("/fields/") ||
+    pathname.startsWith("/roadmap/") ||
+    pathname.startsWith("/roadmaps/")
+  )
+    return null
   const isActive = (href: string) =>
     pathname === href || pathname.startsWith(`${href}/`)
 

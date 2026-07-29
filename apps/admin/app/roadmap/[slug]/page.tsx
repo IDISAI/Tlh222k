@@ -35,6 +35,8 @@ export default async function AdminRoadmapViewPage({
       isAuthenticated
       backHref={ROADMAPS_PATH}
       readOnlyBadge
+      embedded
+      homeHref={ROADMAPS_PATH}
       // Admins author content: internal articles open the EDITORS here
       // (jupyter → /notebooks, notion → the admin /notion zone), not the web
       // read-only surfaces.
