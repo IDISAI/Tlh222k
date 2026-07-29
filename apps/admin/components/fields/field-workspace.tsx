@@ -132,25 +132,32 @@ export function FieldWorkspace({ id, role }: { id: string; role: CallerRole }) {
     }
     setSaving(true); setError("")
     try {
-      const saved = isNew
-        ? await service.createField({ title: field.title, slug: field.slug, description: field.description, imageUrl: field.imageUrl, publishStatus: field.publishStatus }, role)
-        : await service.updateField(field.id, { title: field.title, description: field.description, imageUrl: field.imageUrl, publishStatus: field.publishStatus, order: field.order }, role)
-      setField(saved)
-      setSavedSnapshot(snapshot(saved))
       if (isNew) {
-        // Attach whatever was picked before the Field had a real id. Best
-        // effort per roadmap: the Field itself is already safely created, so
-        // one failed attach must not block landing on it — it can be redone
-        // from the now-real Workspace page, same as #47's cover-cleanup.
+        // The backend only ever creates a Field as Draft — a brand-new Field
+        // has no id yet for a roadmap's fieldIds to point at, so "published
+        // on arrival" is structurally impossible in a single write. Match the
+        // one-click UX the admin actually asked for anyway: create as Draft,
+        // attach whatever was staged, then move it to the status they picked
+        // — that move runs the real eligibility check now that the blocks it
+        // needs are actually attached.
+        const draft = await service.createField({ title: field.title, slug: field.slug, description: field.description, imageUrl: field.imageUrl, publishStatus: "DRAFT" }, role)
         for (const nodeId of pendingMemberIds) {
           const node = nodesById.get(nodeId)
           if (!node) continue
-          const fieldIds = [...new Set([...(node.fields ?? []).map((item) => item.id), saved.id])]
-          await service.updateNode(nodeId, { fieldIds }, role).catch(() => {})
+          const fieldIds = [...new Set([...(node.fields ?? []).map((item) => item.id), draft.id])]
+          await service.updateNode(nodeId, { fieldIds }, role)
         }
+        const saved = field.publishStatus === "DRAFT"
+          ? draft
+          : await service.updateField(draft.id, { publishStatus: field.publishStatus }, role)
+        setField(saved)
+        setSavedSnapshot(snapshot(saved))
         window.location.assign(`${BASE_PATH}/fields/${saved.id}`)
         return
       }
+      const saved = await service.updateField(field.id, { title: field.title, description: field.description, imageUrl: field.imageUrl, publishStatus: field.publishStatus, order: field.order }, role)
+      setField(saved)
+      setSavedSnapshot(snapshot(saved))
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Không thể lưu lĩnh vực.")
     } finally { setSaving(false) }
