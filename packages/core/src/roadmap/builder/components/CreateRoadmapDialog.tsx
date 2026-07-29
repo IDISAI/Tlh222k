@@ -222,8 +222,8 @@ export function CreateRoadmapDialog({
             label="Ảnh bìa"
             imageUrl={coverUrl || null}
             aspectClassName="aspect-video"
-            placeholderHint="JPG, PNG hoặc WebP"
-            helpText="Tối thiểu 320×240, dưới 3 MB."
+            placeholderHint="Bấm để chọn ảnh JPG, PNG hoặc WebP"
+            helpText="Dưới 3 MB. Ảnh sẽ tự crop cho vừa khung khi hiển thị."
             disabled={busy}
             accept="image/jpeg,image/webp,image/png"
             upload={uploadCover}

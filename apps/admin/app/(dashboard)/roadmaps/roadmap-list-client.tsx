@@ -8,7 +8,6 @@ import { inspectBlockCoverImage } from "./block-cover-policy"
 function blockCoverMessage(code: string) {
   if (code === "FILE_TOO_LARGE") return "Ảnh phải nhỏ hơn 3 MB."
   if (code === "UNSUPPORTED_FILE_TYPE") return "Chỉ nhận ảnh JPG, PNG hoặc WebP."
-  if (code === "INVALID_DIMENSIONS") return "Ảnh cần tối thiểu 320×240."
   return "Không tìm thấy ảnh để tải lên."
 }
 
