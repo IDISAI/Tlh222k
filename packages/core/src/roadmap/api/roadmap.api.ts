@@ -19,16 +19,14 @@ import type {
   UpdateNodeInput,
   Visibility,
 } from "../types"
-import {
-  deriveCompositionFromNodes,
-  parseDerivedEdge,
-} from "../utils/derive-composition"
 import { slugify } from "../utils/slugify"
 import { gql } from "./client"
 
 // Field selections matching the domain types (childrenCount is server-only).
 const ROADMAP_FIELDS = `
-  id slug title description thumbnailUrl publishStatus nodeCount createdAt updatedAt
+  id slug title description thumbnailUrl publishStatus discoverability
+  visibility ownerId roleTags dueDate firstPublishedAt archivedAt
+  nodeCount createdAt updatedAt
 `
 /** Every column of a discovery label. One place, so the next rename is one edit. */
 const FIELD_FIELDS = `id title slug order description imageUrl publishStatus`
@@ -38,6 +36,11 @@ const NODE_FIELDS = `
   articleType jupyterUrl positionX positionY order status isDeleted
   linkedRoadmapId publishStatus coverUrl level visibility tags authorId
   fields { ${FIELD_FIELDS} }
+`
+const COMPOSITION_FIELDS = `
+  ownerId
+  members { nodeId x y isRequired }
+  edges { id sourceId targetId kind }
 `
 
 /**
@@ -62,23 +65,40 @@ export class RoadmapApi {
         description: string | null
         childrenCount: number
         publishStatus: PublishStatus
+        nodeType: "role" | "skill"
+        coverUrl: string | null
+        level: Level | null
+        visibility: Visibility
+        updatedAt: string
+        authorId: string | null
         fields: Field[]
       }[]
     }>(
-      `query { publicBlocks { id slug title description childrenCount publishStatus fields { ${FIELD_FIELDS} } } }`
+      `query {
+        publicBlocks {
+          id slug title description childrenCount publishStatus
+          nodeType coverUrl level visibility updatedAt authorId
+          fields { ${FIELD_FIELDS} }
+        }
+      }`
     )
     return data.publicBlocks.map((n) => ({
       id: n.id,
       slug: n.slug,
       title: n.title,
       description: n.description,
-      thumbnailUrl: null,
+      thumbnailUrl: n.coverUrl,
       // `publicBlocks` only ever returns published blocks, but the card carries
       // the block's own status rather than a hardcoded one so a later screen
       // that reuses this shape cannot be misled by it.
       publishStatus: n.publishStatus,
       nodeCount: n.childrenCount ?? 0,
       fields: n.fields ?? [],
+      blockType: n.nodeType,
+      level: n.level,
+      visibility: n.visibility,
+      updatedAt: n.updatedAt,
+      authorId: n.authorId ?? undefined,
     }))
   }
 
@@ -300,6 +320,16 @@ export class RoadmapApi {
        }`,
       { id, input }
     )
+    if (input.publishStatus === "PUBLISHED") {
+      await gql<{ publishComposition: Composition }>(
+        `mutation ($ownerId: ID!) {
+          publishComposition(ownerId: $ownerId) {
+            ${COMPOSITION_FIELDS}
+          }
+        }`,
+        { ownerId: id }
+      )
+    }
     return data.updateNode
   }
 
@@ -359,10 +389,21 @@ export class RoadmapApi {
 
   async getComposition(
     ownerId: string,
-    _opts: { callerRole: CallerRole }
+    opts: { callerRole: CallerRole }
   ): Promise<Composition> {
-    const nodes = await this.listNodes()
-    return deriveCompositionFromNodes(ownerId, nodes)
+    const scope =
+      opts.callerRole === "admin" || opts.callerRole === "super-admin"
+        ? "DRAFT"
+        : "PUBLISHED"
+    const data = await gql<{ composition: Composition }>(
+      `query ($ownerId: ID!, $scope: CompositionScope!) {
+        composition(ownerId: $ownerId, scope: $scope) {
+          ${COMPOSITION_FIELDS}
+        }
+      }`,
+      { ownerId, scope }
+    )
+    return data.composition
   }
 
   async addMember(
@@ -371,19 +412,31 @@ export class RoadmapApi {
     position: { x: number; y: number },
     role: CallerRole
   ): Promise<Composition> {
-    const nodes = await this.listNodes()
-    const owner = nodes.find((n) => n.id === ownerId)
-    const node = nodes.find((n) => n.id === nodeId)
-    if (owner && node && node.roadmapId !== owner.roadmapId) {
-      // Pull it into the owner's roadmap first so the parent link is valid.
-      await this.moveNode(nodeId, owner.roadmapId, position, role)
-    }
-    await this.updateNode(
-      nodeId,
-      { parentId: ownerId, positionX: position.x, positionY: position.y },
-      role
+    void role
+    const data = await gql<{ addCompositionMember: Composition }>(
+      `mutation (
+        $ownerId: ID!
+        $nodeId: ID!
+        $positionX: Float!
+        $positionY: Float!
+      ) {
+        addCompositionMember(
+          ownerId: $ownerId
+          nodeId: $nodeId
+          positionX: $positionX
+          positionY: $positionY
+        ) {
+          ${COMPOSITION_FIELDS}
+        }
+      }`,
+      {
+        ownerId,
+        nodeId,
+        positionX: position.x,
+        positionY: position.y,
+      }
     )
-    return deriveCompositionFromNodes(ownerId, await this.listNodes())
+    return data.addCompositionMember
   }
 
   async removeFromCanvas(
@@ -391,34 +444,45 @@ export class RoadmapApi {
     nodeId: string,
     role: CallerRole
   ): Promise<Composition> {
-    const nodes = await this.listNodes()
-    const owner = nodes.find((n) => n.id === ownerId)
-    const node = nodes.find((n) => n.id === nodeId)
-    
-    if (owner && node) {
-      // Move the node to its own roadmap (self-owned) to remove it from owner's canvas
-      // This ensures it won't be derived into owner's composition anymore
-      if (node.roadmapId === owner.roadmapId) {
-        await this.moveNode(nodeId, nodeId, { x: node.positionX, y: node.positionY }, role)
-      } else {
-        // Already in different roadmap, just clear parent link
-        await this.updateNode(nodeId, { parentId: null }, role)
-      }
-    }
-    
-    return deriveCompositionFromNodes(ownerId, await this.listNodes())
+    void role
+    const data = await gql<{ removeCompositionMember: Composition }>(
+      `mutation ($ownerId: ID!, $nodeId: ID!) {
+        removeCompositionMember(ownerId: $ownerId, nodeId: $nodeId) {
+          ${COMPOSITION_FIELDS}
+        }
+      }`,
+      { ownerId, nodeId }
+    )
+    return data.removeCompositionMember
   }
 
   async moveMember(
-    _ownerId: string,
+    ownerId: string,
     nodeId: string,
     position: { x: number; y: number },
     role: CallerRole
   ): Promise<void> {
-    await this.updateNode(
-      nodeId,
-      { positionX: position.x, positionY: position.y },
-      role
+    void role
+    await gql<{ moveCompositionMember: boolean }>(
+      `mutation (
+        $ownerId: ID!
+        $nodeId: ID!
+        $positionX: Float!
+        $positionY: Float!
+      ) {
+        moveCompositionMember(
+          ownerId: $ownerId
+          nodeId: $nodeId
+          positionX: $positionX
+          positionY: $positionY
+        )
+      }`,
+      {
+        ownerId,
+        nodeId,
+        positionX: position.x,
+        positionY: position.y,
+      }
     )
   }
 
@@ -439,14 +503,13 @@ export class RoadmapApi {
     role: CallerRole
   ): Promise<RoadmapNode> {
     if (input.ownerId) {
-      // On a canvas: a child of the owner in the owner's roadmap.
       const nodes = await this.listNodes()
       const owner = nodes.find((n) => n.id === input.ownerId)
       const roadmapId = owner?.roadmapId ?? input.ownerId
-      return this.createNode(
+      const created = await this.createNode(
         {
           roadmapId,
-          parentId: input.ownerId,
+          parentId: null,
           title: input.title,
           nodeType: input.nodeType,
           description: input.description,
@@ -460,6 +523,13 @@ export class RoadmapApi {
         },
         role
       )
+      await this.addMember(
+        input.ownerId,
+        created.id,
+        { x: input.positionX, y: input.positionY },
+        role
+      )
+      return created
     }
     // From the table: a new top-level roadmap = a container + its root node.
     const roadmap = await this.createRoadmap(
@@ -493,25 +563,54 @@ export class RoadmapApi {
   }
 
   async addEdge(
-    _ownerId: string,
+    ownerId: string,
     sourceId: string,
     targetId: string,
-    _kind: EdgeKind,
+    kind: EdgeKind,
     role: CallerRole
   ): Promise<RoadmapEdge> {
-    // Wire = a parent link (backend has no edge kind yet).
-    await this.updateNode(targetId, { parentId: sourceId }, role)
-    return { id: `edge-${sourceId}-${targetId}`, sourceId, targetId, kind: "solid" }
+    void role
+    const data = await gql<{ addCompositionEdge: RoadmapEdge }>(
+      `mutation (
+        $ownerId: ID!
+        $sourceId: ID!
+        $targetId: ID!
+        $kind: EdgeKind!
+      ) {
+        addCompositionEdge(
+          ownerId: $ownerId
+          sourceId: $sourceId
+          targetId: $targetId
+          kind: $kind
+        ) {
+          id sourceId targetId kind
+        }
+      }`,
+      { ownerId, sourceId, targetId, kind }
+    )
+    return data.addCompositionEdge
   }
 
   async updateEdgeKind(
-    _ownerId: string,
+    ownerId: string,
     edgeId: string,
     kind: EdgeKind,
-    _role: CallerRole
+    role: CallerRole
   ): Promise<RoadmapEdge> {
-    // No-op: edge kind is not stored on the backend tree yet.
-    return { id: edgeId, sourceId: "", targetId: "", kind }
+    void role
+    const data = await gql<{ updateCompositionEdgeKind: RoadmapEdge }>(
+      `mutation ($ownerId: ID!, $edgeId: ID!, $kind: EdgeKind!) {
+        updateCompositionEdgeKind(
+          ownerId: $ownerId
+          edgeId: $edgeId
+          kind: $kind
+        ) {
+          id sourceId targetId kind
+        }
+      }`,
+      { ownerId, edgeId, kind }
+    )
+    return data.updateCompositionEdgeKind
   }
 
   async removeEdge(
@@ -519,19 +618,54 @@ export class RoadmapApi {
     edgeId: string,
     role: CallerRole
   ): Promise<Composition> {
-    const parsed = parseDerivedEdge(edgeId)
-    if (parsed) {
-      await this.updateNode(parsed.targetId, { parentId: null }, role)
-    }
-    return deriveCompositionFromNodes(ownerId, await this.listNodes())
+    void role
+    const data = await gql<{ removeCompositionEdge: Composition }>(
+      `mutation ($ownerId: ID!, $edgeId: ID!) {
+        removeCompositionEdge(ownerId: $ownerId, edgeId: $edgeId) {
+          ${COMPOSITION_FIELDS}
+        }
+      }`,
+      { ownerId, edgeId }
+    )
+    return data.removeCompositionEdge
   }
 
-  // No-op: backend has no composition table yet; undo/redo only affects UI state.
   async restoreComposition(
-    _ownerId: string,
-    _comp: Composition,
-    _role: CallerRole
-  ): Promise<void> {}
+    ownerId: string,
+    comp: Composition,
+    role: CallerRole
+  ): Promise<void> {
+    void role
+    await gql<{ replaceComposition: Composition }>(
+      `mutation (
+        $ownerId: ID!
+        $members: [CompositionMemberInput!]!
+        $edges: [CompositionEdgeInput!]!
+      ) {
+        replaceComposition(
+          ownerId: $ownerId
+          members: $members
+          edges: $edges
+        ) {
+          ${COMPOSITION_FIELDS}
+        }
+      }`,
+      {
+        ownerId,
+        members: comp.members.map((member) => ({
+          nodeId: member.nodeId,
+          x: member.x,
+          y: member.y,
+          isRequired: member.isRequired ?? true,
+        })),
+        edges: comp.edges.map(({ sourceId, targetId, kind }) => ({
+          sourceId,
+          targetId,
+          kind,
+        })),
+      }
+    )
+  }
 
   async createArticle(
     input: {

@@ -110,10 +110,15 @@ export class RoadmapService {
         slug: n.slug,
         title: n.title,
         description: n.description,
-        thumbnailUrl: null,
+        thumbnailUrl: n.coverUrl ?? null,
         publishStatus: "PUBLISHED",
         nodeCount: childCount.get(n.id) ?? 0,
         fields: n.fields ?? [],
+        blockType: n.nodeType as "role" | "skill",
+        level: n.level ?? null,
+        visibility: n.visibility ?? "FREE",
+        updatedAt: n.updatedAt,
+        authorId: n.authorId,
       }))
   }
 

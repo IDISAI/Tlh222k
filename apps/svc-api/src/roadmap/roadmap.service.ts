@@ -89,6 +89,13 @@ export interface RoadmapDto {
   description: string | null
   thumbnailUrl: string | null
   publishStatus: PublishStatus
+  discoverability: "PUBLIC" | "PRIVATE"
+  visibility: Visibility
+  ownerId: string | null
+  roleTags: string[]
+  dueDate: string | null
+  firstPublishedAt: string | null
+  archivedAt: string | null
   nodeCount: number
   createdAt?: string | null
   updatedAt?: string | null
@@ -205,6 +212,10 @@ export interface CreateRoadmapInput {
   title: string
   description?: string | null
   thumbnailUrl?: string | null
+  discoverability?: "PUBLIC" | "PRIVATE" | null
+  visibility?: Visibility | null
+  roleTags?: string[] | null
+  dueDate?: string | null
 }
 
 export interface UpdateRoadmapInput {
@@ -212,6 +223,10 @@ export interface UpdateRoadmapInput {
   description?: string | null
   thumbnailUrl?: string | null
   publishStatus?: PublishStatus | null
+  discoverability?: "PUBLIC" | "PRIVATE" | null
+  visibility?: Visibility | null
+  roleTags?: string[] | null
+  dueDate?: string | null
 }
 
 export interface CreateFieldInput {
@@ -277,6 +292,42 @@ export interface SaveNodeInput {
   parentId?: string | null
   positionX: number
   positionY: number
+}
+
+export type CompositionScope = "DRAFT" | "PUBLISHED"
+export type CompositionEdgeKind = "solid" | "dashed"
+
+export interface CompositionMemberDto {
+  nodeId: string
+  x: number
+  y: number
+  isRequired: boolean
+}
+
+export interface CompositionEdgeDto {
+  id: string
+  sourceId: string
+  targetId: string
+  kind: CompositionEdgeKind
+}
+
+export interface CompositionDto {
+  ownerId: string
+  members: CompositionMemberDto[]
+  edges: CompositionEdgeDto[]
+}
+
+export interface ReplaceCompositionMemberInput {
+  nodeId: string
+  x: number
+  y: number
+  isRequired?: boolean | null
+}
+
+export interface ReplaceCompositionEdgeInput {
+  sourceId: string
+  targetId: string
+  kind: CompositionEdgeKind
 }
 
 @Injectable()
@@ -450,6 +501,13 @@ export class RoadmapService implements OnModuleInit {
       // rather than a hardcoded one, so a private block cannot be dressed as
       // published by the shape used to render it.
       publishStatus: normalizePublishStatus(node.publishStatus),
+      discoverability: "PUBLIC",
+      visibility: normalizeVisibility(node.visibility),
+      ownerId: node.authorId,
+      roleTags: node.tags,
+      dueDate: null,
+      firstPublishedAt: null,
+      archivedAt: null,
       nodeCount: subtree.length,
     }
     return this.buildGraph(
@@ -597,6 +655,13 @@ export class RoadmapService implements OnModuleInit {
       // rather than a hardcoded one, so a private block cannot be dressed as
       // published by the shape used to render it.
       publishStatus: normalizePublishStatus(node.publishStatus),
+      discoverability: "PUBLIC",
+      visibility: normalizeVisibility(node.visibility),
+      ownerId: node.authorId,
+      roleTags: node.tags,
+      dueDate: null,
+      firstPublishedAt: null,
+      archivedAt: null,
       nodeCount: visibleNodes.length,
     }
     return this.buildGraph(synthetic, visibleNodes, {})
@@ -645,7 +710,7 @@ export class RoadmapService implements OnModuleInit {
     input: CreateRoadmapInput,
     user: CurrentUser | null
   ): Promise<RoadmapDto> {
-    assertCanWrite(user)
+    const actor = assertCanWrite(user)
     const slug = await this.uniqueRoadmapSlug(
       input.slug?.trim() || slugify(input.title)
     )
@@ -656,6 +721,11 @@ export class RoadmapService implements OnModuleInit {
         description: input.description?.trim() || null,
         thumbnailUrl: input.thumbnailUrl ?? null,
         publishStatus: "DRAFT",
+        discoverability: input.discoverability ?? "PUBLIC",
+        visibility: input.visibility ?? "FREE",
+        ownerId: actor.userId,
+        roleTags: input.roleTags ?? [],
+        dueDate: input.dueDate ? new Date(input.dueDate) : null,
       },
     })
     await this.events.emit(created.id)
@@ -688,6 +758,19 @@ export class RoadmapService implements OnModuleInit {
         publishStatus:
           input.publishStatus !== undefined && input.publishStatus !== null
             ? input.publishStatus
+            : undefined,
+        discoverability: input.discoverability ?? undefined,
+        visibility: input.visibility ?? undefined,
+        roleTags: input.roleTags ?? undefined,
+        dueDate:
+          input.dueDate !== undefined
+            ? input.dueDate
+              ? new Date(input.dueDate)
+              : null
+            : undefined,
+        firstPublishedAt:
+          input.publishStatus === "PUBLISHED" && !existing.firstPublishedAt
+            ? new Date()
             : undefined,
       },
       include: {
@@ -1053,6 +1136,294 @@ export class RoadmapService implements OnModuleInit {
     return true
   }
 
+  async composition(
+    ownerId: string,
+    scope: CompositionScope,
+    user: CurrentUser | null
+  ): Promise<CompositionDto> {
+    if (scope === "DRAFT") assertCanWrite(user)
+    const owner = await this.prisma.node.findFirst({
+      where: { id: ownerId, isDeleted: false },
+      select: { id: true },
+    })
+    if (!owner) throw new RoadmapError("NOT_FOUND")
+
+    const [members, edges] = await Promise.all([
+      this.prisma.compositionMembership.findMany({
+        where: { ownerId, scope },
+        orderBy: [{ createdAt: "asc" }, { nodeId: "asc" }],
+      }),
+      this.prisma.compositionEdge.findMany({
+        where: { ownerId, scope },
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+      }),
+    ])
+
+    return {
+      ownerId,
+      members: members.map((member) => ({
+        nodeId: member.nodeId,
+        x: member.positionX,
+        y: member.positionY,
+        isRequired: member.isRequired,
+      })),
+      edges: edges.map((edge) => ({
+        id: edge.id,
+        sourceId: edge.sourceId,
+        targetId: edge.targetId,
+        kind: edge.kind === "dashed" ? "dashed" : "solid",
+      })),
+    }
+  }
+
+  async addCompositionMember(
+    ownerId: string,
+    nodeId: string,
+    positionX: number,
+    positionY: number,
+    isRequired: boolean,
+    user: CurrentUser | null
+  ): Promise<CompositionDto> {
+    assertCanWrite(user)
+    if (ownerId === nodeId) {
+      throw new RoadmapError("INVALID_HIERARCHY", "OWNER_IS_NOT_A_MEMBER")
+    }
+    const count = await this.prisma.node.count({
+      where: { id: { in: [ownerId, nodeId] }, isDeleted: false },
+    })
+    if (count !== 2) throw new RoadmapError("NOT_FOUND")
+
+    await this.prisma.compositionMembership.upsert({
+      where: {
+        ownerId_nodeId_scope: { ownerId, nodeId, scope: "DRAFT" },
+      },
+      create: {
+        ownerId,
+        nodeId,
+        scope: "DRAFT",
+        positionX,
+        positionY,
+        isRequired,
+      },
+      update: { positionX, positionY, isRequired },
+    })
+    return this.composition(ownerId, "DRAFT", user)
+  }
+
+  async moveCompositionMember(
+    ownerId: string,
+    nodeId: string,
+    positionX: number,
+    positionY: number,
+    user: CurrentUser | null
+  ): Promise<boolean> {
+    assertCanWrite(user)
+    const result = await this.prisma.compositionMembership.updateMany({
+      where: { ownerId, nodeId, scope: "DRAFT" },
+      data: { positionX, positionY },
+    })
+    if (result.count === 0) throw new RoadmapError("NOT_FOUND")
+    return true
+  }
+
+  async removeCompositionMember(
+    ownerId: string,
+    nodeId: string,
+    user: CurrentUser | null
+  ): Promise<CompositionDto> {
+    assertCanWrite(user)
+    await this.prisma.$transaction([
+      this.prisma.compositionEdge.deleteMany({
+        where: {
+          ownerId,
+          scope: "DRAFT",
+          OR: [{ sourceId: nodeId }, { targetId: nodeId }],
+        },
+      }),
+      this.prisma.compositionMembership.deleteMany({
+        where: { ownerId, nodeId, scope: "DRAFT" },
+      }),
+    ])
+    return this.composition(ownerId, "DRAFT", user)
+  }
+
+  async addCompositionEdge(
+    ownerId: string,
+    sourceId: string,
+    targetId: string,
+    kind: CompositionEdgeKind,
+    user: CurrentUser | null
+  ): Promise<CompositionEdgeDto> {
+    assertCanWrite(user)
+    if (sourceId === targetId) {
+      throw new RoadmapError("INVALID_HIERARCHY", "SELF_EDGE")
+    }
+    const memberIds = [sourceId, targetId].filter((id) => id !== ownerId)
+    const memberCount = await this.prisma.compositionMembership.count({
+      where: { ownerId, scope: "DRAFT", nodeId: { in: memberIds } },
+    })
+    if (memberCount !== new Set(memberIds).size) {
+      throw new RoadmapError("INVALID_HIERARCHY", "EDGE_OUTSIDE_COMPOSITION")
+    }
+    const edge = await this.prisma.compositionEdge.upsert({
+      where: {
+        ownerId_sourceId_targetId_scope: {
+          ownerId,
+          sourceId,
+          targetId,
+          scope: "DRAFT",
+        },
+      },
+      create: { ownerId, sourceId, targetId, scope: "DRAFT", kind },
+      update: { kind },
+    })
+    return {
+      id: edge.id,
+      sourceId: edge.sourceId,
+      targetId: edge.targetId,
+      kind: edge.kind === "dashed" ? "dashed" : "solid",
+    }
+  }
+
+  async updateCompositionEdgeKind(
+    ownerId: string,
+    edgeId: string,
+    kind: CompositionEdgeKind,
+    user: CurrentUser | null
+  ): Promise<CompositionEdgeDto> {
+    assertCanWrite(user)
+    const existing = await this.prisma.compositionEdge.findFirst({
+      where: { id: edgeId, ownerId, scope: "DRAFT" },
+    })
+    if (!existing) throw new RoadmapError("NOT_FOUND")
+    const edge = await this.prisma.compositionEdge.update({
+      where: { id: edgeId },
+      data: { kind },
+    })
+    return {
+      id: edge.id,
+      sourceId: edge.sourceId,
+      targetId: edge.targetId,
+      kind: edge.kind === "dashed" ? "dashed" : "solid",
+    }
+  }
+
+  async removeCompositionEdge(
+    ownerId: string,
+    edgeId: string,
+    user: CurrentUser | null
+  ): Promise<CompositionDto> {
+    assertCanWrite(user)
+    await this.prisma.compositionEdge.deleteMany({
+      where: { id: edgeId, ownerId, scope: "DRAFT" },
+    })
+    return this.composition(ownerId, "DRAFT", user)
+  }
+
+  async replaceComposition(
+    ownerId: string,
+    members: ReplaceCompositionMemberInput[],
+    edges: ReplaceCompositionEdgeInput[],
+    user: CurrentUser | null
+  ): Promise<CompositionDto> {
+    assertCanWrite(user)
+    const memberIds = [...new Set(members.map((member) => member.nodeId))]
+    if (memberIds.length !== members.length || memberIds.includes(ownerId)) {
+      throw new RoadmapError("INVALID_HIERARCHY", "INVALID_MEMBERS")
+    }
+    const existingCount = await this.prisma.node.count({
+      where: { id: { in: [ownerId, ...memberIds] }, isDeleted: false },
+    })
+    if (existingCount !== memberIds.length + 1) {
+      throw new RoadmapError("NOT_FOUND")
+    }
+    const allowed = new Set([ownerId, ...memberIds])
+    if (
+      edges.some(
+        (edge) =>
+          edge.sourceId === edge.targetId ||
+          !allowed.has(edge.sourceId) ||
+          !allowed.has(edge.targetId)
+      )
+    ) {
+      throw new RoadmapError("INVALID_HIERARCHY", "INVALID_EDGES")
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.compositionEdge.deleteMany({
+        where: { ownerId, scope: "DRAFT" },
+      })
+      await tx.compositionMembership.deleteMany({
+        where: { ownerId, scope: "DRAFT" },
+      })
+      for (const member of members) {
+        await tx.compositionMembership.create({
+          data: {
+            ownerId,
+            nodeId: member.nodeId,
+            scope: "DRAFT",
+            positionX: member.x,
+            positionY: member.y,
+            isRequired: member.isRequired ?? true,
+          },
+        })
+      }
+      for (const edge of edges) {
+        await tx.compositionEdge.create({
+          data: { ownerId, scope: "DRAFT", ...edge },
+        })
+      }
+    })
+    return this.composition(ownerId, "DRAFT", user)
+  }
+
+  async publishComposition(
+    ownerId: string,
+    user: CurrentUser | null
+  ): Promise<CompositionDto> {
+    assertCanWrite(user)
+    await this.prisma.$transaction(async (tx) => {
+      const [members, edges] = await Promise.all([
+        tx.compositionMembership.findMany({
+          where: { ownerId, scope: "DRAFT" },
+        }),
+        tx.compositionEdge.findMany({
+          where: { ownerId, scope: "DRAFT" },
+        }),
+      ])
+      await tx.compositionEdge.deleteMany({
+        where: { ownerId, scope: "PUBLISHED" },
+      })
+      await tx.compositionMembership.deleteMany({
+        where: { ownerId, scope: "PUBLISHED" },
+      })
+      for (const member of members) {
+        await tx.compositionMembership.create({
+          data: {
+            ownerId,
+            nodeId: member.nodeId,
+            scope: "PUBLISHED",
+            positionX: member.positionX,
+            positionY: member.positionY,
+            isRequired: member.isRequired,
+          },
+        })
+      }
+      for (const edge of edges) {
+        await tx.compositionEdge.create({
+          data: {
+            ownerId,
+            sourceId: edge.sourceId,
+            targetId: edge.targetId,
+            scope: "PUBLISHED",
+            kind: edge.kind,
+          },
+        })
+      }
+    })
+    return this.composition(ownerId, "PUBLISHED", user)
+  }
+
   async setNodeStatus(
     nodeId: string,
     status: NodeStatus,
@@ -1077,6 +1448,13 @@ export class RoadmapService implements OnModuleInit {
       description: string | null
       thumbnailUrl: string | null
       publishStatus: string
+      discoverability: string
+      visibility: string
+      ownerId: string | null
+      roleTags: string[]
+      dueDate: Date | null
+      firstPublishedAt: Date | null
+      archivedAt: Date | null
       createdAt?: Date
       updatedAt?: Date
     },
@@ -1089,6 +1467,13 @@ export class RoadmapService implements OnModuleInit {
       description: r.description,
       thumbnailUrl: r.thumbnailUrl,
       publishStatus: normalizePublishStatus(r.publishStatus),
+      discoverability: r.discoverability === "PRIVATE" ? "PRIVATE" : "PUBLIC",
+      visibility: normalizeVisibility(r.visibility),
+      ownerId: r.ownerId,
+      roleTags: r.roleTags,
+      dueDate: r.dueDate?.toISOString() ?? null,
+      firstPublishedAt: r.firstPublishedAt?.toISOString() ?? null,
+      archivedAt: r.archivedAt?.toISOString() ?? null,
       nodeCount,
       createdAt: r.createdAt ? r.createdAt.toISOString() : null,
       updatedAt: r.updatedAt ? r.updatedAt.toISOString() : null,

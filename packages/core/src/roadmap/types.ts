@@ -97,9 +97,19 @@ export interface Roadmap {
    * means the viewer's own progress.
    */
   publishStatus: PublishStatus
+  discoverability?: "PUBLIC" | "PRIVATE"
+  visibility?: Visibility
+  ownerId?: string | null
+  roleTags?: string[]
+  dueDate?: string | null
+  firstPublishedAt?: string | null
+  archivedAt?: string | null
   nodeCount: number
   /** Discovery labels; empty when the block carries none. */
   fields: Field[]
+  /** Public card metadata copied from the role/skill block. */
+  blockType?: Extract<NodeType, "role" | "skill">
+  level?: Level | null
   // ── Metadata columns (roadmap-detail-columns spec) ────────────────────────
   /** ISO 8601 create time. Optional so legacy localStorage snapshots stay valid. */
   createdAt?: string
@@ -194,6 +204,8 @@ export interface CompositionMember {
   nodeId: string
   x: number
   y: number
+  /** Required members count toward roadmap progress. */
+  isRequired?: boolean
 }
 
 /**

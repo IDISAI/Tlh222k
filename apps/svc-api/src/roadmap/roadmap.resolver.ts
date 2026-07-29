@@ -12,6 +12,8 @@ import {
   type UpdateNodeInput,
   type UpdateFieldInput,
   type UpdateRoadmapInput,
+  type ReplaceCompositionMemberInput,
+  type ReplaceCompositionEdgeInput,
 } from "./roadmap.service"
 
 @Resolver()
@@ -101,6 +103,15 @@ export class RoadmapResolver {
   @Query("myProgress")
   myProgress(@CurrentUser() user: CurrentUserType | null) {
     return this.service.myProgress(user)
+  }
+
+  @Query("composition")
+  composition(
+    @Args("ownerId") ownerId: string,
+    @Args("scope") scope: "DRAFT" | "PUBLISHED",
+    @CurrentUser() user: CurrentUserType | null
+  ) {
+    return this.service.composition(ownerId, scope, user)
   }
 
   // ── Mutations ──
@@ -208,6 +219,105 @@ export class RoadmapResolver {
     @CurrentUser() user: CurrentUserType | null
   ) {
     return this.service.saveRoadmap(roadmapId, nodes, user)
+  }
+
+  @Mutation("addCompositionMember")
+  addCompositionMember(
+    @Args("ownerId") ownerId: string,
+    @Args("nodeId") nodeId: string,
+    @Args("positionX") positionX: number,
+    @Args("positionY") positionY: number,
+    @Args("isRequired") isRequired: boolean,
+    @CurrentUser() user: CurrentUserType | null
+  ) {
+    return this.service.addCompositionMember(
+      ownerId,
+      nodeId,
+      positionX,
+      positionY,
+      isRequired,
+      user
+    )
+  }
+
+  @Mutation("moveCompositionMember")
+  moveCompositionMember(
+    @Args("ownerId") ownerId: string,
+    @Args("nodeId") nodeId: string,
+    @Args("positionX") positionX: number,
+    @Args("positionY") positionY: number,
+    @CurrentUser() user: CurrentUserType | null
+  ) {
+    return this.service.moveCompositionMember(
+      ownerId,
+      nodeId,
+      positionX,
+      positionY,
+      user
+    )
+  }
+
+  @Mutation("removeCompositionMember")
+  removeCompositionMember(
+    @Args("ownerId") ownerId: string,
+    @Args("nodeId") nodeId: string,
+    @CurrentUser() user: CurrentUserType | null
+  ) {
+    return this.service.removeCompositionMember(ownerId, nodeId, user)
+  }
+
+  @Mutation("addCompositionEdge")
+  addCompositionEdge(
+    @Args("ownerId") ownerId: string,
+    @Args("sourceId") sourceId: string,
+    @Args("targetId") targetId: string,
+    @Args("kind") kind: "solid" | "dashed",
+    @CurrentUser() user: CurrentUserType | null
+  ) {
+    return this.service.addCompositionEdge(
+      ownerId,
+      sourceId,
+      targetId,
+      kind,
+      user
+    )
+  }
+
+  @Mutation("updateCompositionEdgeKind")
+  updateCompositionEdgeKind(
+    @Args("ownerId") ownerId: string,
+    @Args("edgeId") edgeId: string,
+    @Args("kind") kind: "solid" | "dashed",
+    @CurrentUser() user: CurrentUserType | null
+  ) {
+    return this.service.updateCompositionEdgeKind(ownerId, edgeId, kind, user)
+  }
+
+  @Mutation("removeCompositionEdge")
+  removeCompositionEdge(
+    @Args("ownerId") ownerId: string,
+    @Args("edgeId") edgeId: string,
+    @CurrentUser() user: CurrentUserType | null
+  ) {
+    return this.service.removeCompositionEdge(ownerId, edgeId, user)
+  }
+
+  @Mutation("replaceComposition")
+  replaceComposition(
+    @Args("ownerId") ownerId: string,
+    @Args("members") members: ReplaceCompositionMemberInput[],
+    @Args("edges") edges: ReplaceCompositionEdgeInput[],
+    @CurrentUser() user: CurrentUserType | null
+  ) {
+    return this.service.replaceComposition(ownerId, members, edges, user)
+  }
+
+  @Mutation("publishComposition")
+  publishComposition(
+    @Args("ownerId") ownerId: string,
+    @CurrentUser() user: CurrentUserType | null
+  ) {
+    return this.service.publishComposition(ownerId, user)
   }
 
   @Mutation("setNodeStatus")

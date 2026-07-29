@@ -1,5 +1,6 @@
 export * from "./types"
 export * from "./publish-status"
+export * from "./access-policy"
 export * from "./field-policy"
 export * from "./level"
 export * from "./field-limits"

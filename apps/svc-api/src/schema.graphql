@@ -46,6 +46,41 @@ enum Visibility {
   INTERNAL
 }
 
+enum Discoverability {
+  PUBLIC
+  PRIVATE
+}
+
+enum CompositionScope {
+  DRAFT
+  PUBLISHED
+}
+
+enum EdgeKind {
+  solid
+  dashed
+}
+
+type CompositionMember {
+  nodeId: ID!
+  x: Float!
+  y: Float!
+  isRequired: Boolean!
+}
+
+type CompositionEdge {
+  id: ID!
+  sourceId: ID!
+  targetId: ID!
+  kind: EdgeKind!
+}
+
+type Composition {
+  ownerId: ID!
+  members: [CompositionMember!]!
+  edges: [CompositionEdge!]!
+}
+
 type Roadmap {
   id: ID!
   slug: String!
@@ -53,6 +88,13 @@ type Roadmap {
   description: String
   thumbnailUrl: String
   publishStatus: PublishStatus!
+  discoverability: Discoverability!
+  visibility: Visibility!
+  ownerId: ID
+  roleTags: [String!]!
+  dueDate: String
+  firstPublishedAt: String
+  archivedAt: String
   nodeCount: Int!
   createdAt: String
   updatedAt: String
@@ -152,6 +194,7 @@ type Query {
   field(slug: String!): Field
   publicBlockGraph(id: ID!): RoadmapGraph
   myProgress: [RoadmapProgress!]!
+  composition(ownerId: ID!, scope: CompositionScope = DRAFT): Composition!
   notionDoc(id: ID!): NotionDoc
   notionDocBySlug(slug: String!): NotionDoc
   notionChildren(parentDocumentId: ID!): [NotionDoc!]!
@@ -179,6 +222,38 @@ type Mutation {
   deleteNode(id: ID!): Boolean!
   moveNode(nodeId: ID!, roadmapId: ID!, positionX: Float!, positionY: Float!): RoadmapNode!
   saveRoadmap(roadmapId: ID!, nodes: [NodeInput!]!): Boolean!
+  addCompositionMember(
+    ownerId: ID!
+    nodeId: ID!
+    positionX: Float!
+    positionY: Float!
+    isRequired: Boolean = true
+  ): Composition!
+  moveCompositionMember(
+    ownerId: ID!
+    nodeId: ID!
+    positionX: Float!
+    positionY: Float!
+  ): Boolean!
+  removeCompositionMember(ownerId: ID!, nodeId: ID!): Composition!
+  addCompositionEdge(
+    ownerId: ID!
+    sourceId: ID!
+    targetId: ID!
+    kind: EdgeKind!
+  ): CompositionEdge!
+  updateCompositionEdgeKind(
+    ownerId: ID!
+    edgeId: ID!
+    kind: EdgeKind!
+  ): CompositionEdge!
+  removeCompositionEdge(ownerId: ID!, edgeId: ID!): Composition!
+  replaceComposition(
+    ownerId: ID!
+    members: [CompositionMemberInput!]!
+    edges: [CompositionEdgeInput!]!
+  ): Composition!
+  publishComposition(ownerId: ID!): Composition!
   setNodeStatus(nodeId: ID!, status: NodeStatus!): Boolean!
   createNotionDoc(input: CreateNotionDocInput!): NotionDoc!
   updateNotionDoc(input: UpdateNotionDocInput!): NotionDoc!
@@ -211,6 +286,10 @@ input CreateRoadmapInput {
   title: String!
   description: String
   thumbnailUrl: String
+  discoverability: Discoverability
+  visibility: Visibility
+  roleTags: [String!]
+  dueDate: String
 }
 
 input UpdateRoadmapInput {
@@ -218,6 +297,10 @@ input UpdateRoadmapInput {
   description: String
   thumbnailUrl: String
   publishStatus: PublishStatus
+  discoverability: Discoverability
+  visibility: Visibility
+  roleTags: [String!]
+  dueDate: String
 }
 
 input CreateFieldInput {
@@ -283,4 +366,17 @@ input NodeInput {
   parentId: ID
   positionX: Float!
   positionY: Float!
+}
+
+input CompositionMemberInput {
+  nodeId: ID!
+  x: Float!
+  y: Float!
+  isRequired: Boolean = true
+}
+
+input CompositionEdgeInput {
+  sourceId: ID!
+  targetId: ID!
+  kind: EdgeKind!
 }

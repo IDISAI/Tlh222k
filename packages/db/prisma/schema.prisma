@@ -28,11 +28,26 @@ model Roadmap {
   /// shares. Named `publishStatus` rather than `status` because a block's
   /// `status` already means the viewer's own progress through it.
   publishStatus String  @default("DRAFT")
+  /// PUBLIC is discoverable; PRIVATE is direct-link only.
+  discoverability String @default("PUBLIC")
+  /// FREE | INTERNAL. INTERNAL requires AIO/Admin entitlement.
+  visibility      String @default("FREE")
+  /// Immutable Clerk id stamped on Admin/Super-admin creation.
+  /// Nullable only while legacy rows are backfilled.
+  ownerId         String?
+  roleTags        String[] @default([])
+  dueDate         DateTime?
+  firstPublishedAt DateTime?
+  archivedAt      DateTime?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
   nodes       Node[]
   linkedNodes Node[] @relation("NodeLinkedRoadmap")
+
+  @@index([publishStatus, discoverability, visibility])
+  @@index([ownerId])
+  @@index([archivedAt])
 }
 
 model Node {
@@ -71,6 +86,8 @@ model Node {
   /// facet used to narrow the roadmap picker). Empty array, never null, so
   /// every reader can iterate it without an extra guard.
   tags            String[] @default([])
+  /// Required nodes count toward roadmap progress; optional nodes do not.
+  isRequired      Boolean  @default(true)
   /// The Clerk user id of whoever created this block — "Người phụ trách" is
   /// the creator, not a chosen assignee, so this is stamped server-side from
   /// the auth context on create and is never a client-settable input. Mirrors
@@ -88,9 +105,69 @@ model Node {
   // copied into FieldMembership. New reads and writes use memberships below.
   fields        Field[] @relation("FieldToNode")
   fieldMemberships FieldMembership[]
+  ownedCompositionMemberships CompositionMembership[] @relation("CompositionOwnerMembership")
+  compositionMemberships      CompositionMembership[] @relation("CompositionMember")
+  ownedCompositionEdges       CompositionEdge[]       @relation("CompositionOwnerEdge")
+  outgoingCompositionEdges    CompositionEdge[]       @relation("CompositionEdgeSource")
+  incomingCompositionEdges    CompositionEdge[]       @relation("CompositionEdgeTarget")
+  keyResults                  NodeKeyResult[]
 
   @@index([roadmapId])
   @@index([parentId])
+}
+
+/// A reusable block's placement on one owner's canvas. `scope` separates the
+/// working draft from the last-published snapshot.
+model CompositionMembership {
+  ownerId    String
+  nodeId     String
+  scope      String   @default("DRAFT") // DRAFT | PUBLISHED
+  positionX  Float    @default(0)
+  positionY  Float    @default(0)
+  isRequired Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  owner Node @relation("CompositionOwnerMembership", fields: [ownerId], references: [id], onDelete: Cascade)
+  node  Node @relation("CompositionMember", fields: [nodeId], references: [id], onDelete: Cascade)
+
+  @@id([ownerId, nodeId, scope])
+  @@index([nodeId])
+  @@index([ownerId, scope])
+}
+
+/// Persisted relation rendered on one composition canvas.
+model CompositionEdge {
+  id        String   @id @default(cuid())
+  ownerId   String
+  sourceId  String
+  targetId  String
+  scope     String   @default("DRAFT") // DRAFT | PUBLISHED
+  kind      String   @default("solid") // solid | dashed
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  owner  Node @relation("CompositionOwnerEdge", fields: [ownerId], references: [id], onDelete: Cascade)
+  source Node @relation("CompositionEdgeSource", fields: [sourceId], references: [id], onDelete: Cascade)
+  target Node @relation("CompositionEdgeTarget", fields: [targetId], references: [id], onDelete: Cascade)
+
+  @@unique([ownerId, sourceId, targetId, scope])
+  @@index([ownerId, scope])
+  @@index([sourceId])
+  @@index([targetId])
+}
+
+model NodeKeyResult {
+  id        String   @id @default(cuid())
+  nodeId    String
+  text      String
+  position  Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  node Node @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+
+  @@index([nodeId, position])
 }
 
 /// A discovery label ("Web Dev", "AI", "Data") shown as a tab on /roadmaps.
