@@ -8,23 +8,27 @@ import { hasHealthySvcApi, turboDevArgs } from "./dev-support.mjs"
 const kernelDir = dirname(fileURLToPath(import.meta.url))
 const repoRoot = resolve(kernelDir, "../..")
 
-// Load root .env file manually
-try {
-  const envContent = readFileSync(resolve(repoRoot, ".env"), "utf8")
-  for (const line of envContent.split(/\r?\n/)) {
-    const trimmed = line.trim()
-    if (!trimmed || trimmed.startsWith("#")) continue
-    const idx = trimmed.indexOf("=")
-    if (idx > -1) {
-      const key = trimmed.slice(0, idx).trim()
-      const value = trimmed.slice(idx + 1).trim()
-      if (process.env[key] === undefined) {
-        process.env[key] = value
+// Load root .env / .env.local manually (.env.local wins over .env, matching
+// Next.js precedence — this is the file the root env doc tells people to
+// actually put ENABLE_DEV_AUTH_BYPASS in). Real shell-exported vars still win
+// over both: only fill keys the shell didn't already set.
+const shellEnvKeys = new Set(Object.keys(process.env))
+for (const name of [".env", ".env.local"]) {
+  try {
+    const envContent = readFileSync(resolve(repoRoot, name), "utf8")
+    for (const line of envContent.split(/\r?\n/)) {
+      const trimmed = line.trim()
+      if (!trimmed || trimmed.startsWith("#")) continue
+      const idx = trimmed.indexOf("=")
+      if (idx > -1) {
+        const key = trimmed.slice(0, idx).trim()
+        const value = trimmed.slice(idx + 1).trim()
+        if (!shellEnvKeys.has(key)) process.env[key] = value
       }
     }
+  } catch (e) {
+    // Ignore if file doesn't exist
   }
-} catch (e) {
-  // Ignore if file doesn't exist
 }
 
 const kernelServerUrl =
