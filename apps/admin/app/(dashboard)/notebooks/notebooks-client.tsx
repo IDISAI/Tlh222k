@@ -46,8 +46,21 @@ export function NotebooksIndexClient() {
 }
 
 function ClerkNotebooksIndex() {
-  const { getToken } = useAuth()
+  const { getToken, isLoaded } = useAuth()
+  // Clerk hydrates the session client-side after the first paint. A fetch
+  // fired from a mount-time effect can race ahead of that and hit the API
+  // with no session yet — the request succeeds, but the server sees a guest
+  // and answers 403, even though the page itself rendered as an admin.
+  if (!isLoaded) return <NotebooksLoading />
   return <NotebooksIndex getToken={getToken} />
+}
+
+function NotebooksLoading() {
+  return (
+    <main className="mx-auto w-full max-w-[1480px] space-y-6 p-6 lg:p-8">
+      <p className="p-8 text-sm text-muted-foreground">Đang tải notebook…</p>
+    </main>
+  )
 }
 
 function NotebooksIndex({ getToken }: { getToken: () => Promise<string | null> }) {

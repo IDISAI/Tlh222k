@@ -74,6 +74,10 @@ export function RoadmapListAdmin({ role, uploadCover }: RoadmapListAdminProps) {
   const [deleteTarget, setDeleteTarget] = useState<Row | null>(null)
   const [query, setQuery] = useState("")
   const [statusFilter, setStatusFilter] = useState<"all" | "published" | "draft" | "private">("all")
+  // "chapter" is deliberately absent: this table lists roadmaps, and a roadmap
+  // IS a role or a skill block (see CLAUDE.md "Roadmap builder model") — a
+  // chapter is nested inside a roadmap's composition, never a row here.
+  const [typeFilter, setTypeFilter] = useState<"all" | "role" | "skill">("all")
   const [newestFirst, setNewestFirst] = useState(true)
 
   // The list page IS the builder base, so derive builder links from the current
@@ -122,17 +126,20 @@ export function RoadmapListAdmin({ role, uploadCover }: RoadmapListAdminProps) {
         (statusFilter === "published" && published) ||
         (statusFilter === "private" && privateBlock) ||
         (statusFilter === "draft" && !published && !privateBlock)
-      return matchesQuery && matchesStatus
+      const matchesType = typeFilter === "all" || node.nodeType === typeFilter
+      return matchesQuery && matchesStatus && matchesType
     }).sort((a, b) => {
       const aTime = a.node.updatedAt ? new Date(a.node.updatedAt).getTime() : 0
       const bTime = b.node.updatedAt ? new Date(b.node.updatedAt).getTime() : 0
       return newestFirst ? bTime - aTime : aTime - bTime
     })
-  }, [newestFirst, query, rows, statusFilter])
+  }, [newestFirst, query, rows, statusFilter, typeFilter])
 
   const publishedCount = rows?.filter(({ node }) => reachesLearners(statusOf(node))).length ?? 0
   const privateCount = rows?.filter(({ node }) => statusOf(node) === "PRIVATE").length ?? 0
   const draftCount = (rows?.length ?? 0) - publishedCount - privateCount
+  const roleCount = rows?.filter(({ node }) => node.nodeType === "role").length ?? 0
+  const skillCount = rows?.filter(({ node }) => node.nodeType === "skill").length ?? 0
 
   return (
     <div className="space-y-6">
@@ -163,6 +170,16 @@ export function RoadmapListAdmin({ role, uploadCover }: RoadmapListAdminProps) {
 
       <div className="flex flex-col gap-3 xl:flex-row xl:items-center"><label className="relative block min-w-0 xl:max-w-md xl:flex-1"><Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Tìm theo tên hoặc slug…" className="h-10 w-full rounded-lg border bg-background pl-9 pr-3 text-sm outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-ring" /></label><div className="flex flex-wrap gap-2"><FilterButton active={statusFilter === "all"} onClick={() => setStatusFilter("all")}>Tất cả {rows?.length ?? 0}</FilterButton><FilterButton active={statusFilter === "published"} onClick={() => setStatusFilter("published")}>Đã xuất bản {publishedCount}</FilterButton><FilterButton active={statusFilter === "draft"} onClick={() => setStatusFilter("draft")}>Đang soạn {draftCount}</FilterButton><FilterButton active={statusFilter === "private"} onClick={() => setStatusFilter("private")}>Riêng tư {privateCount}</FilterButton></div><Button type="button" variant="outline" className="xl:ml-auto" onClick={() => setNewestFirst((value) => !value)}><ArrowUpDown className="size-4" />{newestFirst ? "Cập nhật mới nhất" : "Cập nhật cũ nhất"}</Button></div>
 
+      {/* Own row, own axis: mixing this into the status chips would read as
+          "Vai trò" being a fifth publish state rather than the "Loại" column
+          the table already shows. */}
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-xs font-medium text-muted-foreground">Loại</span>
+        <FilterButton active={typeFilter === "all"} onClick={() => setTypeFilter("all")}>Tất cả {rows?.length ?? 0}</FilterButton>
+        <FilterButton active={typeFilter === "role"} onClick={() => setTypeFilter("role")}>Role {roleCount}</FilterButton>
+        <FilterButton active={typeFilter === "skill"} onClick={() => setTypeFilter("skill")}>Skill {skillCount}</FilterButton>
+      </div>
+
       {rows === null ? (
         <div className="space-y-2">
           <Skeleton className="h-10 w-full" />
@@ -191,7 +208,9 @@ export function RoadmapListAdmin({ role, uploadCover }: RoadmapListAdminProps) {
                     colSpan={8}
                     className="text-center text-muted-foreground"
                   >
-                    Chưa có roadmap nào — hãy tạo roadmap đầu tiên.
+                    {rows && rows.length > 0
+                      ? "Không có roadmap nào khớp bộ lọc hiện tại."
+                      : "Chưa có roadmap nào — hãy tạo roadmap đầu tiên."}
                   </TableCell>
                 </TableRow>
               )}
