@@ -141,6 +141,68 @@ export function blockIsListed(raw: unknown): boolean {
   return normalizePublishStatus(raw) === "PUBLISHED"
 }
 
+/**
+ * What a roadmap needs before its FIRST publish. Mirrors
+ * `publish-eligibility.ts` in @workspace/core — duplicated for the same
+ * reason PublishStatus is. Keep in step.
+ *
+ * Checked in a fixed order, one problem at a time: six at once reads as "this
+ * is far off" when usually a single field is blank.
+ */
+export type PublishBlocker =
+  | "TITLE_REQUIRED"
+  | "SLUG_REQUIRED"
+  | "DESCRIPTION_REQUIRED"
+  | "FIELD_REQUIRED"
+  | "COVER_REQUIRED"
+  | "CONTENT_REQUIRED"
+  | "DELETED_CONTENT_REFERENCED"
+
+export type PublishEligibility =
+  | { ok: true }
+  | { ok: false; code: PublishBlocker }
+
+export function roadmapPublishEligibility(candidate: {
+  title: string | null | undefined
+  slug: string | null | undefined
+  description: string | null | undefined
+  fieldCount: number
+  coverUrl: string | null | undefined
+  requiredNodeCount: number
+  referencesDeletedContent: boolean
+}): PublishEligibility {
+  if (!candidate.title?.trim()) return { ok: false, code: "TITLE_REQUIRED" }
+  if (!candidate.slug?.trim()) return { ok: false, code: "SLUG_REQUIRED" }
+  if (!candidate.description?.trim()) {
+    return { ok: false, code: "DESCRIPTION_REQUIRED" }
+  }
+  if (candidate.fieldCount < 1) return { ok: false, code: "FIELD_REQUIRED" }
+  // https only: an http cover is a mixed-content block on a secure page (the
+  // card renders with a hole and nothing reports it), and a javascript: one is
+  // a script waiting to be clicked.
+  if (!candidate.coverUrl?.trim().toLowerCase().startsWith("https://")) {
+    return { ok: false, code: "COVER_REQUIRED" }
+  }
+  if (candidate.requiredNodeCount < 1) {
+    return { ok: false, code: "CONTENT_REQUIRED" }
+  }
+  if (candidate.referencesDeletedContent) {
+    return { ok: false, code: "DELETED_CONTENT_REFERENCED" }
+  }
+  return { ok: true }
+}
+
+export const PUBLISH_BLOCKER_MESSAGES: Record<PublishBlocker, string> = {
+  TITLE_REQUIRED: "Cần có tiêu đề trước khi xuất bản.",
+  SLUG_REQUIRED: "Cần có đường dẫn trước khi xuất bản.",
+  DESCRIPTION_REQUIRED: "Cần có mô tả trước khi xuất bản.",
+  FIELD_REQUIRED: "Roadmap phải thuộc ít nhất một lĩnh vực.",
+  COVER_REQUIRED: "Cần ảnh bìa (đường dẫn https).",
+  CONTENT_REQUIRED: "Roadmap phải có ít nhất một nội dung bắt buộc.",
+  DELETED_CONTENT_REFERENCED:
+    "Roadmap còn trỏ tới nội dung đã xoá. Gỡ nội dung đó khỏi canvas trước.",
+}
+
 export function publishStatusFromLegacy(isPublished: boolean): PublishStatus {
   return isPublished ? "PUBLISHED" : "DRAFT"
 }

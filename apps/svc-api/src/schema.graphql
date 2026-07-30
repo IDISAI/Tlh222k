@@ -208,6 +208,8 @@ type Query {
   no account to hold a list.
   """
   myFavoriteRoadmapIds: [ID!]!
+  """Archived blocks, so the CMS can offer them back. Admin only."""
+  archivedNodes: [RoadmapNode!]!
   """Published discovery labels are public; CMS may request every status."""
   fields(includeUnpublished: Boolean = false): [Field!]!
   field(slug: String!): Field
@@ -272,7 +274,18 @@ type Mutation {
     members: [CompositionMemberInput!]!
     edges: [CompositionEdgeInput!]!
   ): Composition!
+  """
+  One atomic publish: metadata, composition and positions together. Refuses a
+  first publish that is missing anything the access contract requires.
+  """
   publishComposition(ownerId: ID!): Composition!
+  """Throw the working draft away and start again from what is public."""
+  discardCompositionDraft(ownerId: ID!): Composition!
+  """
+  Bring an archived block back, as a DRAFT — it has been off the public side
+  and an editor should look at it before learners do.
+  """
+  restoreNode(id: ID!): Boolean!
   setNodeStatus(nodeId: ID!, status: NodeStatus!): Boolean!
   """
   Opening content starts it. Never downgrades: a node already done stays done,

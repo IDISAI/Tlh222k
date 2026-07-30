@@ -12,6 +12,8 @@ import {
   blockOpensByLink,
   isNodeType,
   legacyIsPublished,
+  PUBLISH_BLOCKER_MESSAGES,
+  roadmapPublishEligibility,
   normalizeHttpUrl,
   normalizeFieldDescription,
   normalizeLevel,
@@ -1210,6 +1212,48 @@ export class RoadmapService implements OnModuleInit {
   }
 
   /**
+   * Bring an archived block back.
+   *
+   * Deletion here is a soft delete, which the contract calls archiving — but
+   * an archive nobody can reverse is a delete with extra steps. Restoring
+   * returns it as a DRAFT rather than to whatever status it had: it has been
+   * off the public side, possibly for a long time, and an editor should look
+   * at it before learners do.
+   */
+  async restoreNode(id: string, user: CurrentUser | null): Promise<boolean> {
+    assertCanWrite(user)
+    const node = await this.prisma.node.findUnique({ where: { id } })
+    if (!node) throw new RoadmapError("NOT_FOUND")
+    if (!node.isDeleted) return false
+
+    await this.prisma.$transaction(async (tx) => {
+      if (node.notionPageId) {
+        await tx.document.updateMany({
+          where: { id: node.notionPageId },
+          data: { isArchived: false },
+        })
+      }
+      await tx.node.update({
+        where: { id },
+        data: { isDeleted: false, publishStatus: "DRAFT" },
+      })
+    })
+    await this.events.emit(node.roadmapId)
+    return true
+  }
+
+  /** Archived blocks, so the CMS can offer them back. */
+  async archivedNodes(user: CurrentUser | null): Promise<NodeDto[]> {
+    assertCanWrite(user)
+    const rows = await this.prisma.node.findMany({
+      where: { isDeleted: true },
+      orderBy: { updatedAt: "desc" },
+      include: { fields: { orderBy: FIELD_ORDER_BY, select: FIELD_SELECT } },
+    })
+    return rows.map((n) => this.toNodeDto(n, "locked", 0))
+  }
+
+  /**
    * Move a node into another roadmap (sidebar drag-drop). No clone: the node
    * keeps its identity, slug and linked resources — it just changes owner.
    * Children left behind in the source roadmap are detached so no edge ever
@@ -1547,6 +1591,7 @@ export class RoadmapService implements OnModuleInit {
     user: CurrentUser | null
   ): Promise<CompositionDto> {
     assertCanWrite(user)
+    await this.assertPublishable(ownerId)
     await this.prisma.$transaction(async (tx) => {
       const [members, edges] = await Promise.all([
         tx.compositionMembership.findMany({
@@ -1585,8 +1630,124 @@ export class RoadmapService implements OnModuleInit {
           },
         })
       }
+      // Inside the same transaction as the composition copy. The contract asks
+      // for ONE atomic publish covering metadata, content, composition and
+      // positions — flipping the status afterwards would leave a window where
+      // the roadmap is public but still showing its previous layout.
+      await tx.node.update({
+        where: { id: ownerId },
+        data: { publishStatus: "PUBLISHED" },
+      })
+      await tx.roadmap.updateMany({
+        // First publish only: the date a roadmap first reached learners does
+        // not move when it is later edited and republished.
+        where: { id: ownerId, firstPublishedAt: null },
+        data: { firstPublishedAt: new Date() },
+      })
     })
     return this.composition(ownerId, "PUBLISHED", user)
+  }
+
+  /**
+   * Refuse a publish that would put an unfinished roadmap in front of
+   * learners. Reads the DRAFT composition, because that is what is about to
+   * become public.
+   */
+  private async assertPublishable(ownerId: string): Promise<void> {
+    const owner = await this.prisma.node.findUnique({
+      where: { id: ownerId },
+      include: { fields: { select: { id: true } } },
+    })
+    if (!owner || owner.isDeleted) throw new RoadmapError("NOT_FOUND")
+
+    // The contract gates the FIRST publish. A roadmap already facing learners
+    // is re-published every time an editor saves a layout change, and blocking
+    // that on a rule it predates would strand existing content — the editor
+    // could no longer save, with no way to satisfy a check about its debut.
+    if (normalizePublishStatus(owner.publishStatus) !== "DRAFT") return
+
+    const draftMembers = await this.prisma.compositionMembership.findMany({
+      where: { ownerId, scope: "DRAFT" },
+      select: { nodeId: true, isRequired: true },
+    })
+    const memberNodes = await this.prisma.node.findMany({
+      where: { id: { in: draftMembers.map((m) => m.nodeId) } },
+      select: { id: true, isDeleted: true },
+    })
+    const deleted = new Set(
+      memberNodes.filter((n) => n.isDeleted).map((n) => n.id)
+    )
+    // A member row whose node row is gone entirely counts as deleted too —
+    // publishing it would put a door on the canvas that opens onto nothing.
+    const known = new Set(memberNodes.map((n) => n.id))
+    const referencesDeletedContent = draftMembers.some(
+      (m) => deleted.has(m.nodeId) || !known.has(m.nodeId)
+    )
+
+    const verdict = roadmapPublishEligibility({
+      title: owner.title,
+      slug: owner.slug,
+      description: owner.description,
+      fieldCount: owner.fields.length,
+      coverUrl: owner.coverUrl,
+      requiredNodeCount: draftMembers.filter(
+        (m) => m.isRequired && !deleted.has(m.nodeId) && known.has(m.nodeId)
+      ).length,
+      referencesDeletedContent,
+    })
+    if (!verdict.ok) {
+      throw new RoadmapError("VALIDATION", PUBLISH_BLOCKER_MESSAGES[verdict.code])
+    }
+  }
+
+  /**
+   * Throw the working draft away and start again from what is public.
+   *
+   * The inverse of publish: it copies PUBLISHED back over DRAFT rather than
+   * emptying it, so discarding lands the editor on the live layout instead of
+   * a blank canvas.
+   */
+  async discardCompositionDraft(
+    ownerId: string,
+    user: CurrentUser | null
+  ): Promise<CompositionDto> {
+    assertCanWrite(user)
+    await this.prisma.$transaction(async (tx) => {
+      const [members, edges] = await Promise.all([
+        tx.compositionMembership.findMany({
+          where: { ownerId, scope: "PUBLISHED" },
+        }),
+        tx.compositionEdge.findMany({ where: { ownerId, scope: "PUBLISHED" } }),
+      ])
+      await tx.compositionEdge.deleteMany({ where: { ownerId, scope: "DRAFT" } })
+      await tx.compositionMembership.deleteMany({
+        where: { ownerId, scope: "DRAFT" },
+      })
+      for (const member of members) {
+        await tx.compositionMembership.create({
+          data: {
+            ownerId,
+            nodeId: member.nodeId,
+            scope: "DRAFT",
+            positionX: member.positionX,
+            positionY: member.positionY,
+            isRequired: member.isRequired,
+          },
+        })
+      }
+      for (const edge of edges) {
+        await tx.compositionEdge.create({
+          data: {
+            ownerId,
+            sourceId: edge.sourceId,
+            targetId: edge.targetId,
+            scope: "DRAFT",
+            kind: edge.kind,
+          },
+        })
+      }
+    })
+    return this.composition(ownerId, "DRAFT", user)
   }
 
   async setNodeStatus(

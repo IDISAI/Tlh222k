@@ -320,6 +320,14 @@ export class RoadmapResolver {
     return this.service.publishComposition(ownerId, user)
   }
 
+  @Mutation("discardCompositionDraft")
+  discardCompositionDraft(
+    @Args("ownerId") ownerId: string,
+    @CurrentUser() user: CurrentUserType | null
+  ) {
+    return this.service.discardCompositionDraft(ownerId, user)
+  }
+
   @Mutation("setNodeStatus")
   setNodeStatus(
     @Args("nodeId") nodeId: string,
@@ -340,6 +348,19 @@ export class RoadmapResolver {
   @Query("myFavoriteRoadmapIds")
   myFavoriteRoadmapIds(@CurrentUser() user: CurrentUserType | null) {
     return this.service.myFavoriteRoadmapIds(user)
+  }
+
+  @Query("archivedNodes")
+  archivedNodes(@CurrentUser() user: CurrentUserType | null) {
+    return this.service.archivedNodes(user)
+  }
+
+  @Mutation("restoreNode")
+  restoreNode(
+    @Args("id") id: string,
+    @CurrentUser() user: CurrentUserType | null
+  ) {
+    return this.service.restoreNode(id, user)
   }
 
   @Mutation("setRoadmapFavorite")
