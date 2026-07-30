@@ -24,6 +24,7 @@ import {
   type UpdateNodeInput,
   type Visibility,
 } from "./types"
+import { fieldDeleteEligibility } from "./field-policy"
 import { getStore, persistStore } from "./mock/builder-store"
 import { reachesLearners, statusOf } from "./publish-status"
 import { deriveCompositionFromNodes } from "./utils/derive-composition"
@@ -246,8 +247,19 @@ export class RoadmapService {
     const store = getStore()
     const field = store.fields.find((item) => item.id === id)
     if (!field) throw new RoadmapServiceError("NOT_FOUND")
-    if (field.publishStatus !== "DRAFT") {
-      throw new RoadmapServiceError("VALIDATION", "Only draft Fields can be deleted")
+    // Same two rules the backend enforces, so a mock-backed dev session cannot
+    // reach a state the real one refuses.
+    const memberCount = store.nodes.filter((node) =>
+      (node.fields ?? []).some((item) => item.id === id)
+    ).length
+    const eligibility = fieldDeleteEligibility(field.publishStatus, memberCount)
+    if (!eligibility.ok) {
+      throw new RoadmapServiceError(
+        "VALIDATION",
+        eligibility.code === "FIELD_STILL_HAS_ROADMAPS"
+          ? "This Field still holds roadmaps; move them to another Field before deleting it"
+          : "Only draft Fields can be deleted"
+      )
     }
     store.fields = store.fields.filter((item) => item.id !== id)
     store.nodes.forEach((node) => {

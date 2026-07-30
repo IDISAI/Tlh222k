@@ -1663,6 +1663,19 @@ export class RoadmapService implements OnModuleInit {
     if (normalizePublishStatus(field.publishStatus) !== "DRAFT") {
       throw new RoadmapError("VALIDATION", "Only draft Fields can be deleted; take this Field back to Draft first")
     }
+    // A Field must be empty before it goes. The delete does not touch the
+    // roadmaps themselves — FieldMembership cascades, the blocks survive — but
+    // it would quietly pull them out of the grouping readers browse by, and
+    // nothing downstream would report that. Make the admin move them first.
+    const memberCount = await this.prisma.fieldMembership.count({
+      where: { fieldId: id },
+    })
+    if (memberCount > 0) {
+      throw new RoadmapError(
+        "VALIDATION",
+        "This Field still holds roadmaps; move them to another Field before deleting it"
+      )
+    }
     await this.prisma.field.delete({ where: { id } })
     return true
   }
