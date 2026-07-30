@@ -91,6 +91,27 @@ type NodeKeyResult {
   position: Int!
 }
 
+type LearnerRoadmapRef {
+  ownerNodeId: ID!
+  title: String!
+  completedAt: String
+}
+
+"""
+One learner's activity for the Admin/Super-admin profile screen.
+
+Ids and counts only: name, avatar and email stay with Clerk, so this service
+never becomes a second, staler copy of someone's personal data.
+"""
+type LearnerActivity {
+  clerkUserId: ID!
+  startedNodeCount: Int!
+  completedNodeCount: Int!
+  completedRoadmaps: [LearnerRoadmapRef!]!
+  favoriteRoadmaps: [LearnerRoadmapRef!]!
+  lastActiveAt: String
+}
+
 """
 A file attached to a node. It carries no access setting of its own — it
 inherits the node's, so INTERNAL content's files are INTERNAL too.
@@ -256,6 +277,8 @@ type Query {
   "no attachments", which is a different fact from "not for you".
   """
   nodeAttachments(nodeId: ID!): [NodeAttachment!]!
+  """One learner's activity. Admin and Super-admin only."""
+  learnerActivity(clerkUserId: ID!): LearnerActivity!
   """Published discovery labels are public; CMS may request every status."""
   fields(includeUnpublished: Boolean = false): [Field!]!
   field(slug: String!): Field

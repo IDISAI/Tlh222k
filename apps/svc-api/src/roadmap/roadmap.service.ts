@@ -153,6 +153,21 @@ export interface NodeDto {
   keyResults?: KeyResultDto[]
 }
 
+export interface LearnerRoadmapRef {
+  ownerNodeId: string
+  title: string
+  completedAt?: string
+}
+
+export interface LearnerActivityDto {
+  clerkUserId: string
+  startedNodeCount: number
+  completedNodeCount: number
+  completedRoadmaps: LearnerRoadmapRef[]
+  favoriteRoadmaps: LearnerRoadmapRef[]
+  lastActiveAt: string | null
+}
+
 export interface AttachmentDto {
   id: string
   nodeId: string
@@ -660,6 +675,65 @@ export class RoadmapService implements OnModuleInit {
     assertCanWrite(user)
     const result = await this.prisma.nodeAttachment.deleteMany({ where: { id } })
     return result.count > 0
+  }
+
+  /**
+   * One learner's activity, for the Admin/Super-admin learner profile.
+   *
+   * Identity stays with Clerk — this returns ids and counts, and the caller
+   * joins the name, avatar and email from Clerk. Duplicating those here would
+   * make this service a second, staler source of personal data.
+   */
+  async learnerActivity(
+    clerkUserId: string,
+    user: CurrentUser | null
+  ): Promise<LearnerActivityDto> {
+    assertCanWrite(user)
+
+    const [progress, completions, favorites] = await Promise.all([
+      this.prisma.userProgress.findMany({
+        where: { clerkUserId, status: { in: ["in_progress", "done"] } },
+        orderBy: { updatedAt: "desc" },
+        select: {
+          nodeId: true,
+          status: true,
+          updatedAt: true,
+          node: { select: { title: true, roadmapId: true } },
+        },
+      }),
+      this.prisma.userRoadmapCompletion.findMany({
+        where: { clerkUserId },
+        orderBy: { completedAt: "desc" },
+        select: {
+          ownerNodeId: true,
+          completedAt: true,
+          owner: { select: { title: true } },
+        },
+      }),
+      this.prisma.userRoadmapFavorite.findMany({
+        where: { clerkUserId },
+        orderBy: { createdAt: "desc" },
+        select: { ownerNodeId: true, owner: { select: { title: true } } },
+      }),
+    ])
+
+    return {
+      clerkUserId,
+      startedNodeCount: progress.length,
+      completedNodeCount: progress.filter((row) => row.status === "done").length,
+      completedRoadmaps: completions.map((row) => ({
+        ownerNodeId: row.ownerNodeId,
+        title: row.owner.title,
+        completedAt: row.completedAt.toISOString(),
+      })),
+      favoriteRoadmaps: favorites.map((row) => ({
+        ownerNodeId: row.ownerNodeId,
+        title: row.owner.title,
+      })),
+      // The most recent progress row IS the last activity: nothing else a
+      // learner does writes a timestamp we could honestly call activity.
+      lastActiveAt: progress[0]?.updatedAt.toISOString() ?? null,
+    }
   }
 
   /** This caller's in-app notifications, newest first. Guests have none. */

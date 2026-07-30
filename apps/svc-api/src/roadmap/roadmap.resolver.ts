@@ -381,6 +381,14 @@ export class RoadmapResolver {
     return this.service.setEmailOptIn(optedIn, user)
   }
 
+  @Query("learnerActivity")
+  learnerActivity(
+    @Args("clerkUserId") clerkUserId: string,
+    @CurrentUser() user: CurrentUserType | null
+  ) {
+    return this.service.learnerActivity(clerkUserId, user)
+  }
+
   @Query("nodeAttachments")
   nodeAttachments(
     @Args("nodeId") nodeId: string,
