@@ -121,6 +121,26 @@ export function reachesLearners(status: PublishStatus): boolean {
   return status === "PUBLISHED"
 }
 
+/**
+ * Whether a direct link should render this block.
+ *
+ * The distinction `reachesLearners` documents but cannot express: PRIVATE
+ * means unlisted, never unfinished, so a request that names an unlisted block
+ * must serve it. Only a draft is closed. Mirrors `blockOpensByLink` in
+ * @workspace/core — duplicated for the same reason PublishStatus is.
+ */
+export function blockOpensByLink(raw: unknown): boolean {
+  return normalizePublishStatus(raw) !== "DRAFT"
+}
+
+/**
+ * Whether this block belongs in a listing, a tab strip, or a search result.
+ * Published AND discoverable — the strict half of the pair above.
+ */
+export function blockIsListed(raw: unknown): boolean {
+  return normalizePublishStatus(raw) === "PUBLISHED"
+}
+
 export function publishStatusFromLegacy(isPublished: boolean): PublishStatus {
   return isPublished ? "PUBLISHED" : "DRAFT"
 }

@@ -8,6 +8,8 @@ import { assertCanWrite, canAccessInternal, type CurrentUser } from "../auth/cle
 import {
   MAX_TITLE_LENGTH,
   NODE_TYPES,
+  blockIsListed,
+  blockOpensByLink,
   isNodeType,
   legacyIsPublished,
   normalizeHttpUrl,
@@ -752,7 +754,10 @@ export class RoadmapService implements OnModuleInit {
     return all
       .filter(
         (n) =>
-          reachesLearners(statusOf(n)) &&
+          // Listing gate: published AND discoverable. An unlisted block still
+          // opens by direct link (see publicBlockGraph) but must never appear
+          // in a grid, a tab strip, or a search result.
+          blockIsListed(n.publishStatus) &&
           (n.nodeType === "role" || n.nodeType === "skill")
       )
       .filter((n) => !wanted || n.fields.some((f) => wanted.has(f.id)))
@@ -781,11 +786,15 @@ export class RoadmapService implements OnModuleInit {
     if (normalizeVisibility(node.visibility) === "INTERNAL" && !canAccessInternal(user)) {
       throw new RoadmapError("PERMISSION_DENIED", "Internal block requires AIO access")
     }
-    if (!reachesLearners(statusOf(node))) {
+    // Direct-link gate. Deliberately NOT `reachesLearners`, which answers
+    // "published" and so refused an unlisted block — the one case a direct
+    // link exists to serve. Only a draft 404s here; discoverability decides
+    // listings, not whether a named block opens.
+    if (!blockOpensByLink(node.publishStatus)) {
       const parent = await this.prisma.roadmap.findUnique({
         where: { id: node.roadmapId },
       })
-      if (!parent || !reachesLearners(statusOf(parent))) return null
+      if (!parent || !blockOpensByLink(parent.publishStatus)) return null
     }
     // Return the WHOLE roadmap's nodes so the web viewer derives the exact same
     // composition (deriveCompositionFromNodes) the admin builder renders — one
