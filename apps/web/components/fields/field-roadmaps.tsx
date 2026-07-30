@@ -2,11 +2,12 @@
 
 import { useMemo, useState } from "react"
 import Link from "next/link"
+// Aliased: an icon named `Map` shadows the built-in used for the tag counts.
 import {
   ArrowLeft,
   ArrowUpDown,
   Layers3,
-  Map,
+  Map as MapIcon,
   Users,
 } from "lucide-react"
 import {
@@ -19,18 +20,27 @@ import { cn } from "@workspace/ui/lib/utils"
 
 import { AuthHeader } from "@/components/auth-header"
 
-type SortMode = "popular" | "updated" | "nodes"
+/**
+ * The three orders the access contract names. "popular" is unique learners who
+ * started content — not node count, not page views — so a big empty roadmap
+ * cannot outrank a small one people actually work through.
+ */
+type SortMode = "popular" | "newest" | "az"
 
 const SORT_LABELS: Record<SortMode, string> = {
   popular: "Phổ biến nhất",
-  updated: "Mới cập nhật",
-  nodes: "Ít node",
+  // Deliberately not "Mới xuất bản": a block carries no first-publish
+  // timestamp yet, so this orders by creation time and the label says so.
+  newest: "Mới nhất",
+  az: "A–Z",
 }
+
+const ALL_TAGS = "all"
 
 export function FieldRoadmaps({ slug }: { slug: string }) {
   const { fields, loading: fieldsLoading } = useFields()
   const { data: allRoadmaps, loading: roadmapsLoading } = useRoadmap()
-  const [selectedId, setSelectedId] = useState<string>("all")
+  const [tag, setTag] = useState<string>(ALL_TAGS)
   const [sort, setSort] = useState<SortMode>("popular")
 
   const field = fields.find(
@@ -47,22 +57,39 @@ export function FieldRoadmaps({ slug }: { slug: string }) {
     [allRoadmaps, field]
   )
 
+  // Chips come from the roadmaps' own role tags. A tag nobody carries never
+  // appears, so every chip leads somewhere and its count is the real number of
+  // roadmaps behind it.
+  const tagCounts = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const roadmap of roadmaps) {
+      for (const roleTag of roadmap.roleTags ?? []) {
+        counts.set(roleTag, (counts.get(roleTag) ?? 0) + 1)
+      }
+    }
+    return [...counts.entries()].sort((left, right) =>
+      left[0].localeCompare(right[0], "vi")
+    )
+  }, [roadmaps])
+
   const visible = useMemo(() => {
     const filtered =
-      selectedId === "all"
+      tag === ALL_TAGS
         ? roadmaps
-        : roadmaps.filter((roadmap) => roadmap.id === selectedId)
+        : roadmaps.filter((roadmap) => (roadmap.roleTags ?? []).includes(tag))
     return [...filtered].sort((left, right) => {
-      if (sort === "nodes") return left.nodeCount - right.nodeCount
-      if (sort === "updated") {
-        return (
-          Date.parse(right.updatedAt ?? "1970-01-01") -
-          Date.parse(left.updatedAt ?? "1970-01-01")
-        )
+      if (sort === "az") return left.title.localeCompare(right.title, "vi")
+      if (sort === "newest") {
+        // Prefer a real publish time where one exists; blocks only have a
+        // creation time, and an unparseable value sorts last rather than to
+        // the epoch, which would put unknowns at the top under a reversal.
+        const at = (roadmap: Roadmap) =>
+          Date.parse(roadmap.firstPublishedAt ?? roadmap.createdAt ?? "") || 0
+        return at(right) - at(left)
       }
-      return right.nodeCount - left.nodeCount
+      return (right.learnerCount ?? 0) - (left.learnerCount ?? 0)
     })
-  }, [roadmaps, selectedId, sort])
+  }, [roadmaps, tag, sort])
 
   if (fieldsLoading || roadmapsLoading) {
     return (
@@ -100,6 +127,14 @@ export function FieldRoadmaps({ slug }: { slug: string }) {
     (total, roadmap) => total + roadmap.nodeCount,
     0
   )
+  // Per the contract a Field's learner count is people who started one of its
+  // roadmaps. Summing per-roadmap counts double-counts anyone working through
+  // two, so this is an upper bound — show it only when it is not a guess, i.e.
+  // when at least one roadmap actually reports a figure.
+  const learnerTotal = roadmaps.reduce(
+    (total, roadmap) => total + (roadmap.learnerCount ?? 0),
+    0
+  )
   const related = fields.filter(
     (item) => item.publishStatus === "PUBLISHED" && item.id !== field.id
   )
@@ -111,7 +146,7 @@ export function FieldRoadmaps({ slug }: { slug: string }) {
         style={
           field.imageUrl
             ? {
-                backgroundImage: `linear-gradient(90deg,rgba(0,0,0,.82),rgba(0,0,0,.5) 58%,rgba(0,0,0,.2)),url(${field.imageUrl})`,
+                backgroundImage: `linear-gradient(to bottom,rgba(0,0,0,.6) 0%,rgba(0,0,0,.3) 45%,rgba(0,0,0,.78) 100%),url(${field.imageUrl})`,
                 backgroundPosition: "center",
                 backgroundSize: "cover",
               }
@@ -136,42 +171,48 @@ export function FieldRoadmaps({ slug }: { slug: string }) {
             <ArrowLeft className="size-4" />
             Tất cả lĩnh vực
           </Link>
-          <h1 className="mt-5 max-w-3xl text-[42px] leading-[1.05] font-bold tracking-[-1px] text-balance sm:text-[54px]">
+          <h1 className="mt-5 max-w-3xl text-[42px] leading-[1.05] font-bold tracking-[-1px] text-balance sm:text-[46px]">
             {field.title}
           </h1>
-          <p className="mt-4 max-w-2xl text-base leading-7 text-white/82 text-pretty">
-            {field.description}
-          </p>
-          <div className="mt-6 flex flex-wrap gap-2">
-            <HeroStat icon={Map} label={`${roadmaps.length} roadmap`} />
+          {field.description && (
+            <p className="mt-4 max-w-[560px] text-[17px] leading-[1.55] text-white/86 text-pretty">
+              {field.description}
+            </p>
+          )}
+          <div className="mt-6 flex flex-wrap gap-2.5">
+            <HeroStat icon={MapIcon} label={`${roadmaps.length} roadmap`} />
             <HeroStat icon={Layers3} label={`${nodeCount} node`} />
-            <HeroStat icon={Users} label="Học theo tiến độ riêng" />
+            {learnerTotal > 0 && (
+              <HeroStat icon={Users} label={`${learnerTotal} học viên`} />
+            )}
           </div>
         </div>
       </section>
 
-      <section className="mx-auto max-w-[1080px] px-4 py-8 sm:px-6">
-        <div className="flex flex-col gap-4 border-b border-border pb-6 lg:flex-row lg:items-center lg:justify-between">
+      <section className="mx-auto max-w-[1280px] px-4 py-8 sm:px-6 lg:px-10">
+        <div className="flex flex-wrap items-center justify-between gap-4">
           <div className="flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             <FilterChip
-              active={selectedId === "all"}
-              onClick={() => setSelectedId("all")}
+              active={tag === ALL_TAGS}
+              count={roadmaps.length}
+              onClick={() => setTag(ALL_TAGS)}
             >
-              Tất cả <span aria-hidden>{roadmaps.length}</span>
+              Tất cả
             </FilterChip>
-            {roadmaps.map((roadmap) => (
+            {tagCounts.map(([roleTag, count]) => (
               <FilterChip
-                key={roadmap.id}
-                active={selectedId === roadmap.id}
-                onClick={() => setSelectedId(roadmap.id)}
+                key={roleTag}
+                active={tag === roleTag}
+                count={count}
+                onClick={() => setTag(roleTag)}
               >
-                {roadmap.title} <span aria-hidden>1</span>
+                {roleTag}
               </FilterChip>
             ))}
           </div>
 
-          <label className="flex h-11 shrink-0 items-center gap-2 rounded-lg border border-border bg-background px-3 text-sm font-medium">
-            <ArrowUpDown className="size-4" />
+          <label className="flex h-[38px] shrink-0 items-center gap-2 rounded-lg border border-border bg-background px-3.5 text-[13px] font-semibold">
+            <ArrowUpDown className="size-[15px]" />
             <span className="sr-only">Sắp xếp</span>
             <select
               value={sort}
@@ -188,7 +229,7 @@ export function FieldRoadmaps({ slug }: { slug: string }) {
         </div>
 
         {visible.length > 0 ? (
-          <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,272px),1fr))] gap-x-5 gap-y-8 pt-7">
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,272px),1fr))] gap-x-5 gap-y-7 pt-6">
             {visible.map((roadmap) => (
               <FieldRoadmapCard
                 key={roadmap.id}
@@ -198,53 +239,57 @@ export function FieldRoadmaps({ slug }: { slug: string }) {
             ))}
           </div>
         ) : (
-          <div className="grid min-h-64 place-items-center rounded-[14px] border border-border p-8 text-center">
+          <div className="mt-6 grid min-h-56 place-items-center rounded-[14px] border border-dashed border-border p-14 text-center">
             <div>
-              <p className="font-semibold">Không có roadmap ở bộ lọc này</p>
+              <p className="text-muted-foreground">
+                Không có roadmap nào ở bộ lọc này.
+              </p>
               <button
                 type="button"
-                onClick={() => setSelectedId("all")}
-                className="mt-4 h-11 rounded-lg border border-foreground px-5 text-sm font-semibold"
+                onClick={() => setTag(ALL_TAGS)}
+                className="mt-3.5 h-11 rounded-lg border border-foreground px-4.5 text-sm font-semibold"
               >
-                Xem tất cả cấp độ
+                Xem tất cả
               </button>
             </div>
           </div>
         )}
-      </section>
 
-      {related.length > 0 && (
-        <section className="border-t border-border bg-secondary">
-          <div className="mx-auto max-w-[1080px] px-4 py-10 sm:px-6">
+        {related.length > 0 && (
+          <div className="mt-12 border-t border-border pt-7">
             <h2 className="text-xl font-bold">Lĩnh vực liên quan</h2>
-            <div className="mt-4 flex flex-wrap gap-2">
+            <div className="mt-4 flex flex-wrap gap-3.5">
               {related.map((item) => (
                 <Link
                   key={item.id}
                   href={`/fields/${item.slug}`}
-                  className="inline-flex min-h-11 items-center rounded-full border border-border bg-background px-4 text-sm font-semibold transition hover:border-foreground"
+                  className="flex items-center gap-3 rounded-full border border-border py-2.5 pl-2.5 pr-4 transition hover:bg-secondary"
                 >
-                  {item.title}
+                  <span className="h-[34px] w-11 shrink-0 overflow-hidden rounded-lg bg-muted">
+                    {item.imageUrl && (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={item.imageUrl}
+                        alt=""
+                        className="size-full object-cover"
+                      />
+                    )}
+                  </span>
+                  <span className="text-sm font-semibold">{item.title}</span>
                 </Link>
               ))}
             </div>
           </div>
-        </section>
-      )}
+        )}
+      </section>
     </main>
   )
 }
 
-function HeroStat({
-  icon: Icon,
-  label,
-}: {
-  icon: typeof Map
-  label: string
-}) {
+function HeroStat({ icon: Icon, label }: { icon: typeof MapIcon; label: string }) {
   return (
-    <span className="inline-flex min-h-9 items-center gap-2 rounded-full border border-white/30 bg-black/28 px-3 text-sm font-medium text-white backdrop-blur-xl">
-      <Icon className="size-4" />
+    <span className="inline-flex min-h-9 items-center gap-[7px] rounded-full border border-white/30 bg-black/28 px-3.5 text-sm font-medium text-white backdrop-blur-xl">
+      <Icon className="size-[15px]" />
       {label}
     </span>
   )
@@ -252,10 +297,12 @@ function HeroStat({
 
 function FilterChip({
   active,
+  count,
   onClick,
   children,
 }: {
   active: boolean
+  count: number
   onClick: () => void
   children: React.ReactNode
 }) {
@@ -265,13 +312,16 @@ function FilterChip({
       aria-pressed={active}
       onClick={onClick}
       className={cn(
-        "inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-full border px-4 text-sm font-semibold transition",
+        "inline-flex min-h-11 shrink-0 items-center gap-[7px] rounded-full border px-4 text-[13px] font-semibold transition",
         active
           ? "border-foreground bg-foreground text-background"
-          : "border-border bg-background hover:border-foreground"
+          : "border-border bg-background text-muted-foreground hover:border-foreground"
       )}
     >
       {children}
+      <span className={active ? "text-background/65" : "text-muted-foreground"}>
+        {count}
+      </span>
     </button>
   )
 }
@@ -285,7 +335,8 @@ function FieldRoadmapCard({
 }) {
   const image = roadmap.thumbnailUrl || fallbackImage
   const level = roadmap.level ? LEVEL_LABELS[roadmap.level] : null
-  const typeLabel = roadmap.blockType === "skill" ? "Kỹ năng" : "Vai trò"
+  const isInternal = roadmap.visibility === "INTERNAL"
+  const learners = roadmap.learnerCount ?? 0
 
   return (
     <article className="group">
@@ -306,25 +357,28 @@ function FieldRoadmapCard({
               Chưa có ảnh bìa
             </div>
           )}
+          {/* "Premium" is deliberately not used: the access contract reserves it
+              until a billing entitlement exists, and INTERNAL today means an AIO
+              account, not a purchase. */}
           <span
             className={cn(
               "absolute left-3 top-3 rounded-full px-2.5 py-1 text-[11px] font-semibold",
-              roadmap.visibility === "INTERNAL"
+              isInternal
                 ? "bg-foreground text-background"
                 : "bg-background text-foreground"
             )}
           >
-            {roadmap.visibility === "INTERNAL" ? "Nội bộ" : "Miễn phí"}
+            {isInternal ? "Dành cho học viên AIO" : "Miễn phí"}
           </span>
-          <div className="absolute inset-0 grid place-items-center bg-black/45 opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-focus-within:opacity-100">
-            <span className="rounded-lg bg-background px-4 py-2 text-sm font-semibold text-foreground">
+          <div className="absolute inset-0 grid place-items-center bg-black/42 opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-focus-within:opacity-100">
+            <span className="rounded-full bg-background px-4 py-2 text-[13px] font-semibold text-foreground shadow-float">
               Mở roadmap
             </span>
           </div>
         </div>
 
         <div className="pt-3">
-          <h2 className="text-base font-semibold tracking-[-.1px]">
+          <h2 className="text-base font-semibold tracking-[-.1px] group-hover:underline">
             {roadmap.title}
           </h2>
           {roadmap.description && (
@@ -332,11 +386,21 @@ function FieldRoadmapCard({
               {roadmap.description}
             </p>
           )}
-          <p className="mt-2 text-xs text-muted-foreground">
-            {roadmap.nodeCount} node · {typeLabel}
-            {level ? ` · ${level}` : ""}
+          <p className="mt-2 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+            <span>{roadmap.nodeCount} node</span>
+            {level && (
+              <>
+                <span aria-hidden>·</span>
+                <span>{level}</span>
+              </>
+            )}
+            {learners > 0 && (
+              <>
+                <span aria-hidden>·</span>
+                <span>{learners} học viên</span>
+              </>
+            )}
           </p>
-          <p className="mt-1.5 text-sm font-medium">Chưa bắt đầu</p>
         </div>
       </Link>
     </article>

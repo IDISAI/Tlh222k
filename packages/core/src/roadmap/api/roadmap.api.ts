@@ -26,7 +26,7 @@ import { gql } from "./client"
 const ROADMAP_FIELDS = `
   id slug title description thumbnailUrl publishStatus discoverability
   visibility ownerId roleTags dueDate firstPublishedAt archivedAt
-  nodeCount createdAt updatedAt
+  nodeCount learnerCount createdAt updatedAt
 `
 /** Every column of a discovery label. One place, so the next rename is one edit. */
 const FIELD_FIELDS = `id title slug order description imageUrl publishStatus`
@@ -70,14 +70,18 @@ export class RoadmapApi {
         level: Level | null
         visibility: Visibility
         updatedAt: string
+        createdAt: string | null
         authorId: string | null
+        tags: string[]
+        learnerCount: number
         fields: Field[]
       }[]
     }>(
       `query {
         publicBlocks {
           id slug title description childrenCount publishStatus
-          nodeType coverUrl level visibility updatedAt authorId
+          nodeType coverUrl level visibility updatedAt createdAt authorId
+          tags learnerCount
           fields { ${FIELD_FIELDS} }
         }
       }`
@@ -98,7 +102,13 @@ export class RoadmapApi {
       level: n.level,
       visibility: n.visibility,
       updatedAt: n.updatedAt,
+      createdAt: n.createdAt ?? undefined,
       authorId: n.authorId ?? undefined,
+      // A block's editorial tags ARE the roles the Field list filters by. The
+      // container Roadmap's own roleTags column never reaches this screen,
+      // because the public list is built from blocks, not containers.
+      roleTags: n.tags ?? [],
+      learnerCount: n.learnerCount ?? 0,
     }))
   }
 

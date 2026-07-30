@@ -105,6 +105,12 @@ export interface Roadmap {
   firstPublishedAt?: string | null
   archivedAt?: string | null
   nodeCount: number
+  /**
+   * Distinct learners who have started content inside this roadmap. Optional
+   * so localStorage snapshots written before it existed still parse; absent
+   * reads as "not known", never as zero learners.
+   */
+  learnerCount?: number
   /** Discovery labels; empty when the block carries none. */
   fields: Field[]
   /** Public card metadata copied from the role/skill block. */

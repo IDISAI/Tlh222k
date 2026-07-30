@@ -97,6 +97,8 @@ export interface RoadmapDto {
   firstPublishedAt: string | null
   archivedAt: string | null
   nodeCount: number
+  /** Distinct learners who have started content inside this roadmap. */
+  learnerCount: number
   createdAt?: string | null
   updatedAt?: string | null
 }
@@ -131,6 +133,16 @@ export interface NodeDto {
    * the GraphQL field is a non-null list, so callers see `[]`, never null.
    */
   fields: FieldDto[]
+  /**
+   * Distinct learners who started anything in this block's subtree. Only the
+   * public block list fills it in; elsewhere it stays 0 rather than absent so
+   * the GraphQL non-null contract holds.
+   */
+  learnerCount?: number
+  /** Block creation time. Discovery sorts on it; it is not a publish time. */
+  createdAt?: string | null
+  /** Last edit time. */
+  updatedAt?: string | null
 }
 
 export interface FieldDto {
@@ -425,7 +437,10 @@ export class RoadmapService implements OnModuleInit {
       },
       orderBy: { createdAt: "asc" },
     })
-    return rows.map((r) => this.toRoadmapDto(r, r._count.nodes))
+    const learners = await this.learnerCounts(rows.map((r) => r.id))
+    return rows.map((r) =>
+      this.toRoadmapDto(r, r._count.nodes, learners.get(r.id) ?? 0)
+    )
   }
 
   async roadmapBySlug(slug: string): Promise<RoadmapDto | null> {
@@ -435,7 +450,65 @@ export class RoadmapService implements OnModuleInit {
         _count: { select: { nodes: { where: { isDeleted: false } } } },
       },
     })
-    return r ? this.toRoadmapDto(r, r._count.nodes) : null
+    if (!r) return null
+    const learners = await this.learnerCounts([r.id])
+    return this.toRoadmapDto(r, r._count.nodes, learners.get(r.id) ?? 0)
+  }
+
+  /**
+   * Unique learners per roadmap: people who have started content inside it.
+   *
+   * Counted as distinct `clerkUserId`, never as rows — one learner working
+   * through twelve nodes is one learner. Page views are deliberately not part
+   * of this: the access contract makes popularity mean "someone began", so a
+   * roadmap cannot climb the sort by being opened and abandoned.
+   *
+   * One grouped query for the whole page rather than a count per card, because
+   * the roadmap list renders every published roadmap at once.
+   */
+  /**
+   * Same rule as `learnerCounts`, but scoped to an explicit set of nodes —
+   * used by the synthetic roadmap a single block is wrapped in, where the
+   * block's subtree is the whole of "inside this roadmap".
+   */
+  private async learnersOfNodes(nodeIds: string[]): Promise<number> {
+    if (nodeIds.length === 0) return 0
+    const rows = await this.prisma.userProgress.findMany({
+      where: {
+        status: { in: ["in_progress", "done"] },
+        nodeId: { in: nodeIds },
+      },
+      select: { clerkUserId: true },
+      distinct: ["clerkUserId"],
+    })
+    return rows.length
+  }
+
+  private async learnerCounts(
+    roadmapIds: string[]
+  ): Promise<Map<string, number>> {
+    const counts = new Map<string, number>()
+    if (roadmapIds.length === 0) return counts
+
+    const rows = await this.prisma.userProgress.findMany({
+      where: {
+        // "locked" is the resting state every node reports before anyone opens
+        // it, so counting it would credit a roadmap with learners it never had.
+        status: { in: ["in_progress", "done"] },
+        node: { roadmapId: { in: roadmapIds }, isDeleted: false },
+      },
+      select: { clerkUserId: true, node: { select: { roadmapId: true } } },
+    })
+
+    const seen = new Map<string, Set<string>>()
+    for (const row of rows) {
+      const roadmapId = row.node.roadmapId
+      const users = seen.get(roadmapId) ?? new Set<string>()
+      users.add(row.clerkUserId)
+      seen.set(roadmapId, users)
+    }
+    for (const [roadmapId, users] of seen) counts.set(roadmapId, users.size)
+    return counts
   }
 
   /**
@@ -491,6 +564,7 @@ export class RoadmapService implements OnModuleInit {
     }
 
     const subtree = await this.subtreeOf(node)
+    const subtreeLearners = await this.learnersOfNodes(subtree.map((n) => n.id))
     const synthetic: RoadmapDto = {
       id: node.id,
       slug: node.slug,
@@ -509,6 +583,7 @@ export class RoadmapService implements OnModuleInit {
       firstPublishedAt: null,
       archivedAt: null,
       nodeCount: subtree.length,
+      learnerCount: subtreeLearners,
     }
     return this.buildGraph(
       synthetic,
@@ -585,6 +660,31 @@ export class RoadmapService implements OnModuleInit {
         childCount.set(n.parentId, (childCount.get(n.parentId) ?? 0) + 1)
       }
     }
+
+    // Learners per block, rolled up its subtree: someone working a chapter deep
+    // inside a role has started that role. Counted as distinct people, so one
+    // learner across five of its nodes stays one. Done in memory over the rows
+    // already fetched above rather than a query per card — this list renders
+    // every published block at once.
+    const started = await this.prisma.userProgress.findMany({
+      where: { status: { in: ["in_progress", "done"] }, node: { isDeleted: false } },
+      select: { clerkUserId: true, nodeId: true },
+    })
+    const parentOf = new Map(all.map((n) => [n.id, n.parentId]))
+    const learnersByBlock = new Map<string, Set<string>>()
+    for (const row of started) {
+      // Walk to the root, marking every ancestor. `seen` guards the walk against
+      // a parentId cycle, which would otherwise hang the request.
+      const seen = new Set<string>()
+      let current: string | null | undefined = row.nodeId
+      while (current && !seen.has(current)) {
+        seen.add(current)
+        const users = learnersByBlock.get(current) ?? new Set<string>()
+        users.add(row.clerkUserId)
+        learnersByBlock.set(current, users)
+        current = parentOf.get(current)
+      }
+    }
     // OR across labels: the strip selects one tab at a time, and a block
     // carrying both AI and Data must show up under either.
     const wanted = fieldIds?.length ? new Set(fieldIds) : null
@@ -613,7 +713,10 @@ export class RoadmapService implements OnModuleInit {
             (fieldPosition.get(right.id) ?? right.order) ||
           left.order - right.order
       )
-      .map((n) => this.toNodeDto(n, "locked", childCount.get(n.id) ?? 0))
+      .map((n) => ({
+        ...this.toNodeDto(n, "locked", childCount.get(n.id) ?? 0),
+        learnerCount: learnersByBlock.get(n.id)?.size ?? 0,
+      }))
   }
 
   /**
@@ -645,6 +748,9 @@ export class RoadmapService implements OnModuleInit {
     const visibleNodes = canAccessInternal(user)
       ? roadmapNodes
       : roadmapNodes.filter((item) => normalizeVisibility(item.visibility) !== "INTERNAL")
+    const visibleLearners = await this.learnersOfNodes(
+      visibleNodes.map((item) => item.id)
+    )
     const synthetic: RoadmapDto = {
       id: node.id,
       slug: node.slug,
@@ -663,6 +769,7 @@ export class RoadmapService implements OnModuleInit {
       firstPublishedAt: null,
       archivedAt: null,
       nodeCount: visibleNodes.length,
+      learnerCount: visibleLearners,
     }
     return this.buildGraph(synthetic, visibleNodes, {})
   }
@@ -1458,7 +1565,8 @@ export class RoadmapService implements OnModuleInit {
       createdAt?: Date
       updatedAt?: Date
     },
-    nodeCount: number
+    nodeCount: number,
+    learnerCount = 0
   ): RoadmapDto {
     return {
       id: r.id,
@@ -1475,6 +1583,7 @@ export class RoadmapService implements OnModuleInit {
       firstPublishedAt: r.firstPublishedAt?.toISOString() ?? null,
       archivedAt: r.archivedAt?.toISOString() ?? null,
       nodeCount,
+      learnerCount,
       createdAt: r.createdAt ? r.createdAt.toISOString() : null,
       updatedAt: r.updatedAt ? r.updatedAt.toISOString() : null,
     }
@@ -1512,6 +1621,11 @@ export class RoadmapService implements OnModuleInit {
       level: normalizeLevel(n.level),
       visibility: normalizeVisibility(n.visibility),
       fields: (n.fields ?? []).map(toFieldDto),
+      // Only `publicBlocks` rolls up real learner numbers; every other caller
+      // reports 0 so the non-null GraphQL field always has a value.
+      learnerCount: 0,
+      createdAt: n.createdAt ? n.createdAt.toISOString() : null,
+      updatedAt: n.updatedAt ? n.updatedAt.toISOString() : null,
     }
   }
 

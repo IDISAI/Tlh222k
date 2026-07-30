@@ -96,6 +96,8 @@ type Roadmap {
   firstPublishedAt: String
   archivedAt: String
   nodeCount: Int!
+  """Distinct learners who started content inside this roadmap. Never page views."""
+  learnerCount: Int!
   createdAt: String
   updatedAt: String
 }
@@ -125,6 +127,11 @@ type RoadmapNode {
   visibility: Visibility!
   """Editorial free-text tags, narrower than a Field — used by the roadmap picker's tag filter."""
   tags: [String!]!
+  """
+  Distinct learners who started anything in this block's subtree. Never page
+  views. Only `publicBlocks` computes it; other queries report 0.
+  """
+  learnerCount: Int!
   """Clerk id of whoever created this block. Stamped server-side on create; never a mutation input."""
   authorId: ID
   """
@@ -132,6 +139,13 @@ type RoadmapNode {
   can sit under both AI and Data, so it surfaces under either tab.
   """
   fields: [Field!]!
+  """
+  When the block was created. Not the same as first publish — blocks have no
+  publish timestamp yet, so discovery sorts on this and says "Mới nhất".
+  """
+  createdAt: String
+  """Last edit time. The public card selects it, so it must resolve."""
+  updatedAt: String
 }
 
 """
