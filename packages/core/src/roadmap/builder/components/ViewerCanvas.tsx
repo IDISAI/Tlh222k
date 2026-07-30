@@ -17,6 +17,7 @@ import { useTheme } from "next-themes"
 
 import "@xyflow/react/dist/style.css"
 
+import type { CanvasViewport } from "../../../navigation/auth-return"
 import type { NodeType, RoadmapNode } from "../../types"
 import type { BuilderFlowNode, ChildCountEdge } from "../types"
 import { deriveCompositionFromNodes } from "../../utils/derive-composition"
@@ -68,6 +69,14 @@ interface ViewerCanvasProps {
   /** Double-click a node → open the right detail sidebar (matches the builder). */
   onNodeDoubleClick?: (node: RoadmapNode) => void
   className?: string
+  /**
+   * Camera to open at, instead of framing the whole graph. Set when a URL
+   * carries one, so a learner coming back from sign-in lands where they were
+   * rather than zoomed back out to the top.
+   */
+  initialViewport?: CanvasViewport | null
+  /** Fires as the learner pans or zooms, so the caller can persist the camera. */
+  onViewportChange?: (viewport: CanvasViewport) => void
 }
 
 /**
@@ -83,6 +92,8 @@ function ViewerCanvasInner({
   onNodeClick,
   onNodeDoubleClick,
   className,
+  initialViewport = null,
+  onViewportChange,
 }: ViewerCanvasProps) {
   const { resolvedTheme } = useTheme()
   // Skip SSR entirely to avoid the ReactFlow colorMode hydration mismatch.
@@ -204,12 +215,16 @@ function ViewerCanvasInner({
           colorMode={colorMode}
           minZoom={0.25}
           maxZoom={2}
-          fitView
+          // A restored camera wins over framing the graph — fitView would
+          // immediately undo the position the learner is being returned to.
+          fitView={!initialViewport}
+          defaultViewport={initialViewport ?? undefined}
           zoomOnDoubleClick={false}
           nodesConnectable={false}
           elementsSelectable
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
+          onMoveEnd={(_, viewport) => onViewportChange?.(viewport)}
           onNodeClick={(_, rfNode) =>
             onNodeClick?.((rfNode.data as { node: RoadmapNode }).node)
           }

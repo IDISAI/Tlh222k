@@ -1,5 +1,8 @@
 import { auth } from "@clerk/nextjs/server"
+import { forbidden, redirect } from "next/navigation"
 import { devAuthRole, roleFromClaims, type UserRole } from "@workspace/core"
+
+import { SIGN_IN_PATH } from "./paths"
 
 declare global {
   // The Clerk session token exposes public metadata as `metadata` (documented)
@@ -37,4 +40,17 @@ export async function getRole(): Promise<UserRole> {
   if (devRole) return devRole
   const { sessionClaims } = await auth()
   return roleFromClaims(sessionClaims)
+}
+
+/**
+ * Gate for the user-management pages. A guest is sent to sign in, but an
+ * authenticated Admin is refused with 403 — sending them to sign-in instead
+ * would loop them through a form they have already satisfied and imply the
+ * problem is their session rather than their role.
+ */
+export async function requireSuperAdmin(): Promise<"super-admin"> {
+  const role = await getRole()
+  if (role === "super-admin") return role
+  if (!(await getIsAuthenticated())) redirect(SIGN_IN_PATH)
+  forbidden()
 }

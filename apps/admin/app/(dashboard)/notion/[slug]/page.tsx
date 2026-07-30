@@ -3,7 +3,7 @@ import { redirect } from "next/navigation"
 import { NotionWorkspace } from "@workspace/core"
 import { notionApi } from "@workspace/core/notion/api/notion.api"
 
-import { getAuthToken, getRole } from "@/lib/auth"
+import { getAuthToken, requireCmsRole } from "@/lib/auth"
 import { FORBIDDEN_PATH } from "@/lib/paths"
 
 import {
@@ -49,8 +49,7 @@ export default async function AdminNotionPage({
 }) {
   const { slug } = await params
   const { page } = await searchParams
-  const role = await getRole()
-  if (role !== "admin" && role !== "super-admin") redirect(FORBIDDEN_PATH)
+  const role = await requireCmsRole()
   const token = await getAuthToken()
 
   // Root doc = the roadmap CHAPTER (A1). Auto-created on first admin visit.

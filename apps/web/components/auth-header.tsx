@@ -1,7 +1,8 @@
 "use client"
 
 import { ClerkLoaded, SignInButton, UserButton, useAuth } from "@clerk/nextjs"
-import { devAuthRole } from "@workspace/core"
+import { usePathname, useSearchParams } from "next/navigation"
+import { authReturnUrl, devAuthRole } from "@workspace/core"
 
 export function AuthHeader({ tone = "default" }: { tone?: "default" | "on-dark" }) {
   // Dev bypass: no <ClerkProvider>, so Clerk hooks/components would throw.
@@ -28,6 +29,13 @@ export function AuthHeader({ tone = "default" }: { tone?: "default" | "on-dark" 
 
 function ClerkAuthHeader({ tone }: { tone: "default" | "on-dark" }) {
   const { isSignedIn } = useAuth()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
+  // Without this, Clerk sends everyone to `/` after signing in. Someone who
+  // hit "Sign In" from a node they had open on a canvas would come back to the
+  // home page and have to find their way there again. The viewer keeps the
+  // open node and the camera in the query string precisely so this survives.
+  const returnUrl = authReturnUrl(pathname, searchParams.toString())
 
   return (
     <ClerkLoaded>
@@ -37,7 +45,11 @@ function ClerkAuthHeader({ tone }: { tone: "default" | "on-dark" }) {
         // whether they differ.
         <UserButton />
       ) : (
-        <SignInButton mode="redirect">
+        <SignInButton
+          mode="redirect"
+          forceRedirectUrl={returnUrl}
+          signUpForceRedirectUrl={returnUrl}
+        >
           <button
             type="button"
             className={

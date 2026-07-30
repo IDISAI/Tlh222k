@@ -4,6 +4,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react"
@@ -12,6 +13,13 @@ import { Button } from "@workspace/ui/components/button"
 import { Skeleton } from "@workspace/ui/components/skeleton"
 import { cn } from "@workspace/ui/lib/utils"
 
+import {
+  decodeViewport,
+  encodeViewport,
+  NODE_PARAM,
+  VIEWPORT_PARAM,
+  type CanvasViewport,
+} from "../../navigation/auth-return"
 import type { NodeType, RoadmapGraph, RoadmapNode } from "../types"
 import { RoadmapService } from "../api"
 import { NodeDetailDialog, ViewerCanvas } from "../builder"
@@ -152,6 +160,50 @@ export function RoadmapViewer({
     setSelectedId(node.id)
   }, [])
 
+  // Mirror the open node into the URL. Sign-in is a full redirect away and
+  // back, so anything left purely in React state is gone by the time the
+  // learner returns — and "return them to the node they had open" is what the
+  // access contract asks for. replaceState rather than a router push: reopening
+  // a panel is not a place in history the back button should stop at.
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    const url = new URL(window.location.href)
+    if (selectedId) url.searchParams.set(NODE_PARAM, selectedId)
+    else url.searchParams.delete(NODE_PARAM)
+    if (url.toString() !== window.location.href) {
+      window.history.replaceState(window.history.state, "", url)
+    }
+  }, [selectedId])
+
+  // Restore it once the graph is in hand. Waiting for the nodes matters: a
+  // ?node= naming something this canvas does not carry (a stale link, a block
+  // since removed) must leave the panel shut rather than open an empty one.
+  const restoredRef = useRef(false)
+  useEffect(() => {
+    if (restoredRef.current || nodes.length === 0) return
+    restoredRef.current = true
+    if (typeof window === "undefined") return
+    const wanted = new URLSearchParams(window.location.search).get(NODE_PARAM)
+    if (wanted && nodes.some((node) => node.id === wanted)) setSelectedId(wanted)
+  }, [nodes])
+
+  // Read the camera once, on mount. Re-reading it would fight the learner:
+  // every pan writes the URL, and feeding that straight back in would snap
+  // them to their own last position mid-gesture.
+  const [initialViewport] = useState(() =>
+    typeof window === "undefined"
+      ? null
+      : decodeViewport(
+          new URLSearchParams(window.location.search).get(VIEWPORT_PARAM)
+        )
+  )
+  const handleViewportChange = useCallback((viewport: CanvasViewport) => {
+    if (typeof window === "undefined") return
+    const url = new URL(window.location.href)
+    url.searchParams.set(VIEWPORT_PARAM, encodeViewport(viewport))
+    window.history.replaceState(window.history.state, "", url)
+  }, [])
+
   return (
     <div
       className={cn(
@@ -241,6 +293,8 @@ export function RoadmapViewer({
             ownerId={ownerId}
             onNodeClick={handleNodeOpen}
             onNodeDoubleClick={handleNodeOpen}
+            initialViewport={initialViewport}
+            onViewportChange={handleViewportChange}
             className="h-full w-full"
           />
         ) : (

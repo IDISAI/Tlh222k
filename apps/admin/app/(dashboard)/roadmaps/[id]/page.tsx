@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation"
 import { BuilderPage } from "@workspace/core"
 
-import { getRole } from "@/lib/auth"
+import { requireCmsRole } from "@/lib/auth"
 import { FORBIDDEN_PATH, ROADMAPS_PATH } from "@/lib/paths"
 import {
   archiveByNotionPageId,
@@ -18,8 +18,7 @@ export default async function BuilderCanvasPage({
   params: Promise<{ id: string }>
 }) {
   const { id } = await params
-  const role = await getRole()
-  if (role !== "admin" && role !== "super-admin") redirect(FORBIDDEN_PATH)
+  const role = await requireCmsRole()
 
   // Data loads client-side inside BuilderPage: the mock store persists to
   // localStorage, which this server render can never see (ponytail: swap for

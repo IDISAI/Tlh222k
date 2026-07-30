@@ -38,4 +38,28 @@ describe("validateRoleChange", () => {
       })
     ).toEqual({ ok: true })
   })
+
+  it("allows granting aio, the only route to INTERNAL content", () => {
+    expect(
+      validateRoleChange({
+        actorId: "u1",
+        targetId: "u2",
+        currentRole: "viewer",
+        nextRole: "aio",
+        superAdminCount: 1,
+      })
+    ).toEqual({ ok: true })
+  })
+
+  it("still guards the last super-admin when the target becomes aio", () => {
+    expect(
+      validateRoleChange({
+        actorId: "u1",
+        targetId: "u2",
+        currentRole: "super-admin",
+        nextRole: "aio",
+        superAdminCount: 1,
+      })
+    ).toEqual({ ok: false, code: "LAST_SUPER_ADMIN" })
+  })
 })

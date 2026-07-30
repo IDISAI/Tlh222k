@@ -21,6 +21,12 @@ const nextConfig: NextConfig = {
   assetPrefix: isProd ? "/super-admin-static" : "http://localhost:3003",
   allowedDevOrigins: ["localhost:3000"],
   transpilePackages: ["@workspace/ui", "@workspace/core"],
+  // Lets the user-management pages call `forbidden()`, which answers 403. A
+  // redirect to a page that reads "403" still returns 200, so nothing outside
+  // a browser — a fetch, a crawler, a test — can tell refusal from success.
+  experimental: {
+    authInterrupts: true,
+  },
   async rewrites() {
     return [
       { source: "/super-admin", destination: "/" },

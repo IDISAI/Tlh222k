@@ -33,6 +33,12 @@ const nextConfig: NextConfig = {
   assetPrefix: isProd ? "/admin-static" : "http://localhost:3002",
   allowedDevOrigins: ["localhost:3000"],
   transpilePackages: ["@workspace/ui", "@workspace/core", "@workspace/db"],
+  // Lets the CMS pages call `forbidden()`, which answers 403. Redirecting a
+  // Viewer to a page that says "403" still returns 200, so nothing outside a
+  // browser — a fetch, a crawler, a test — can tell refusal from success.
+  experimental: {
+    authInterrupts: true,
+  },
   async rewrites() {
     return [
       { source: "/admin", destination: "/" },
