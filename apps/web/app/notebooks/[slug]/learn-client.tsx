@@ -86,7 +86,11 @@ interface LearnClientProps {
 /** /learn/[slug]: Kaggle-Learn-style Tutorial | Exercise tab pair. */
 export function LearnClient(props: LearnClientProps) {
   const isDev =
-    devAuthRole(process.env.NODE_ENV, process.env.NEXT_PUBLIC_DEV_AUTH_ROLE) !==
+    devAuthRole(
+    process.env.NODE_ENV,
+    process.env.NEXT_PUBLIC_DEV_AUTH_ROLE,
+    process.env.NEXT_PUBLIC_ENABLE_DEV_AUTH_BYPASS
+  ) !==
     null
 
   if (isDev) {

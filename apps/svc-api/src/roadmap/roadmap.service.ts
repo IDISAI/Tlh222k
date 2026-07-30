@@ -4,16 +4,26 @@ import type { Node as DbNode, Prisma } from "@prisma/client"
 import { PrismaService } from "../prisma/prisma.service"
 import { RoadmapEventsService } from "../sse/roadmap-events.service"
 import { RoadmapError } from "../common/roadmap-error"
-import { assertCanWrite, type CurrentUser } from "../auth/clerk"
+import { assertCanWrite, canAccessInternal, type CurrentUser } from "../auth/clerk"
 import {
   MAX_TITLE_LENGTH,
   NODE_TYPES,
   isNodeType,
+  legacyIsPublished,
   normalizeHttpUrl,
+  normalizeFieldDescription,
+  normalizeLevel,
+  normalizePublishStatus,
+  publishStatusFromLegacy,
+  reachesLearners,
   slugify,
   type ArticleType,
   type NodeStatus,
+  type Level,
   type NodeType,
+  type PublishStatus,
+  type Visibility,
+  normalizeVisibility,
 } from "./hierarchy"
 import { assertAcyclicTree } from "./tree-invariants"
 
@@ -78,7 +88,7 @@ export interface RoadmapDto {
   title: string
   description: string | null
   thumbnailUrl: string | null
-  isPublished: boolean
+  publishStatus: PublishStatus
   nodeCount: number
   createdAt?: string | null
   updatedAt?: string | null
@@ -102,8 +112,88 @@ export interface NodeDto {
   isDeleted: boolean
   childrenCount: number
   linkedRoadmapId: string | null
-  isPublished: boolean
+  publishStatus: PublishStatus
+  coverUrl: string | null
+  level: Level | null
+  visibility: Visibility
+  tags: string[]
+  /** Clerk id of whoever created this block. Stamped on create, never on update. */
+  authorId: string | null
+  /**
+   * Discovery labels. Empty when the caller's query did not `include` them —
+   * the GraphQL field is a non-null list, so callers see `[]`, never null.
+   */
+  fields: FieldDto[]
 }
+
+export interface FieldDto {
+  id: string
+  title: string
+  slug: string
+  order: number
+  description: string | null
+  imageUrl: string | null
+  publishStatus: PublishStatus
+}
+
+/**
+ * Every column of a discovery label, and the order the tab strip wants them in.
+ * Both are named once because a label is selected from eight different queries:
+ * inlined, the next column rename is eight chances to miss one.
+ */
+const FIELD_SELECT = {
+  id: true,
+  title: true,
+  slug: true,
+  order: true,
+  description: true,
+  imageUrl: true,
+  publishStatus: true,
+} as const
+const FIELD_ORDER_BY: Prisma.FieldOrderByWithRelationInput[] = [
+  { order: "asc" },
+  { title: "asc" },
+]
+
+/**
+ * Read a row's status. The column is a plain string, so it is narrowed here
+ * rather than trusted — an unreadable value falls to DRAFT, same as an
+ * unreadable role falls to viewer: a gate must never see an empty status.
+ */
+function statusOf(row: { publishStatus: string }) {
+  return normalizePublishStatus(row.publishStatus)
+}
+
+/** A label as Postgres hands it back — `publishStatus` is a plain column. */
+type DbField = {
+  id: string
+  title: string
+  slug: string
+  order: number
+  description: string | null
+  imageUrl: string | null
+  publishStatus: string
+}
+
+/**
+ * Narrow a stored label onto the DTO. The status is a plain string column, so
+ * this is the boundary where an unreadable value becomes DRAFT rather than
+ * leaking out as a status nothing downstream knows how to read.
+ */
+function toFieldDto(f: DbField): FieldDto {
+  return {
+    id: f.id,
+    title: f.title,
+    slug: f.slug,
+    order: f.order,
+    description: f.description,
+    imageUrl: f.imageUrl,
+    publishStatus: normalizePublishStatus(f.publishStatus),
+  }
+}
+
+/** A `Node` row with its labels joined in. */
+type DbNodeWithFields = DbNode & { fields?: DbField[] }
 
 export interface GraphDto {
   roadmap: RoadmapDto
@@ -121,7 +211,24 @@ export interface UpdateRoadmapInput {
   title?: string | null
   description?: string | null
   thumbnailUrl?: string | null
-  isPublished?: boolean | null
+  publishStatus?: PublishStatus | null
+}
+
+export interface CreateFieldInput {
+  title: string
+  slug?: string | null
+  description?: string | null
+  imageUrl?: string | null
+  publishStatus?: PublishStatus | null
+}
+
+export interface UpdateFieldInput {
+  title?: string | null
+  slug?: string | null
+  description?: string | null
+  imageUrl?: string | null
+  publishStatus?: PublishStatus | null
+  order?: number | null
 }
 
 export interface CreateNodeInput {
@@ -137,6 +244,11 @@ export interface CreateNodeInput {
   positionX: number
   positionY: number
   order?: number | null
+  coverUrl?: string | null
+  level?: string | null
+  visibility?: Visibility | null
+  tags?: string[] | null
+  fieldIds?: string[] | null
 }
 
 export interface UpdateNodeInput {
@@ -150,7 +262,14 @@ export interface UpdateNodeInput {
   order?: number | null
   parentId?: string | null
   linkedRoadmapId?: string | null
-  isPublished?: boolean | null
+  publishStatus?: PublishStatus | null
+  coverUrl?: string | null
+  level?: string | null
+  visibility?: Visibility | null
+  /** Replaces the whole tag list when present; `undefined` leaves it alone. */
+  tags?: string[] | null
+  /** Replaces the whole label set when present; `undefined` leaves it alone. */
+  fieldIds?: string[] | null
 }
 
 export interface SaveNodeInput {
@@ -206,16 +325,32 @@ export class RoadmapService implements OnModuleInit {
         select: { id: true, slug: true, isPublished: true },
       })
       for (const doc of docs) {
-        await this.prisma.node.updateMany({
-          where: {
-            OR: [
-              { notionPageId: doc.id },
-              ...(doc.slug ? [{ slug: doc.slug }] : []),
-            ],
-            isPublished: !doc.isPublished,
-          },
-          data: { isPublished: doc.isPublished },
-        })
+        const linkedTo = {
+          OR: [
+            { notionPageId: doc.id },
+            ...(doc.slug ? [{ slug: doc.slug }] : []),
+          ],
+        }
+        // A Document only ever has two states, so it can assert "published" or
+        // "not published" — never Private, which is a deliberate admin choice
+        // orthogonal to the source document. Bringing the node down to Draft
+        // whenever it merely isn't Published (the old boolean-shaped check)
+        // would flip a Private node back to Draft the moment its document goes
+        // unpublished, silently discarding that choice. So the sync is
+        // one-directional per fact: published pulls a Draft/Private node up,
+        // unpublished only pulls a Published node down — Private is never a
+        // node this loop touches.
+        if (doc.isPublished) {
+          await this.prisma.node.updateMany({
+            where: { ...linkedTo, publishStatus: { not: "PUBLISHED" } },
+            data: { publishStatus: "PUBLISHED" },
+          })
+        } else {
+          await this.prisma.node.updateMany({
+            where: { ...linkedTo, publishStatus: "PUBLISHED" },
+            data: { publishStatus: "DRAFT" },
+          })
+        }
       }
     } catch (err) {
       console.error("Failed to sync publish states on startup:", err)
@@ -232,7 +367,8 @@ export class RoadmapService implements OnModuleInit {
     // published roadmaps regardless of the flag.
     const isAdmin = user?.role === "admin" || user?.role === "super-admin"
     const rows = await this.prisma.roadmap.findMany({
-      where: includeUnpublished && isAdmin ? {} : { isPublished: true },
+      where:
+        includeUnpublished && isAdmin ? {} : { publishStatus: "PUBLISHED" },
       include: {
         _count: { select: { nodes: { where: { isDeleted: false } } } },
       },
@@ -266,7 +402,7 @@ export class RoadmapService implements OnModuleInit {
     // orphaned/unpublished record (e.g. a block spun out of the table then
     // dragged into another canvas, leaving an empty same-slug roadmap) must NOT
     // shadow the real block node — fall through to the node lookup below.
-    if (roadmap && (roadmap.isPublished || isAdmin)) {
+    if (roadmap && (reachesLearners(statusOf(roadmap)) || isAdmin)) {
       const nodes = await this.activeNodesOf(roadmap.id)
       if (nodes.length > 0) {
         return this.buildGraph(
@@ -293,7 +429,14 @@ export class RoadmapService implements OnModuleInit {
       const parentRoadmap = await this.prisma.roadmap.findUnique({
         where: { id: node.roadmapId },
       })
-      if (!node.isPublished && !parentRoadmap?.isPublished) return null
+      // A block inherits its wrapper's reach: it is visible if either it or
+      // the roadmap it is filed under is published.
+      if (
+        !reachesLearners(statusOf(node)) &&
+        !(parentRoadmap && reachesLearners(statusOf(parentRoadmap)))
+      ) {
+        return null
+      }
     }
 
     const subtree = await this.subtreeOf(node)
@@ -303,7 +446,10 @@ export class RoadmapService implements OnModuleInit {
       title: node.title,
       description: node.description,
       thumbnailUrl: null,
-      isPublished: true,
+      // Synthetic wrapper around one block: it carries the block's own status
+      // rather than a hardcoded one, so a private block cannot be dressed as
+      // published by the shape used to render it.
+      publishStatus: normalizePublishStatus(node.publishStatus),
       nodeCount: subtree.length,
     }
     return this.buildGraph(
@@ -341,7 +487,17 @@ export class RoadmapService implements OnModuleInit {
   async allNodes(user: CurrentUser | null): Promise<NodeDto[]> {
     // Exposes soft-deleted + unpublished content: admins only.
     assertCanWrite(user)
-    const nodes = await this.prisma.node.findMany({ orderBy: { order: "asc" } })
+    // Labels ride along: the admin detail panel renders a node's labels, and
+    // without them here the picker opens empty on a node that already has some.
+    const nodes = await this.prisma.node.findMany({
+      orderBy: { order: "asc" },
+      include: {
+        fields: {
+          orderBy: FIELD_ORDER_BY,
+          select: FIELD_SELECT,
+        },
+      },
+    })
     return this.attachComputed(nodes, {})
   }
 
@@ -351,10 +507,19 @@ export class RoadmapService implements OnModuleInit {
    * not just top-level ones. No auth; only published, non-deleted blocks leak.
    * childrenCount is the direct-child count across the whole tree (card "N chủ đề").
    */
-  async publicBlocks(): Promise<NodeDto[]> {
+  async publicBlocks(fieldIds?: string[] | null, _user: CurrentUser | null = null): Promise<NodeDto[]> {
+    // Every non-deleted node is fetched even when filtering, because
+    // childrenCount counts children across the WHOLE tree — narrowing the
+    // query by label would undercount a block whose children carry no labels.
     const all = await this.prisma.node.findMany({
       where: { isDeleted: false },
       orderBy: { order: "asc" },
+      include: {
+        fields: {
+          orderBy: FIELD_ORDER_BY,
+          select: FIELD_SELECT,
+        },
+      },
     })
     const childCount = new Map<string, number>()
     for (const n of all) {
@@ -362,10 +527,33 @@ export class RoadmapService implements OnModuleInit {
         childCount.set(n.parentId, (childCount.get(n.parentId) ?? 0) + 1)
       }
     }
+    // OR across labels: the strip selects one tab at a time, and a block
+    // carrying both AI and Data must show up under either.
+    const wanted = fieldIds?.length ? new Set(fieldIds) : null
+    const fieldPosition = wanted
+      ? new Map(
+          (
+            await this.prisma.fieldMembership.findMany({
+              where: { fieldId: { in: [...wanted] } },
+              select: { nodeId: true, position: true },
+              orderBy: { position: "asc" },
+            })
+          ).map((membership) => [membership.nodeId, membership.position])
+        )
+      : new Map<string, number>()
+
     return all
       .filter(
         (n) =>
-          n.isPublished && (n.nodeType === "role" || n.nodeType === "skill")
+          reachesLearners(statusOf(n)) &&
+          (n.nodeType === "role" || n.nodeType === "skill")
+      )
+      .filter((n) => !wanted || n.fields.some((f) => wanted.has(f.id)))
+      .sort(
+        (left, right) =>
+          (fieldPosition.get(left.id) ?? left.order) -
+            (fieldPosition.get(right.id) ?? right.order) ||
+          left.order - right.order
       )
       .map((n) => this.toNodeDto(n, "locked", childCount.get(n.id) ?? 0))
   }
@@ -377,14 +565,17 @@ export class RoadmapService implements OnModuleInit {
    * feed the detail panel. Drilling into a member fetches ITS block graph.
    * No auth; the block (or its container roadmap) must be published.
    */
-  async publicBlockGraph(id: string): Promise<GraphDto | null> {
+  async publicBlockGraph(id: string, user: CurrentUser | null): Promise<GraphDto | null> {
     const node = await this.prisma.node.findUnique({ where: { id } })
     if (!node || node.isDeleted || node.nodeType === "article") return null
-    if (!node.isPublished) {
+    if (normalizeVisibility(node.visibility) === "INTERNAL" && !canAccessInternal(user)) {
+      throw new RoadmapError("PERMISSION_DENIED", "Internal block requires AIO access")
+    }
+    if (!reachesLearners(statusOf(node))) {
       const parent = await this.prisma.roadmap.findUnique({
         where: { id: node.roadmapId },
       })
-      if (!parent?.isPublished) return null
+      if (!parent || !reachesLearners(statusOf(parent))) return null
     }
     // Return the WHOLE roadmap's nodes so the web viewer derives the exact same
     // composition (deriveCompositionFromNodes) the admin builder renders — one
@@ -393,16 +584,22 @@ export class RoadmapService implements OnModuleInit {
       where: { roadmapId: node.roadmapId, isDeleted: false },
       orderBy: { order: "asc" },
     })
+    const visibleNodes = canAccessInternal(user)
+      ? roadmapNodes
+      : roadmapNodes.filter((item) => normalizeVisibility(item.visibility) !== "INTERNAL")
     const synthetic: RoadmapDto = {
       id: node.id,
       slug: node.slug,
       title: node.title,
       description: node.description,
       thumbnailUrl: null,
-      isPublished: true,
-      nodeCount: roadmapNodes.length,
+      // Synthetic wrapper around one block: it carries the block's own status
+      // rather than a hardcoded one, so a private block cannot be dressed as
+      // published by the shape used to render it.
+      publishStatus: normalizePublishStatus(node.publishStatus),
+      nodeCount: visibleNodes.length,
     }
-    return this.buildGraph(synthetic, roadmapNodes, {})
+    return this.buildGraph(synthetic, visibleNodes, {})
   }
 
   async myProgress(user: CurrentUser | null): Promise<
@@ -458,7 +655,7 @@ export class RoadmapService implements OnModuleInit {
         title: input.title.trim().slice(0, MAX_TITLE_LENGTH),
         description: input.description?.trim() || null,
         thumbnailUrl: input.thumbnailUrl ?? null,
-        isPublished: false,
+        publishStatus: "DRAFT",
       },
     })
     await this.events.emit(created.id)
@@ -488,9 +685,9 @@ export class RoadmapService implements OnModuleInit {
           input.thumbnailUrl !== undefined
             ? input.thumbnailUrl || null
             : undefined,
-        isPublished:
-          input.isPublished !== undefined && input.isPublished !== null
-            ? input.isPublished
+        publishStatus:
+          input.publishStatus !== undefined && input.publishStatus !== null
+            ? input.publishStatus
             : undefined,
       },
       include: {
@@ -539,9 +736,36 @@ export class RoadmapService implements OnModuleInit {
             notionPageId: input.notionPageId ?? null,
             articleType: input.articleType ?? null,
             jupyterUrl: normalizeHttpUrl(input.jupyterUrl),
+            fields: input.fieldIds?.length
+              ? { connect: input.fieldIds.map((fid) => ({ id: fid })) }
+              : undefined,
+            fieldMemberships: input.fieldIds?.length
+              ? {
+                  create: [...new Set(input.fieldIds)].map((fieldId, position) => ({
+                    fieldId,
+                    position,
+                  })),
+                }
+              : undefined,
             positionX: input.positionX,
             positionY: input.positionY,
             order,
+            coverUrl: normalizeHttpUrl(input.coverUrl),
+            tags: input.tags ? [...new Set(input.tags.map((t) => t.trim()).filter(Boolean))] : undefined,
+            level: normalizeLevel(input.level),
+            visibility: normalizeVisibility(input.visibility),
+            // "Người phụ trách" is the creator, not a chosen assignee — stamped
+            // from the auth context, never a client-supplied input, same rule
+            // Document.authorId already follows.
+            authorId: user?.userId ?? null,
+          },
+          // Echo the labels back so the admin picker renders them straight
+          // after create instead of blanking.
+          include: {
+            fields: {
+              orderBy: FIELD_ORDER_BY,
+              select: FIELD_SELECT,
+            },
           },
         })
       }, TREE_TRANSACTION_OPTIONS)
@@ -615,21 +839,82 @@ export class RoadmapService implements OnModuleInit {
                 input.linkedRoadmapId !== undefined
                   ? (input.linkedRoadmapId ?? null)
                   : undefined,
-              isPublished:
-                input.isPublished !== undefined && input.isPublished !== null
-                  ? input.isPublished
+              publishStatus:
+                input.publishStatus !== undefined && input.publishStatus !== null
+                  ? input.publishStatus
                   : undefined,
+              coverUrl:
+                input.coverUrl !== undefined
+                  ? normalizeHttpUrl(input.coverUrl)
+                  : undefined,
+              tags:
+                input.tags !== undefined && input.tags !== null
+                  ? [...new Set(input.tags.map((t) => t.trim()).filter(Boolean))]
+                  : undefined,
+              // An explicit null clears the level; omitting it leaves it alone.
+              level:
+                input.level !== undefined ? normalizeLevel(input.level) : undefined,
+              visibility:
+                input.visibility !== undefined ? normalizeVisibility(input.visibility) : undefined,
+              // `set` replaces the whole label list, so unchecking a label in
+              // the picker actually removes it. Omitted (undefined) input
+              // leaves existing labels untouched.
+              fields:
+                input.fieldIds !== undefined && input.fieldIds !== null
+                  ? { set: input.fieldIds.map((fid) => ({ id: fid })) }
+                  : undefined,
+            },
+            // Without this the mutation echoes back an empty label list and the
+            // admin picker blanks itself immediately after a successful save.
+            include: {
+              fields: {
+                orderBy: FIELD_ORDER_BY,
+                select: FIELD_SELECT,
+              },
             },
           })
 
-          // Title sync only — publish lives on the Document editor (same
-          // pattern as Jupyter notebook EditorToolbar), not on node edit.
-          // Keep isPublished dual-write for callers that still set it.
+          // Keep old implicit relation alive while every reader moves to the
+          // explicit join table. The join holds per-Field order, which the
+          // implicit relation cannot represent.
+          if (input.fieldIds !== undefined && input.fieldIds !== null) {
+            const nextFieldIds = [...new Set(input.fieldIds)]
+            const existingMemberships = await tx.fieldMembership.findMany({
+              where: { nodeId: id },
+              select: { fieldId: true },
+            })
+            const previousIds = new Set(
+              existingMemberships.map((membership) => membership.fieldId)
+            )
+            const nextIds = new Set(nextFieldIds)
+            const removedIds = [...previousIds].filter((fieldId) => !nextIds.has(fieldId))
+            if (removedIds.length) {
+              await tx.fieldMembership.deleteMany({
+                where: { nodeId: id, fieldId: { in: removedIds } },
+              })
+            }
+            for (const fieldId of nextFieldIds) {
+              if (previousIds.has(fieldId)) continue
+              const latest = await tx.fieldMembership.aggregate({
+                where: { fieldId },
+                _max: { position: true },
+              })
+              await tx.fieldMembership.create({
+                data: { fieldId, nodeId: id, position: (latest._max.position ?? -1) + 1 },
+              })
+            }
+          }
+
+          // Title sync, plus publish state for callers that still set it from
+          // node edit (the block-level Xuất bản/Hủy xuất bản toggle) even
+          // though the Document editor is the primary place for it. Documents
+          // keep only a boolean, so PRIVATE collapses to false here — a
+          // deliberate, lossy translation, not an oversight.
           if (node.notionPageId) {
             const docData: { title?: string; isPublished?: boolean } = {}
             if (input.title != null) docData.title = u.title
-            if (input.isPublished != null)
-              docData.isPublished = input.isPublished
+            if (input.publishStatus != null)
+              docData.isPublished = legacyIsPublished(input.publishStatus)
             if (Object.keys(docData).length > 0) {
               await tx.document.updateMany({
                 where: { id: node.notionPageId },
@@ -791,7 +1076,7 @@ export class RoadmapService implements OnModuleInit {
       title: string
       description: string | null
       thumbnailUrl: string | null
-      isPublished: boolean
+      publishStatus: string
       createdAt?: Date
       updatedAt?: Date
     },
@@ -803,7 +1088,7 @@ export class RoadmapService implements OnModuleInit {
       title: r.title,
       description: r.description,
       thumbnailUrl: r.thumbnailUrl,
-      isPublished: r.isPublished,
+      publishStatus: normalizePublishStatus(r.publishStatus),
       nodeCount,
       createdAt: r.createdAt ? r.createdAt.toISOString() : null,
       updatedAt: r.updatedAt ? r.updatedAt.toISOString() : null,
@@ -811,7 +1096,7 @@ export class RoadmapService implements OnModuleInit {
   }
 
   private toNodeDto(
-    n: DbNode,
+    n: DbNodeWithFields,
     status: NodeStatus,
     childrenCount: number
   ): NodeDto {
@@ -833,12 +1118,242 @@ export class RoadmapService implements OnModuleInit {
       isDeleted: n.isDeleted,
       childrenCount,
       linkedRoadmapId: n.linkedRoadmapId,
-      isPublished: n.isPublished,
+      publishStatus: normalizePublishStatus(n.publishStatus),
+      coverUrl: n.coverUrl ?? null,
+      tags: n.tags ?? [],
+      authorId: n.authorId ?? null,
+      // Narrowed here rather than trusted: the column is a plain string, and an
+      // unreadable value means "unjudged", not a level nothing can render.
+      level: normalizeLevel(n.level),
+      visibility: normalizeVisibility(n.visibility),
+      fields: (n.fields ?? []).map(toFieldDto),
     }
   }
 
+  // ── Discovery labels (Field) ───────────────────────────────────────────────
+
+  /** Every label, for the public tab strip. No auth — labels are not secret. */
+  async listFields(includeUnpublished = false): Promise<FieldDto[]> {
+    const rows = await this.prisma.field.findMany({
+      where: includeUnpublished ? {} : { publishStatus: "PUBLISHED" },
+      orderBy: FIELD_ORDER_BY,
+      select: FIELD_SELECT,
+    })
+    return rows.map(toFieldDto)
+  }
+
+  /** Drafts never escape the CMS; Private is deliberately direct-link only. */
+  async fieldBySlug(slug: string): Promise<FieldDto | null> {
+    const row = await this.prisma.field.findUnique({
+      where: { slug },
+      select: FIELD_SELECT,
+    })
+    if (!row || row.publishStatus === "DRAFT") return null
+    return toFieldDto(row)
+  }
+
+  /**
+   * Find-or-create by title. The admin picker offers "create" inline, so two
+   * admins typing "AI" and "ai" must land on ONE label — otherwise the tab
+   * strip slowly fills with near-duplicates nobody can merge.
+   */
+  async createField(
+    user: CurrentUser | null,
+    input: CreateFieldInput
+  ): Promise<FieldDto> {
+    assertCanWrite(user)
+    const trimmed = input.title.trim()
+    if (!trimmed) throw new RoadmapError("VALIDATION", "Field title is required")
+    if (input.publishStatus === "PUBLISHED" || input.publishStatus === "PRIVATE") {
+      throw new RoadmapError("VALIDATION", "Create the Field as Draft, then add its public block before publishing")
+    }
+
+    const existing = await this.prisma.field.findFirst({
+      where: { title: { equals: trimmed, mode: "insensitive" } },
+      select: FIELD_SELECT,
+    })
+    if (existing) return toFieldDto(existing)
+
+    const count = await this.prisma.field.count()
+    const created = await this.prisma.field.create({
+      data: {
+        title: trimmed,
+        slug: input.slug?.trim() || (await this.uniqueFieldSlug(trimmed)),
+        order: count,
+        description: normalizeFieldDescription(input.description),
+        imageUrl: input.imageUrl?.trim() || null,
+        publishStatus: input.publishStatus ?? "DRAFT",
+      },
+      select: FIELD_SELECT,
+    })
+    return toFieldDto(created)
+  }
+
+  /**
+   * Rename in place. This is the whole reason labels are a table rather than a
+   * string column on `Node`: one row changes and every block carrying the label
+   * follows, with no bulk update and no chance of a half-renamed set.
+   */
+  async updateField(
+    user: CurrentUser | null,
+    id: string,
+    input: UpdateFieldInput
+  ): Promise<FieldDto> {
+    assertCanWrite(user)
+    const existing = await this.prisma.field.findUnique({
+      where: { id },
+      select: FIELD_SELECT,
+    })
+    if (!existing) throw new RoadmapError("NOT_FOUND", "Field not found")
+    const trimmed = input.title?.trim()
+    if (input.title !== undefined && !trimmed) {
+      throw new RoadmapError("VALIDATION", "Field title is required")
+    }
+
+    // Retitling onto another label's title would break the unique index with a
+    // raw Prisma error; reject it as a domain failure instead.
+    const clash = trimmed ? await this.prisma.field.findFirst({
+      where: {
+        title: { equals: trimmed, mode: "insensitive" },
+        id: { not: id },
+      },
+      select: { id: true },
+    }) : null
+    if (clash) {
+      throw new RoadmapError("VALIDATION", `Lĩnh vực "${trimmed}" đã tồn tại`)
+    }
+
+    // Validate at write boundary. UI validation is not an access-control rule.
+    if (input.publishStatus === "PUBLISHED" || input.publishStatus === "PRIVATE") {
+      const description = input.description === undefined
+        ? existing.description
+        : normalizeFieldDescription(input.description)
+      const imageUrl = input.imageUrl === undefined
+        ? existing.imageUrl
+        : input.imageUrl?.trim() || null
+      const publicBlockCount = await this.prisma.node.count({
+        where: {
+          isDeleted: false,
+          nodeType: { in: ["role", "skill"] },
+          publishStatus: "PUBLISHED",
+          fields: { some: { id } },
+        },
+      })
+      if (!description) {
+        throw new RoadmapError("VALIDATION", "Field needs a description before it can be published")
+      }
+      if (!imageUrl?.startsWith("https://")) {
+        throw new RoadmapError("VALIDATION", "Field needs an HTTPS image before it can be published")
+      }
+      if (publicBlockCount === 0) {
+        throw new RoadmapError("VALIDATION", "Field needs one published roadmap block before it can be published")
+      }
+    }
+
+    const updated = await this.prisma.field.update({
+      where: { id },
+      // Deliberately never writes slug: a saved Field's slug is a promise to
+      // everyone who has already linked to it, so retitling never moves it.
+      // `input.slug` is only honoured by createField, before the Field exists.
+      data: {
+        ...(trimmed ? { title: trimmed } : {}),
+        ...(input.description !== undefined ? { description: input.description?.trim() || null } : {}),
+        ...(input.imageUrl !== undefined ? { imageUrl: input.imageUrl?.trim() || null } : {}),
+        ...(input.publishStatus != null ? { publishStatus: input.publishStatus } : {}),
+        ...(input.order != null ? { order: input.order } : {}),
+      },
+      select: FIELD_SELECT,
+    })
+    return toFieldDto(updated)
+  }
+
+  /** Drops the label; the join rows go with it, the blocks themselves stay. */
+  async deleteField(user: CurrentUser | null, id: string): Promise<boolean> {
+    assertCanWrite(user)
+    const field = await this.prisma.field.findUnique({
+      where: { id },
+      select: { publishStatus: true },
+    })
+    if (!field) throw new RoadmapError("NOT_FOUND", "Field not found")
+    if (normalizePublishStatus(field.publishStatus) !== "DRAFT") {
+      throw new RoadmapError("VALIDATION", "Only draft Fields can be deleted; take this Field back to Draft first")
+    }
+    await this.prisma.field.delete({ where: { id } })
+    return true
+  }
+
+  /** Ordered node ids for a single Field Workspace. CMS-only. */
+  async fieldNodeIds(fieldId: string, user: CurrentUser | null): Promise<string[]> {
+    assertCanWrite(user)
+    const memberships = await this.prisma.fieldMembership.findMany({
+      where: { fieldId },
+      orderBy: [{ position: "asc" }, { createdAt: "asc" }],
+      select: { nodeId: true },
+    })
+    return memberships.map((membership) => membership.nodeId)
+  }
+
+  /** Reorder memberships without changing a block's membership in other Fields. */
+  async reorderFieldMembership(
+    fieldId: string,
+    nodeIds: string[],
+    user: CurrentUser | null
+  ): Promise<boolean> {
+    assertCanWrite(user)
+    const uniqueIds = [...new Set(nodeIds)]
+    const memberships = await this.prisma.fieldMembership.findMany({
+      where: { fieldId },
+      select: { nodeId: true },
+    })
+    if (
+      uniqueIds.length !== nodeIds.length ||
+      uniqueIds.length !== memberships.length ||
+      memberships.some((membership) => !uniqueIds.includes(membership.nodeId))
+    ) {
+      throw new RoadmapError("VALIDATION", "Membership order does not match this Field")
+    }
+    await this.prisma.$transaction(
+      uniqueIds.map((nodeId, position) =>
+        this.prisma.fieldMembership.update({
+          where: { fieldId_nodeId: { fieldId, nodeId } },
+          data: { position },
+        })
+      )
+    )
+    return true
+  }
+
+  /**
+   * `excludeId` is the label being renamed: without it a rename that keeps the
+   * same slug would collide with the row's own slug and get suffixed "-2".
+   */
+  private async uniqueFieldSlug(
+    title: string,
+    excludeId?: string
+  ): Promise<string> {
+    const base =
+      title
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/\p{Diacritic}/gu, "")
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-|-$/g, "") || "field"
+    let slug = base
+    for (
+      let i = 2;
+      await this.prisma.field.findFirst({
+        where: { slug, ...(excludeId ? { id: { not: excludeId } } : {}) },
+        select: { id: true },
+      });
+      i++
+    ) {
+      slug = `${base}-${i}`
+    }
+    return slug
+  }
+
   private attachComputed(
-    nodes: DbNode[],
+    nodes: DbNodeWithFields[],
     progress: Record<string, NodeStatus>
   ): NodeDto[] {
     const childCount = new Map<string, number>()

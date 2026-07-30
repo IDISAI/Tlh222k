@@ -13,7 +13,13 @@ declare global {
 
 /** True when a Clerk session is present. */
 export async function getIsAuthenticated(): Promise<boolean> {
-  if (devAuthRole(process.env.NODE_ENV, process.env.NEXT_PUBLIC_DEV_AUTH_ROLE)) {
+  if (
+    devAuthRole(
+      process.env.NODE_ENV,
+      process.env.NEXT_PUBLIC_DEV_AUTH_ROLE,
+      process.env.NEXT_PUBLIC_ENABLE_DEV_AUTH_BYPASS
+    )
+  ) {
     return true
   }
   const { userId } = await auth()
@@ -27,7 +33,8 @@ export async function getIsAuthenticated(): Promise<boolean> {
 export async function getRole(): Promise<UserRole> {
   const devRole = devAuthRole(
     process.env.NODE_ENV,
-    process.env.NEXT_PUBLIC_DEV_AUTH_ROLE
+    process.env.NEXT_PUBLIC_DEV_AUTH_ROLE,
+    process.env.NEXT_PUBLIC_ENABLE_DEV_AUTH_BYPASS
   )
   if (devRole) return devRole
   const { sessionClaims } = await auth()
@@ -39,7 +46,13 @@ export async function getRole(): Promise<UserRole> {
  * only need an author id should fall back to a placeholder.
  */
 export async function getUserId(): Promise<string | null> {
-  if (devAuthRole(process.env.NODE_ENV, process.env.NEXT_PUBLIC_DEV_AUTH_ROLE)) {
+  if (
+    devAuthRole(
+      process.env.NODE_ENV,
+      process.env.NEXT_PUBLIC_DEV_AUTH_ROLE,
+      process.env.NEXT_PUBLIC_ENABLE_DEV_AUTH_BYPASS
+    )
+  ) {
     return null
   }
   const { userId } = await auth()
@@ -54,7 +67,8 @@ export async function getUserId(): Promise<string | null> {
 export async function getAuthToken(): Promise<string | null> {
   const devRole = devAuthRole(
     process.env.NODE_ENV,
-    process.env.NEXT_PUBLIC_DEV_AUTH_ROLE
+    process.env.NEXT_PUBLIC_DEV_AUTH_ROLE,
+    process.env.NEXT_PUBLIC_ENABLE_DEV_AUTH_BYPASS
   )
   if (devRole) return `dev:${devRole}`
   const { getToken } = await auth()

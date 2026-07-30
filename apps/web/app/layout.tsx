@@ -1,4 +1,3 @@
-import { Geist_Mono, Inter } from "next/font/google"
 import { ClerkProvider } from "@clerk/nextjs"
 
 import {
@@ -10,14 +9,8 @@ import {
 import "@workspace/ui/globals.css"
 import { ThemeProvider } from "@/components/theme-provider"
 import { cn } from "@workspace/ui/lib/utils"
+import { SiteFooter } from "@/components/site-footer"
 import { SiteHeader } from "@/components/site-header"
-
-const inter = Inter({ subsets: ["latin"], variable: "--font-sans" })
-
-const fontMono = Geist_Mono({
-  subsets: ["latin"],
-  variable: "--font-mono",
-})
 
 export default function RootLayout({
   children,
@@ -28,18 +21,16 @@ export default function RootLayout({
     <html
       lang="en"
       suppressHydrationWarning
-      className={cn(
-        "antialiased",
-        fontMono.variable,
-        "font-sans",
-        inter.variable
-      )}
+      className={cn("antialiased", "font-sans")}
     >
-      <body>
+      <body className="flex min-h-screen flex-col">
         <ReloadOnBackForward />
         <ThemeProvider>
           <SiteHeader />
-          <RoadmapApolloProvider>{children}</RoadmapApolloProvider>
+          <div className="flex flex-1 flex-col">
+            <RoadmapApolloProvider>{children}</RoadmapApolloProvider>
+          </div>
+          <SiteFooter />
         </ThemeProvider>
       </body>
     </html>
@@ -49,7 +40,8 @@ export default function RootLayout({
   // hosted JS (blocked by the localhost-only preview / headless QA sandbox).
   const devBypass = devAuthRole(
     process.env.NODE_ENV,
-    process.env.NEXT_PUBLIC_DEV_AUTH_ROLE
+    process.env.NEXT_PUBLIC_DEV_AUTH_ROLE,
+    process.env.NEXT_PUBLIC_ENABLE_DEV_AUTH_BYPASS
   )
   // `dynamic`: render Clerk at request time. Without it the statically
   // prerendered /_not-found boundary calls auth() with no middleware context

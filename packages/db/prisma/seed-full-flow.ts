@@ -26,7 +26,7 @@ const ROADMAP = {
     "Lộ trình đầy đủ từ Python nền tảng đến Machine Learning: mỗi chương gồm bài lý thuyết (Notion) và bài thực hành notebook (Jupyter) chạy trực tiếp trong trình duyệt.",
   thumbnailUrl:
     "https://placehold.co/600x338/8b5cf6/ffffff?text=Data+Science",
-  isPublished: true,
+  publishStatus: "PUBLISHED",
 }
 
 // ── BlockNote content helpers (PartialBlock[] as JSON string) ───────────────
@@ -600,7 +600,7 @@ async function main() {
       positionY: n.y,
       order: n.order,
       isDeleted: false,
-      isPublished: n.articleType === "notion" ? true : false,
+      publishStatus: n.articleType === "notion" ? "PUBLISHED" : "DRAFT",
     }
     await prisma.node.upsert({
       where: { id: n.id },

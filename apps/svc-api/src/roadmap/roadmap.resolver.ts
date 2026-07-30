@@ -6,9 +6,11 @@ import type { NodeStatus } from "./hierarchy"
 import {
   RoadmapService,
   type CreateNodeInput,
+  type CreateFieldInput,
   type CreateRoadmapInput,
   type SaveNodeInput,
   type UpdateNodeInput,
+  type UpdateFieldInput,
   type UpdateRoadmapInput,
 } from "./roadmap.service"
 
@@ -51,16 +53,49 @@ export class RoadmapResolver {
     return this.service.allNodes(user)
   }
 
+  @Query("fieldNodeIds")
+  fieldNodeIds(
+    @Args("fieldId") fieldId: string,
+    @CurrentUser() user: CurrentUserType | null
+  ) {
+    return this.service.fieldNodeIds(fieldId, user)
+  }
+
   // Public LEGO inventory — every published role/skill block, no auth.
+  // `fieldIds` is optional; when present it narrows to blocks carrying ANY of
+  // those discovery labels.
   @Query("publicBlocks")
-  publicBlocks() {
-    return this.service.publicBlocks()
+  publicBlocks(
+    @Args("fieldIds") fieldIds: string[] | null | undefined,
+    @CurrentUser() user: CurrentUserType | null
+  ) {
+    return this.service.publicBlocks(fieldIds, user)
+  }
+
+  // Public discovery labels for the /roadmaps tab strip — no auth.
+  @Query("fields")
+  fields(
+    @Args("includeUnpublished") includeUnpublished: boolean | undefined,
+    @CurrentUser() user: CurrentUserType | null
+  ) {
+    return this.service.listFields(
+      Boolean(includeUnpublished) &&
+        (user?.role === "admin" || user?.role === "super-admin")
+    )
+  }
+
+  @Query("field")
+  field(@Args("slug") slug: string) {
+    return this.service.fieldBySlug(slug)
   }
 
   // Public per-block composition (viewer drill) — one block + direct children.
   @Query("publicBlockGraph")
-  publicBlockGraph(@Args("id") id: string) {
-    return this.service.publicBlockGraph(id)
+  publicBlockGraph(
+    @Args("id") id: string,
+    @CurrentUser() user: CurrentUserType | null
+  ) {
+    return this.service.publicBlockGraph(id, user)
   }
 
   @Query("myProgress")
@@ -69,6 +104,42 @@ export class RoadmapResolver {
   }
 
   // ── Mutations ──
+  // Find-or-create: the admin label picker creates inline, so a repeated title
+  // returns the existing label instead of minting a duplicate.
+  @Mutation("createField")
+  createField(
+    @Args("input") input: CreateFieldInput,
+    @CurrentUser() user: CurrentUserType | null
+  ) {
+    return this.service.createField(user, input)
+  }
+
+  @Mutation("updateField")
+  updateField(
+    @Args("id") id: string,
+    @Args("input") input: UpdateFieldInput,
+    @CurrentUser() user: CurrentUserType | null
+  ) {
+    return this.service.updateField(user, id, input)
+  }
+
+  @Mutation("deleteField")
+  deleteField(
+    @Args("id") id: string,
+    @CurrentUser() user: CurrentUserType | null
+  ) {
+    return this.service.deleteField(user, id)
+  }
+
+  @Mutation("reorderFieldMembership")
+  reorderFieldMembership(
+    @Args("fieldId") fieldId: string,
+    @Args("nodeIds") nodeIds: string[],
+    @CurrentUser() user: CurrentUserType | null
+  ) {
+    return this.service.reorderFieldMembership(fieldId, nodeIds, user)
+  }
+
   @Mutation("createRoadmap")
   createRoadmap(
     @Args("input") input: CreateRoadmapInput,

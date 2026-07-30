@@ -47,6 +47,24 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# `tsc` must emit to dist/.next, never alongside source. Local accidental
+# emits shadow TypeScript imports and make Next/Nest run stale code.
+/apps/**/*.js
+/apps/**/*.d.ts
+/apps/**/*.d.ts.map
+/packages/core/src/**/*.js
+/packages/core/src/**/*.d.ts
+/packages/core/src/**/*.d.ts.map
+/packages/ui/src/**/*.js
+/packages/ui/src/**/*.d.ts
+/packages/ui/src/**/*.d.ts.map
+/packages/db/src/**/*.js
+/packages/db/src/**/*.d.ts
+/packages/db/src/**/*.d.ts.map
+/packages/db/prisma/**/*.js
+/packages/db/prisma/**/*.d.ts
+/packages/db/prisma/**/*.d.ts.map
 # CocoIndex Code (ccc)
 /.cocoindex_code/
 .gstack/
@@ -58,3 +76,13 @@ tools/pw-notion/state.json
 tools/pw-notion/shots/
 tools/pw-notion/*.mjs
 .env*
+
+# Local dev-runner output and scratch plans, never part of a build.
+.zcode/
+*.dev.err.log
+*.dev.out.log
+.*-dev.err.log
+.*-dev.out.log
+
+# vercel env sync
+scripts/vercel-env/manifest.json

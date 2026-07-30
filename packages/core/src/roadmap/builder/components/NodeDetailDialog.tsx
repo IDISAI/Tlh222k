@@ -19,6 +19,7 @@ import {
 } from "@workspace/ui/components/card"
 import { Input } from "@workspace/ui/components/input"
 import { Label } from "@workspace/ui/components/label"
+import { RequiredMark } from "@workspace/ui/components/required-mark"
 import {
   Select,
   SelectContent,
@@ -43,6 +44,7 @@ import {
   nodeNavigationUrl,
 } from "../../utils/node-navigation"
 import { NODE_TYPE_ACCENT, NODE_TYPE_ICONS } from "../utils/node-type-styles"
+import { reachesLearners, statusOf } from "../../publish-status"
 import { childrenOf } from "./builder-context"
 
 interface ArticleCreateFormProps {
@@ -87,12 +89,13 @@ function ArticleCreateForm({
     >
       <p className="text-xs font-medium">Bài viết mới</p>
       <div className="space-y-1">
-        <Label className="text-xs">Tiêu đề *</Label>
+        <Label className="text-xs">Tiêu đề<RequiredMark /></Label>
         <Input
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           placeholder="Tên bài viết"
           className="h-7 text-xs"
+          aria-required="true"
           autoFocus
         />
       </div>
@@ -276,6 +279,25 @@ export function NodeDetailDialog({
             </div>
           )}
 
+          {!isArticle && (node.fields?.length ?? 0) > 0 && (
+            <div className="space-y-1.5">
+              <Label>Lĩnh vực</Label>
+              {/* Read-only on purpose: this panel describes a node, it does not
+                  navigate. Making the chips clickable would need a destination
+                  decided first (filter the canvas? jump to /roadmaps?). */}
+              <div className="flex flex-wrap gap-1.5">
+                {node.fields?.map((field) => (
+                  <span
+                    key={field.id}
+                    className="rounded-full bg-secondary px-2.5 py-1 text-xs font-medium"
+                  >
+                    {field.title}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
           {isArticle && (
             <div className="space-y-1">
               <Label>Tài liệu</Label>
@@ -344,7 +366,7 @@ export function NodeDetailDialog({
                               {a.title}
                             </CardTitle>
                           </div>
-                          {a.isPublished ? (
+                          {reachesLearners(statusOf(a)) ? (
                             <Badge
                               variant="secondary"
                               className="h-5 border-transparent bg-emerald-100 px-1.5 py-0 text-[10px] text-emerald-700 hover:bg-emerald-100"

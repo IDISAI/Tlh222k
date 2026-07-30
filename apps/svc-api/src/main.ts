@@ -1,4 +1,16 @@
 import "dotenv/config"
+import { config as loadEnv } from "dotenv"
+import { resolve } from "node:path"
+
+// Local Prisma commands own credentials in packages/db/.env. The API has its
+// own .env in deployed environments, but development needs the same database
+// connection instead of silently starting against an unset datasource.
+if (!process.env.DATABASE_URL && process.env.NODE_ENV !== "production") {
+  loadEnv({ path: resolve(process.cwd(), "../../packages/db/.env") })
+  // Nest keeps one connection pool open in development. Use Neon direct URL
+  // here; DATABASE_URL in packages/db/.env is the serverless pooler URL.
+  if (process.env.DIRECT_URL) process.env.DATABASE_URL = process.env.DIRECT_URL
+}
 // Load Sentry before any instrumented library so OTel can patch them (order matters).
 import "./instrument"
 import "reflect-metadata"

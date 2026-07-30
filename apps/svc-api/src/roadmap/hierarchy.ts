@@ -76,3 +76,91 @@ export function slugify(input: string): string {
     .slice(0, 80)
   return base || "untitled"
 }
+
+/**
+ * Whether content is shown, hidden, or merely unlisted — the same three states
+ * for every kind of content. Mirrors `publish-status.ts` in the shared domain
+ * package, duplicated here for the same reason `NodeType` and `slugify` are:
+ * this service depends on the database package alone, not on the shared
+ * package. Keep the two in step.
+ *
+ * Called `publishStatus` on each type because a block's `status` already means
+ * the viewer's own progress through it.
+ */
+export const PUBLISH_STATUSES = ["DRAFT", "PUBLISHED", "PRIVATE"] as const
+
+export type PublishStatus = (typeof PUBLISH_STATUSES)[number]
+export type Visibility = "FREE" | "INTERNAL"
+
+export function isPublishStatus(value: unknown): value is PublishStatus {
+  return (
+    typeof value === "string" &&
+    (PUBLISH_STATUSES as readonly string[]).includes(value)
+  )
+}
+
+/** Anything unreadable becomes DRAFT: fail closed, hide rather than expose. */
+export function normalizePublishStatus(raw: unknown): PublishStatus {
+  if (typeof raw !== "string") return "DRAFT"
+  const value = raw.trim().toUpperCase()
+  return isPublishStatus(value) ? value : "DRAFT"
+}
+
+export function normalizeVisibility(raw: unknown): Visibility {
+  return typeof raw === "string" && raw.trim().toUpperCase() === "INTERNAL"
+    ? "INTERNAL"
+    : "FREE"
+}
+
+/**
+ * The single visibility rule: Published is seen, Draft and Private are not.
+ * A Private item is still reachable by a request that names it directly —
+ * that is a different question from whether it is listed.
+ */
+export function reachesLearners(status: PublishStatus): boolean {
+  return status === "PUBLISHED"
+}
+
+export function publishStatusFromLegacy(isPublished: boolean): PublishStatus {
+  return isPublished ? "PUBLISHED" : "DRAFT"
+}
+
+/** Lossy on purpose: PRIVATE collapses to false for the Document boundary. */
+export function legacyIsPublished(status: PublishStatus): boolean {
+  return status === "PUBLISHED"
+}
+
+/**
+ * How demanding a roadmap block is. Mirrors `level.ts` in the shared domain
+ * package — duplicated for the same reason PublishStatus is. Keep in step.
+ */
+export const LEVELS = ["BASIC", "INTERMEDIATE", "ADVANCED"] as const
+
+export type Level = (typeof LEVELS)[number]
+
+export function isLevel(value: unknown): value is Level {
+  return typeof value === "string" && (LEVELS as readonly string[]).includes(value)
+}
+
+/** Null rather than a guess: "unjudged" is a real state for a block. */
+export function normalizeLevel(raw: unknown): Level | null {
+  if (typeof raw !== "string") return null
+  const value = raw.trim().toUpperCase()
+  return isLevel(value) ? value : null
+}
+
+/**
+ * A Field's description is the subtitle over its full-viewport image, so it is
+ * capped to what that scene holds. Mirrors `field-limits.ts` in the shared
+ * package, duplicated for the same reason the other domain constants are.
+ *
+ * The form's maxLength only stops a person typing. An API caller is not
+ * typing, so the cap has to hold here too.
+ */
+export const FIELD_DESCRIPTION_MAX = 160
+
+export function normalizeFieldDescription(raw: unknown): string | null {
+  if (typeof raw !== "string") return null
+  const trimmed = raw.trim().slice(0, FIELD_DESCRIPTION_MAX)
+  return trimmed || null
+}

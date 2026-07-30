@@ -4,7 +4,6 @@ import {
   ArrayMaxSize,
   ArrayUnique,
   IsArray,
-  IsBoolean,
   IsEnum,
   IsInt,
   IsNotEmpty,
@@ -49,6 +48,12 @@ export enum NodeStatusEnum {
   done = "done",
 }
 
+export enum PublishStatusEnum {
+  DRAFT = "DRAFT",
+  PUBLISHED = "PUBLISHED",
+  PRIVATE = "PRIVATE",
+}
+
 // ── Response DTOs ──────────────────────────────────────────────────────────────
 
 export class RoadmapResponseDto {
@@ -67,8 +72,8 @@ export class RoadmapResponseDto {
   @ApiPropertyOptional({ example: "https://example.com/thumb.png" })
   thumbnailUrl!: string | null
 
-  @ApiProperty({ example: true })
-  isPublished!: boolean
+  @ApiProperty({ enum: PublishStatusEnum, example: PublishStatusEnum.PUBLISHED })
+  publishStatus!: string
 
   @ApiProperty({ example: 13 })
   nodeCount!: number
@@ -157,10 +162,10 @@ export class UpdateRoadmapDto {
   @IsUrl(HTTP_URL_OPTIONS)
   thumbnailUrl?: string
 
-  @ApiPropertyOptional({ example: true })
+  @ApiPropertyOptional({ enum: PublishStatusEnum, example: PublishStatusEnum.PUBLISHED })
   @IsOptional()
-  @IsBoolean()
-  isPublished?: boolean
+  @IsEnum(PublishStatusEnum)
+  publishStatus?: string
 }
 
 export class CreateNodeDto {

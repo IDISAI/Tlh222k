@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { toast } from "@workspace/ui/components/sonner"
 
 import { RoadmapService } from "../../api"
+import { reachesLearners, statusOf } from "../../publish-status"
 import type {
   CallerRole,
   CreateNodeInput,
@@ -345,12 +346,15 @@ export function useBuilderCanvas(
             )
           })
         }
-        // Sync publish state to Notion document if available
-        if (input.isPublished !== undefined && onSyncPublish) {
+        // Sync publish state to Notion document if available. The document
+        // only has a boolean, so Private collapses to "not published" here —
+        // the same lossy translation as everywhere else this boundary is
+        // crossed, not an oversight.
+        if (input.publishStatus !== undefined && onSyncPublish) {
           const notionKey = previous.notionPageId || previous.slug
           if (notionKey) {
             Promise.resolve(
-              onSyncPublish(notionKey, input.isPublished)
+              onSyncPublish(notionKey, reachesLearners(input.publishStatus))
             ).catch(console.error)
           }
         }
@@ -430,12 +434,18 @@ export function useBuilderCanvas(
     try {
       const updated = await service.updateRoadmap(
         roadmap.id,
-        { isPublished: !roadmap.isPublished },
+        {
+          publishStatus: reachesLearners(statusOf(roadmap))
+            ? "DRAFT"
+            : "PUBLISHED",
+        },
         role
       )
       setRoadmap(updated)
       toast.success(
-        updated.isPublished ? "Đã xuất bản roadmap" : "Đã ngừng xuất bản roadmap"
+        reachesLearners(statusOf(updated))
+          ? "Đã xuất bản roadmap"
+          : "Đã ngừng xuất bản roadmap"
       )
     } catch (error) {
       toast.error(serviceErrorMessage(error))

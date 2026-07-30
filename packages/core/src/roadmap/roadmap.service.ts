@@ -7,22 +7,37 @@ import {
   type ArticleType,
   type CallerRole,
   type Composition,
+  type CreateFieldInput,
   type CreateNodeInput,
   type CreateRoadmapInput,
   type EdgeKind,
+  type Field,
+  type Level,
   type NodeStatus,
   type NodeType,
+  type PublishStatus,
   type Roadmap,
   type RoadmapEdge,
   type RoadmapGraph,
   type RoadmapNode,
+  type UpdateFieldInput,
   type UpdateNodeInput,
+  type Visibility,
 } from "./types"
 import { getStore, persistStore } from "./mock/builder-store"
+import { reachesLearners, statusOf } from "./publish-status"
 import { deriveCompositionFromNodes } from "./utils/derive-composition"
 import { emitRoadmapUpdate } from "./utils/update-signal"
 import { slugify, uniqueSlug } from "./utils/slugify"
 import { validateHierarchy } from "./utils/validate-hierarchy"
+
+/**
+ * Labels live only on the real backend — the mock has no store for them, so a
+ * write here would hand back an id the backend never heard of.
+ */
+const MOCK_FIELDS_UNAVAILABLE = "Lĩnh vực chỉ khả dụng khi kết nối backend"
+
+void MOCK_FIELDS_UNAVAILABLE
 
 const LATENCY_MS = 150
 const delay = (ms = LATENCY_MS) => new Promise((r) => setTimeout(r, ms))
@@ -87,7 +102,7 @@ export class RoadmapService {
       .filter(
         (n) =>
           !n.isDeleted &&
-          n.isPublished === true &&
+          reachesLearners(statusOf(n)) &&
           (n.nodeType === "role" || n.nodeType === "skill")
       )
       .map((n) => ({
@@ -96,9 +111,145 @@ export class RoadmapService {
         title: n.title,
         description: n.description,
         thumbnailUrl: null,
-        isPublished: true,
+        publishStatus: "PUBLISHED",
         nodeCount: childCount.get(n.id) ?? 0,
+        fields: n.fields ?? [],
       }))
+  }
+
+  /**
+   * Discovery labels for the /roadmaps tab strip.
+   *
+   * The mock has no label store: labels only exist on the real backend, and the
+   * mock is local-only by rule (see CLAUDE.md "the mock roadmap service is
+   * LOCAL-ONLY"). Returning `[]` hides the strip rather than showing tabs that
+   * could never match anything.
+   */
+  // ponytail: → `fields` query
+  async listFields(): Promise<Field[]> {
+    await delay()
+    return clone(getStore().fields).sort(
+      (a, b) => a.order - b.order || a.title.localeCompare(b.title)
+    )
+  }
+
+  async listAdminFields(_callerRole: CallerRole): Promise<Field[]> {
+    return this.listFields()
+  }
+
+  async fieldBySlug(slug: string): Promise<Field | null> {
+    await delay()
+    const field = getStore().fields.find((item) => item.slug === slug)
+    return !field || field.publishStatus === "DRAFT" ? null : clone(field)
+  }
+
+  /**
+   * Signature parity with `RoadmapApi.createField` so the env selector can swap
+   * the two. Labels have no mock store — creating one here would produce an id
+   * the backend never heard of, so this refuses rather than lying.
+   */
+  // ponytail: → `createField` mutation
+  async createField(
+    input: CreateFieldInput | string,
+    callerRole: CallerRole
+  ): Promise<Field> {
+    assertCanWrite(callerRole)
+    await delay()
+    const data = typeof input === "string" ? { title: input } : input
+    const title = data.title.trim()
+    if (!title) throw new RoadmapServiceError("VALIDATION", "Field title is required")
+    const store = getStore()
+    const existing = store.fields.find(
+      (field) => field.title.localeCompare(title, undefined, { sensitivity: "accent" }) === 0
+    )
+    if (existing) return clone(existing)
+    const field: Field = {
+      id: newId("field"),
+      title,
+      slug: uniqueSlug(data.slug?.trim() || slugify(title), (value) =>
+        store.fields.some((item) => item.slug === value)
+      ),
+      order: store.fields.length,
+      description: data.description?.trim() || null,
+      imageUrl: data.imageUrl?.trim() || null,
+      publishStatus: data.publishStatus ?? "DRAFT",
+    }
+    store.fields.push(field)
+    persistStore()
+    return clone(field)
+  }
+
+  // ponytail: → `updateField` mutation
+  async updateField(
+    id: string,
+    input: UpdateFieldInput | string,
+    callerRole: CallerRole
+  ): Promise<Field> {
+    assertCanWrite(callerRole)
+    await delay()
+    const store = getStore()
+    const field = store.fields.find((item) => item.id === id)
+    if (!field) throw new RoadmapServiceError("NOT_FOUND")
+    const data = typeof input === "string" ? { title: input } : input
+    if (data.title !== undefined) {
+      const title = data.title.trim()
+      if (!title) throw new RoadmapServiceError("VALIDATION", "Field title is required")
+      field.title = title
+    }
+    if (data.slug !== undefined && data.slug !== field.slug) {
+      throw new RoadmapServiceError("VALIDATION", "Field slug cannot change after first save")
+    }
+    if (data.description !== undefined) field.description = data.description?.trim() || null
+    if (data.imageUrl !== undefined) field.imageUrl = data.imageUrl?.trim() || null
+    if (data.publishStatus !== undefined) {
+      const hasPublishedBlock = store.nodes.some((node) =>
+        !node.isDeleted && node.publishStatus === "PUBLISHED" && node.fields?.some((item) => item.id === id)
+      )
+      if (data.publishStatus !== "DRAFT" && (!field.description || !field.imageUrl?.startsWith("https://") || !hasPublishedBlock)) {
+        throw new RoadmapServiceError("VALIDATION", "Published or private Field needs description, HTTPS image, and one published block")
+      }
+      field.publishStatus = data.publishStatus
+    }
+    if (data.order !== undefined) field.order = data.order
+    persistStore()
+    return clone(field)
+  }
+
+  /** Ordered roadmap-block memberships for one Field Workspace. */
+  async listFieldNodeIds(fieldId: string, _callerRole: CallerRole): Promise<string[]> {
+    await delay()
+    const store = getStore()
+    return store.nodes
+      .filter((node) => !node.isDeleted && node.fields?.some((item) => item.id === fieldId))
+      .map((node) => node.id)
+  }
+
+  async reorderFieldMembership(
+    _fieldId: string,
+    _nodeIds: string[],
+    _callerRole: CallerRole
+  ): Promise<boolean> {
+    await delay()
+    // The mock store does not persist membership order; accept the call silently.
+    return true
+  }
+
+  // ponytail: → `deleteField` mutation
+  async deleteField(id: string, callerRole: CallerRole): Promise<boolean> {
+    assertCanWrite(callerRole)
+    await delay()
+    const store = getStore()
+    const field = store.fields.find((item) => item.id === id)
+    if (!field) throw new RoadmapServiceError("NOT_FOUND")
+    if (field.publishStatus !== "DRAFT") {
+      throw new RoadmapServiceError("VALIDATION", "Only draft Fields can be deleted")
+    }
+    store.fields = store.fields.filter((item) => item.id !== id)
+    store.nodes.forEach((node) => {
+      node.fields = (node.fields ?? []).filter((item) => item.id !== id)
+    })
+    persistStore()
+    return true
   }
 
   // ponytail: → `roadmaps(includeUnpublished: true)` query — admin list (Req 1.1)
@@ -162,8 +313,9 @@ export class RoadmapService {
             title: node.title,
             description: node.description,
             thumbnailUrl: null,
-            isPublished: true,
+            publishStatus: "PUBLISHED",
             nodeCount: subtree.length,
+            fields: [],
           },
           nodes: subtree,
         }
@@ -188,7 +340,8 @@ export class RoadmapService {
     await delay()
     const store = getStore()
     const node = store.nodes.find((n) => n.id === id && !n.isDeleted)
-    if (!node || node.nodeType === "article" || !node.isPublished) return null
+    if (!node || node.nodeType === "article" || !reachesLearners(statusOf(node)))
+      return null
     // Whole roadmap's nodes so the web viewer derives the same composition the
     // admin builder renders (shared deriveCompositionFromNodes).
     const roadmapNodes = store.nodes.filter(
@@ -201,8 +354,9 @@ export class RoadmapService {
         title: node.title,
         description: node.description,
         thumbnailUrl: null,
-        isPublished: true,
+        publishStatus: "PUBLISHED",
         nodeCount: roadmapNodes.length,
+        fields: [],
       },
       nodes: roadmapNodes.map((n) => ({ ...n, status: "locked" as const })),
     }
@@ -252,8 +406,9 @@ export class RoadmapService {
       title: input.title.trim().slice(0, MAX_TITLE_LENGTH),
       description: input.description?.trim() || null,
       thumbnailUrl: input.thumbnailUrl ?? null,
-      isPublished: false,
+      publishStatus: "DRAFT",
       nodeCount: 0,
+      fields: [],
       createdAt: now,
       updatedAt: now,
       authorId: input.authorId,
@@ -267,7 +422,7 @@ export class RoadmapService {
   // ponytail: → `updateRoadmap` mutation
   async updateRoadmap(
     id: string,
-    input: Partial<CreateRoadmapInput> & { isPublished?: boolean },
+    input: Partial<CreateRoadmapInput> & { publishStatus?: PublishStatus },
     callerRole: CallerRole
   ): Promise<Roadmap> {
     assertCanWrite(callerRole)
@@ -283,7 +438,9 @@ export class RoadmapService {
     if (input.thumbnailUrl !== undefined) {
       roadmap.thumbnailUrl = input.thumbnailUrl || null
     }
-    if (input.isPublished !== undefined) roadmap.isPublished = input.isPublished
+    if (input.publishStatus !== undefined) {
+      roadmap.publishStatus = input.publishStatus
+    }
     roadmap.updatedAt = new Date().toISOString() // bump on every write
     persistStore()
     emitRoadmapUpdate(id)
@@ -376,7 +533,14 @@ export class RoadmapService {
     if (input.linkedRoadmapId !== undefined) {
       node.linkedRoadmapId = input.linkedRoadmapId ?? null
     }
-    if (input.isPublished !== undefined) node.isPublished = input.isPublished
+    if (input.publishStatus !== undefined) {
+      node.publishStatus = input.publishStatus
+    }
+    if (input.fieldIds !== undefined) {
+      const ids = new Set(input.fieldIds)
+      node.fields = getStore().fields.filter((field) => ids.has(field.id))
+    }
+    node.updatedAt = new Date().toISOString()
 
     persistStore()
     emitRoadmapUpdate(node.roadmapId)
@@ -590,6 +754,15 @@ export class RoadmapService {
       ownerId?: string
       positionX: number
       positionY: number
+      /** Accepted for signature parity; the mock has no label store. */
+      fieldIds?: string[]
+      /** Editorial difficulty; null means "nobody has judged this yet". */
+      level?: Level | null
+      /** FREE/INTERNAL; defaults to FREE when omitted. */
+      visibility?: Visibility
+      /** Cover image URL; may be null. */
+      coverUrl?: string | null
+      tags?: string[]
     },
     callerRole: CallerRole
   ): Promise<RoadmapNode> {
@@ -601,6 +774,7 @@ export class RoadmapService {
     const store = getStore()
     const id = newId("nd")
     const title = input.title.trim().slice(0, MAX_TITLE_LENGTH)
+    const now = new Date().toISOString()
     const node: RoadmapNode = {
       id,
       roadmapId: id, // self-owned: the block IS its own roadmap
@@ -618,6 +792,12 @@ export class RoadmapService {
       positionY: input.positionY,
       order: store.nodes.length,
       status: "locked",
+      coverUrl: input.coverUrl ?? null,
+      level: input.level ?? null,
+      visibility: input.visibility ?? "FREE",
+      tags: input.tags ?? [],
+      createdAt: now,
+      updatedAt: now,
     }
     store.nodes.push(node)
     if (input.ownerId) {

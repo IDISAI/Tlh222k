@@ -1,3 +1,10 @@
+import type { Level } from "./level"
+import type { PublishStatus } from "./publish-status"
+
+// Re-exported so every consumer reaches the domain vocabulary through one
+// module rather than importing the status from a second place.
+export type { Level, PublishStatus }
+
 export type NodeStatus = "locked" | "in_progress" | "done"
 
 /**
@@ -39,14 +46,60 @@ export const MAX_DESCRIPTION_LENGTH = 500
  */
 export type CallerRole = "viewer" | "admin" | "super-admin"
 
+/** Access rule for a published block. Internal blocks are not learner-visible. */
+export type Visibility = "FREE" | "INTERNAL"
+
+/**
+ * A discovery label ("Web Dev", "AI") rendered as a tab on /roadmaps. NOT a
+ * hierarchy level — a Field owns no canvas and is never navigable; it only
+ * groups blocks. A block may carry several, so a "Data Engineer" role shows up
+ * under both AI and Data.
+ */
+export interface Field {
+  id: string
+  title: string
+  slug: string
+  order: number
+  /** Editorial copy rendered in Field Explorer. */
+  description: string | null
+  /** One HTTPS image, shared by Explorer and CMS. */
+  imageUrl: string | null
+  /** Draft, Published or Private. Only Published reaches learners. */
+  publishStatus: PublishStatus
+}
+
+export interface CreateFieldInput {
+  title: string
+  slug?: string
+  description?: string | null
+  imageUrl?: string | null
+  publishStatus?: PublishStatus
+}
+
+export interface UpdateFieldInput {
+  title?: string
+  /** Fixed after initial save. */
+  slug?: string
+  description?: string | null
+  imageUrl?: string | null
+  publishStatus?: PublishStatus
+  order?: number
+}
+
 export interface Roadmap {
   id: string
   slug: string
   title: string
   description: string | null
   thumbnailUrl: string | null
-  isPublished: boolean
+  /**
+   * Draft, Published or Private. Named apart from `status`, which on a block
+   * means the viewer's own progress.
+   */
+  publishStatus: PublishStatus
   nodeCount: number
+  /** Discovery labels; empty when the block carries none. */
+  fields: Field[]
   // ── Metadata columns (roadmap-detail-columns spec) ────────────────────────
   /** ISO 8601 create time. Optional so legacy localStorage snapshots stay valid. */
   createdAt?: string
@@ -74,6 +127,13 @@ export interface RoadmapNode {
   /** Routable identifier for role/skill detail pages (Req 6.1/6.2). */
   slug: string
   description: string | null
+  /**
+   * Discovery labels. Only role/skill blocks carry these — an `article` is a
+   * leaf inside a chapter and never reaches the public card grid, so labelling
+   * one would be dead data. Optional because most node payloads (canvas moves,
+   * saves) don't select it; treat a missing value as "unknown", not "none".
+   */
+  fields?: Field[]
   /** Only meaningful for `article` nodes; null = document not linked yet. */
   articleType: ArticleType | null
   jupyterUrl: string | null
@@ -81,8 +141,24 @@ export interface RoadmapNode {
   isDeleted?: boolean
   /** Roadmap auto-created for role/skill nodes (notion-article-node Req 11). */
   linkedRoadmapId?: string | null
-  /** Publish state synced with the linked Document (notion-article-node Req 7). */
-  isPublished?: boolean
+  /** Draft, Published or Private. See the note on `Roadmap.publishStatus`. */
+  publishStatus?: PublishStatus
+  /** Image standing in for this block wherever it renders as a card. */
+  coverUrl?: string | null
+  /** Editorial difficulty; null means nobody has judged this block yet. */
+  level?: Level | null
+  /** Internal blocks remain available to staff but never satisfy public Field rules. */
+  visibility?: Visibility
+  /** ISO 8601 last-update time. Present on list responses. */
+  updatedAt?: string
+  /** ISO 8601 create time. */
+  createdAt?: string
+  /** ID of the creator. */
+  authorId?: string
+  /** Display name of the creator. */
+  authorName?: string
+  /** Editorial tags. */
+  tags?: string[]
 }
 
 export interface RoadmapGraph {
@@ -173,13 +249,21 @@ export interface CreateNodeInput {
   positionX: number
   positionY: number
   order?: number
+  coverUrl?: string | null
+  level?: Level | null
+  /** FREE/INTERNAL; defaults to FREE when omitted. */
+  visibility?: Visibility
+  /** Editorial free-text tags. Narrower than a Field; used by the picker's tag filter. */
+  tags?: string[]
+  /** Discovery labels to attach on create. */
+  fieldIds?: string[]
 }
 
 export type UpdateNodeInput = Partial<
   Omit<CreateNodeInput, "roadmapId" | "nodeType" | "slug">
 > & {
   linkedRoadmapId?: string | null
-  isPublished?: boolean
+  publishStatus?: PublishStatus
 }
 
 // ── Service errors ──────────────────────────────────────────────────────────
@@ -192,6 +276,8 @@ export type RoadmapErrorCode =
   | "CHILDREN_LIMIT_EXCEEDED"
   | "NOT_FOUND"
   | "TIMEOUT"
+  | "INVALID_URL"
+  | "VALIDATION"
 
 /**
  * Typed service failure. `code` maps 1:1 onto the GraphQL error extension

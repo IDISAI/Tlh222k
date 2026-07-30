@@ -2,16 +2,22 @@ import type {
   ArticleType,
   CallerRole,
   Composition,
+  CreateFieldInput,
   CreateNodeInput,
   CreateRoadmapInput,
   EdgeKind,
+  Field,
+  Level,
   NodeStatus,
   NodeType,
+  PublishStatus,
   Roadmap,
   RoadmapEdge,
   RoadmapGraph,
   RoadmapNode,
+  UpdateFieldInput,
   UpdateNodeInput,
+  Visibility,
 } from "../types"
 import {
   deriveCompositionFromNodes,
@@ -22,12 +28,16 @@ import { gql } from "./client"
 
 // Field selections matching the domain types (childrenCount is server-only).
 const ROADMAP_FIELDS = `
-  id slug title description thumbnailUrl isPublished nodeCount createdAt updatedAt
+  id slug title description thumbnailUrl publishStatus nodeCount createdAt updatedAt
 `
+/** Every column of a discovery label. One place, so the next rename is one edit. */
+const FIELD_FIELDS = `id title slug order description imageUrl publishStatus`
+
 const NODE_FIELDS = `
   id roadmapId parentId title slug description nodeType notionPageId
   articleType jupyterUrl positionX positionY order status isDeleted
-  linkedRoadmapId isPublished
+  linkedRoadmapId publishStatus coverUrl level visibility tags authorId
+  fields { ${FIELD_FIELDS} }
 `
 
 /**
@@ -40,6 +50,10 @@ export class RoadmapApi {
   async list(): Promise<Roadmap[]> {
     // LEGO: the public home lists every published role/skill block (a block IS a
     // roadmap), mapped onto the card shape. See svc-api `publicBlocks`.
+    //
+    // Labels come down with the blocks rather than through a filtered query:
+    // the tab strip switches often and the payload is small, so filtering
+    // client-side avoids a round trip per tab click.
     const data = await gql<{
       publicBlocks: {
         id: string
@@ -47,17 +61,92 @@ export class RoadmapApi {
         title: string
         description: string | null
         childrenCount: number
+        publishStatus: PublishStatus
+        fields: Field[]
       }[]
-    }>(`query { publicBlocks { id slug title description childrenCount } }`)
+    }>(
+      `query { publicBlocks { id slug title description childrenCount publishStatus fields { ${FIELD_FIELDS} } } }`
+    )
     return data.publicBlocks.map((n) => ({
       id: n.id,
       slug: n.slug,
       title: n.title,
       description: n.description,
       thumbnailUrl: null,
-      isPublished: true,
+      // `publicBlocks` only ever returns published blocks, but the card carries
+      // the block's own status rather than a hardcoded one so a later screen
+      // that reuses this shape cannot be misled by it.
+      publishStatus: n.publishStatus,
       nodeCount: n.childrenCount ?? 0,
+      fields: n.fields ?? [],
     }))
+  }
+
+  /** Discovery labels for the /roadmaps tab strip. Public — no auth. */
+  async listFields(): Promise<Field[]> {
+    const data = await gql<{ fields: Field[] }>(
+      `query { fields { ${FIELD_FIELDS} } }`
+    )
+    return data.fields
+  }
+
+  /** CMS never falls back to browser-local Field data. */
+  async listAdminFields(_callerRole: CallerRole): Promise<Field[]> {
+    const data = await gql<{ fields: Field[] }>(
+      `query { fields(includeUnpublished: true) { ${FIELD_FIELDS} } }`
+    )
+    return data.fields
+  }
+
+  /** Direct links may resolve a Private Field; Draft remains unreachable. */
+  async fieldBySlug(slug: string): Promise<Field | null> {
+    const data = await gql<{ field: Field | null }>(
+      `query ($slug: String!) { field(slug: $slug) { ${FIELD_FIELDS} } }`,
+      { slug }
+    )
+    return data.field
+  }
+
+  /**
+   * Find-or-create by title — the server dedupes case-insensitively, so the
+   * picker can call this optimistically without checking for an existing label
+   * first.
+   */
+  async createField(
+    input: CreateFieldInput | string,
+    _callerRole: CallerRole
+  ): Promise<Field> {
+    const inputValue = typeof input === "string" ? { title: input } : input
+    const data = await gql<{ createField: Field }>(
+      `mutation ($input: CreateFieldInput!) { createField(input: $input) { ${FIELD_FIELDS} } }`,
+      { input: inputValue }
+    )
+    return data.createField
+  }
+
+  /** Retitle in place; every block carrying the label follows. */
+  async updateField(
+    id: string,
+    input: UpdateFieldInput | string,
+    _callerRole: CallerRole
+  ): Promise<Field> {
+    const update = typeof input === "string" ? { title: input } : input
+    const data = await gql<{ updateField: Field }>(
+      `mutation ($id: ID!, $input: UpdateFieldInput!) {
+         updateField(id: $id, input: $input) { ${FIELD_FIELDS} }
+       }`,
+      { id, input: update }
+    )
+    return data.updateField
+  }
+
+  /** Drops the label everywhere. The blocks themselves survive. */
+  async deleteField(id: string, _callerRole: CallerRole): Promise<boolean> {
+    const data = await gql<{ deleteField: boolean }>(
+      `mutation ($id: ID!) { deleteField(id: $id) }`,
+      { id }
+    )
+    return data.deleteField
   }
 
   async listAdmin(_callerRole: CallerRole): Promise<Roadmap[]> {
@@ -116,6 +205,29 @@ export class RoadmapApi {
     return data.allNodes
   }
 
+  /** Ordered roadmap-block memberships for one Field Workspace. */
+  async listFieldNodeIds(fieldId: string, _callerRole: CallerRole): Promise<string[]> {
+    const data = await gql<{ fieldNodeIds: string[] }>(
+      `query ($fieldId: ID!) { fieldNodeIds(fieldId: $fieldId) }`,
+      { fieldId }
+    )
+    return data.fieldNodeIds
+  }
+
+  async reorderFieldMembership(
+    fieldId: string,
+    nodeIds: string[],
+    _callerRole: CallerRole
+  ): Promise<boolean> {
+    const data = await gql<{ reorderFieldMembership: boolean }>(
+      `mutation ($fieldId: ID!, $nodeIds: [ID!]!) {
+        reorderFieldMembership(fieldId: $fieldId, nodeIds: $nodeIds)
+      }`,
+      { fieldId, nodeIds }
+    )
+    return data.reorderFieldMembership
+  }
+
   async publicBlockGraph(id: string): Promise<RoadmapGraph | null> {
     const data = await gql<{ publicBlockGraph: RoadmapGraph | null }>(
       `query ($id: ID!) {
@@ -144,7 +256,7 @@ export class RoadmapApi {
 
   async updateRoadmap(
     id: string,
-    input: Partial<CreateRoadmapInput> & { isPublished?: boolean },
+    input: Partial<CreateRoadmapInput> & { publishStatus?: PublishStatus },
     _callerRole: CallerRole
   ): Promise<Roadmap> {
     const data = await gql<{ updateRoadmap: Roadmap }>(
@@ -318,6 +430,11 @@ export class RoadmapApi {
       ownerId?: string
       positionX: number
       positionY: number
+      fieldIds?: string[]
+      level?: Level | null
+      visibility?: Visibility
+      coverUrl?: string | null
+      tags?: string[]
     },
     role: CallerRole
   ): Promise<RoadmapNode> {
@@ -335,6 +452,11 @@ export class RoadmapApi {
           description: input.description,
           positionX: input.positionX,
           positionY: input.positionY,
+          fieldIds: input.fieldIds,
+          level: input.level,
+          visibility: input.visibility,
+          coverUrl: input.coverUrl,
+          tags: input.tags,
         },
         role
       )
@@ -353,6 +475,11 @@ export class RoadmapApi {
         description: input.description,
         positionX: input.positionX,
         positionY: input.positionY,
+        fieldIds: input.fieldIds,
+        level: input.level,
+        visibility: input.visibility,
+        coverUrl: input.coverUrl,
+        tags: input.tags,
       },
       role
     )

@@ -5,6 +5,7 @@ import { Badge } from "@workspace/ui/components/badge"
 import { Button } from "@workspace/ui/components/button"
 import { Input } from "@workspace/ui/components/input"
 import { Label } from "@workspace/ui/components/label"
+import { RequiredMark } from "@workspace/ui/components/required-mark"
 import {
   Sheet,
   SheetContent,
@@ -14,6 +15,7 @@ import {
 } from "@workspace/ui/components/sheet"
 import { toast } from "@workspace/ui/components/sonner"
 import { Textarea } from "@workspace/ui/components/textarea"
+import { LEVELS, LEVEL_LABELS, type Level } from "../../level"
 
 import {
   MAX_DESCRIPTION_LENGTH,
@@ -22,6 +24,7 @@ import {
   type RoadmapNode,
   type UpdateNodeInput,
 } from "../../types"
+import { FieldPicker } from "./FieldPicker"
 
 interface NodeEditPanelProps {
   node: RoadmapNode
@@ -52,6 +55,13 @@ export function NodeEditPanel({ node, onClose, onSave }: NodeEditPanelProps) {
   const [articleType, setArticleType] = useState<ArticleType | null>(
     node.articleType
   )
+  const [fieldIds, setFieldIds] = useState<string[]>(
+    () => node.fields?.map((f) => f.id) ?? []
+  )
+  const [coverUrl, setCoverUrl] = useState(node.coverUrl ?? "")
+  // "" is the unjudged state — a block nobody has rated yet, which is real and
+  // must survive a round trip rather than defaulting to Cơ bản.
+  const [level, setLevel] = useState<Level | "">(node.level ?? "")
   const [titleError, setTitleError] = useState("")
   const [saving, setSaving] = useState(false)
 
@@ -72,6 +82,14 @@ export function NodeEditPanel({ node, onClose, onSave }: NodeEditPanelProps) {
     const input: UpdateNodeInput = {
       title: title.trim(),
       description: description.trim(),
+    }
+    // Articles never carry discovery labels (they don't reach the public card
+    // grid), so only send the key for block nodes. Omitting it entirely leaves
+    // whatever the server has untouched.
+    if (!isArticle) {
+      input.fieldIds = fieldIds
+      input.coverUrl = coverUrl.trim() || null
+      input.level = level || null
     }
     if (isArticle && articleType) {
       input.articleType = articleType
@@ -106,11 +124,12 @@ export function NodeEditPanel({ node, onClose, onSave }: NodeEditPanelProps) {
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="edit-title">Tiêu đề *</Label>
+            <Label htmlFor="edit-title">Tiêu đề<RequiredMark /></Label>
             <Input
               id="edit-title"
               value={title}
               maxLength={MAX_TITLE_LENGTH}
+              aria-required="true"
               onChange={(e) => {
                 setTitle(e.target.value)
                 if (titleError) setTitleError("")
@@ -138,10 +157,42 @@ export function NodeEditPanel({ node, onClose, onSave }: NodeEditPanelProps) {
             </p>
           </div>
 
+          {!isArticle && (
+            <div className="space-y-1.5">
+              <Label htmlFor="edit-cover">Ảnh bìa (tùy chọn)</Label>
+              <Input
+                id="edit-cover"
+                value={coverUrl}
+                placeholder="https://..."
+                onChange={(e) => setCoverUrl(e.target.value)}
+              />
+              <Label htmlFor="edit-level">Cấp độ (tùy chọn)</Label>
+              <select
+                id="edit-level"
+                value={level}
+                onChange={(e) => setLevel(e.target.value as Level | "")}
+                className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm"
+              >
+                <option value="">Chưa xếp cấp độ</option>
+                {LEVELS.map((l) => (
+                  <option key={l} value={l}>
+                    {LEVEL_LABELS[l]}
+                  </option>
+                ))}
+              </select>
+              <Label>Lĩnh vực (tùy chọn)</Label>
+              <FieldPicker
+                value={fieldIds}
+                onChange={setFieldIds}
+                disabled={saving}
+              />
+            </div>
+          )}
+
           {isArticle && (
             <div className="space-y-4 border-t pt-4">
               <div className="space-y-1.5">
-                <Label>Loại tài liệu *</Label>
+                <Label>Loại tài liệu<RequiredMark /></Label>
                 <div className="flex gap-2">
                   {(["notion", "jupyter"] as const).map((type) => (
                     <Button

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react"
 import { Button } from "@workspace/ui/components/button"
 import { Input } from "@workspace/ui/components/input"
 import { Label } from "@workspace/ui/components/label"
+import { RequiredMark } from "@workspace/ui/components/required-mark"
 import { cn } from "@workspace/ui/lib/utils"
 
 import {
@@ -127,13 +128,14 @@ export function NodeSelectorModal({
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="node-title">Tiêu đề *</Label>
+            <Label htmlFor="node-title">Tiêu đề<RequiredMark /></Label>
             <Input
               id="node-title"
               autoFocus
               value={title}
               maxLength={MAX_TITLE_LENGTH}
               placeholder="Nhập tiêu đề node..."
+              aria-required="true"
               onChange={(e) => {
                 setTitle(e.target.value)
                 if (error) setError("")

@@ -3,36 +3,48 @@
 import { ClerkLoaded, SignInButton, UserButton, useAuth } from "@clerk/nextjs"
 import { devAuthRole } from "@workspace/core"
 
-export function AuthHeader() {
+export function AuthHeader({ tone = "default" }: { tone?: "default" | "on-dark" }) {
   // Dev bypass: no <ClerkProvider>, so Clerk hooks/components would throw.
   // Show the impersonated role instead.
   const dev = devAuthRole(
     process.env.NODE_ENV,
-    process.env.NEXT_PUBLIC_DEV_AUTH_ROLE
+    process.env.NEXT_PUBLIC_DEV_AUTH_ROLE,
+    process.env.NEXT_PUBLIC_ENABLE_DEV_AUTH_BYPASS
   )
   if (dev !== null) {
     return (
-      <span className="rounded-md border px-3 py-1 text-sm font-medium text-muted-foreground">
+      <span className={
+        tone === "on-dark"
+          ? "rounded-full border border-white/45 bg-black/65 px-3 py-2 text-xs font-semibold text-white shadow-lg backdrop-blur-sm"
+          : "rounded-md border px-3 py-1 text-sm font-medium text-muted-foreground"
+      }>
         dev: {dev}
       </span>
     )
   }
 
-  return <ClerkAuthHeader />
+  return <ClerkAuthHeader tone={tone} />
 }
 
-function ClerkAuthHeader() {
+function ClerkAuthHeader({ tone }: { tone: "default" | "on-dark" }) {
   const { isSignedIn } = useAuth()
 
   return (
     <ClerkLoaded>
       {isSignedIn ? (
+        // Clerk's own avatar menu already carries sign-out, so a second button
+        // beside it offers the same action twice and leaves the user guessing
+        // whether they differ.
         <UserButton />
       ) : (
         <SignInButton mode="redirect">
           <button
             type="button"
-            className="rounded-md border px-3 py-1 text-sm font-medium transition-colors hover:bg-muted"
+            className={
+              tone === "on-dark"
+                ? "rounded-full border border-white/45 bg-black/65 px-3 py-2 text-xs font-semibold text-white shadow-lg backdrop-blur-sm transition hover:bg-black/80"
+                : "rounded-md border px-3 py-1 text-sm font-medium transition-colors hover:bg-muted"
+            }
           >
             Sign In
           </button>

@@ -22,6 +22,8 @@ export const TOAST_MESSAGES: Record<RoadmapErrorCode, string> & {
   CHILDREN_LIMIT_EXCEEDED: "Đã đạt giới hạn 100 node con trực tiếp",
   NOT_FOUND: "Không tìm thấy dữ liệu yêu cầu",
   TIMEOUT: "Thao tác quá 10 giây, vui lòng thử lại",
+  INVALID_URL: "Đường dẫn không hợp lệ",
+  VALIDATION: "Dữ liệu nhập không hợp lệ",
   SAVE_SUCCESS: "Đã lưu roadmap thành công",
   DELETE_SUCCESS: "Đã xóa thành công",
   CREATE_SUCCESS: "Đã tạo node mới",

@@ -24,7 +24,10 @@ model Roadmap {
   title        String
   description  String?
   thumbnailUrl String?
-  isPublished  Boolean  @default(false)
+  /// DRAFT | PUBLISHED | PRIVATE — the three states every kind of content
+  /// shares. Named `publishStatus` rather than `status` because a block's
+  /// `status` already means the viewer's own progress through it.
+  publishStatus String  @default("DRAFT")
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -49,8 +52,30 @@ model Node {
   isDeleted       Boolean  @default(false)
   // Roadmap auto-created for role/skill nodes (notion-article-node Req 11).
   linkedRoadmapId String?
-  // Publish state synced with the linked Document (notion-article-node Req 7).
-  isPublished     Boolean  @default(false)
+  /// DRAFT | PUBLISHED | PRIVATE. See the note on `Roadmap.publishStatus`.
+  /// A Document keeps only a boolean, so the sync at that boundary
+  /// translates: PUBLISHED means true, Draft and Private mean false.
+  publishStatus   String   @default("DRAFT")
+  /// FREE is public once published; INTERNAL additionally requires aio/admin.
+  visibility      String   @default("FREE")
+  /// The image standing in for this block wherever it is shown as a card —
+  /// the browse grid, the Field Workspace canvas, the roadmap picker. Distinct
+  /// from a Field's image, which covers a whole scene.
+  coverUrl        String?
+  /// BASIC | INTERMEDIATE | ADVANCED. Editorial, never counted from node
+  /// count. Null means nobody has judged this block yet, which is a real
+  /// state — defaulting it would put a judgement in an editor's mouth.
+  level           String?
+  /// Editorial, free-text tags — a different axis from Field (Field is the
+  /// discovery grouping shown as a scene; a tag is a lighter, admin-typed
+  /// facet used to narrow the roadmap picker). Empty array, never null, so
+  /// every reader can iterate it without an extra guard.
+  tags            String[] @default([])
+  /// The Clerk user id of whoever created this block — "Người phụ trách" is
+  /// the creator, not a chosen assignee, so this is stamped server-side from
+  /// the auth context on create and is never a client-settable input. Mirrors
+  /// `Document.authorId`, which follows the same rule.
+  authorId        String?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
@@ -59,9 +84,63 @@ model Node {
   children      Node[]         @relation("NodeChildren")
   linkedRoadmap Roadmap?       @relation("NodeLinkedRoadmap", fields: [linkedRoadmapId], references: [id], onDelete: SetNull)
   progress      UserProgress[]
+  // Legacy implicit relation is retained only while deployed memberships are
+  // copied into FieldMembership. New reads and writes use memberships below.
+  fields        Field[] @relation("FieldToNode")
+  fieldMemberships FieldMembership[]
 
   @@index([roadmapId])
   @@index([parentId])
+}
+
+/// A discovery label ("Web Dev", "AI", "Data") shown as a tab on /roadmaps.
+/// NOT a hierarchy level: a Field owns no canvas and is never navigable — it
+/// only groups blocks. Admins create these inline from the node dialog, so the
+/// tab strip is data-driven rather than a hardcoded list.
+model Field {
+  id        String   @id @default(cuid())
+  /// Unique so the inline "create" path can't silently mint "AI" twice. The
+  /// find-or-create in the API checks before it inserts, so this index is the
+  /// only thing standing between two admins typing the same label at once and
+  /// a duplicate nobody can merge — it stays even though `slug` is the key.
+  /// Mapped to the legacy `name` column: `prisma db push` has no rename, it
+  /// drops and recreates, so renaming the physical column would empty every
+  /// deployed Field. See docs/adr/0003. The code speaks the glossary; the
+  /// column keeps its name.
+  title     String   @unique @map("name")
+  slug      String   @unique
+  /// DRAFT | PUBLISHED | PRIVATE. See the note on `Roadmap.publishStatus`.
+  /// A Field has never had a publish state, and every existing one is visible
+  /// today, so the backfill puts them all at PUBLISHED: starting them at DRAFT
+  /// would empty the browse strip the moment a reader moves across.
+  publishStatus String @default("DRAFT")
+  /// One image across Explorer hero, CMS list, and workspace preview.
+  imageUrl     String?
+  /// Editorial description. Draft Fields may leave this empty.
+  description  String?
+  /// Display order in the tab strip; ties fall back to title.
+  order     Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Kept during the zero-data-loss migration from Prisma's implicit join.
+  nodes Node[] @relation("FieldToNode")
+  memberships FieldMembership[]
+}
+
+/// Ordered many-to-many Field ↔ roadmap-block membership. Position is scoped
+/// to the Field, so moving a block in AI never changes its order in Data.
+model FieldMembership {
+  fieldId String
+  nodeId  String
+  position Int @default(0)
+  createdAt DateTime @default(now())
+  field Field @relation(fields: [fieldId], references: [id], onDelete: Cascade)
+  node  Node  @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+
+  @@id([fieldId, nodeId])
+  @@index([fieldId, position])
+  @@index([nodeId])
 }
 
 model RoadmapUpdateEvent {

@@ -13,7 +13,7 @@ interface SeedRoadmap {
   title: string
   description: string | null
   thumbnailUrl: string | null
-  isPublished: boolean
+  publishStatus: "DRAFT" | "PUBLISHED"
 }
 
 interface SeedNode {
@@ -40,7 +40,7 @@ const roadmaps: SeedRoadmap[] = [
     description:
       "Học HTML, CSS và JavaScript rồi tiến tới các framework hiện đại như React để xây dựng giao diện người dùng tương tác, có khả năng truy cập tốt, hiệu năng cao và responsive trên mọi thiết bị.",
     thumbnailUrl: "https://placehold.co/600x338/6366f1/ffffff?text=Frontend",
-    isPublished: true,
+    publishStatus: "PUBLISHED",
   },
   {
     id: "rm-backend",
@@ -48,7 +48,7 @@ const roadmaps: SeedRoadmap[] = [
     title: "Backend Developer",
     description: "Node.js, cơ sở dữ liệu, thiết kế API và xác thực.",
     thumbnailUrl: null,
-    isPublished: true,
+    publishStatus: "PUBLISHED",
   },
   {
     id: "rm-devops",
@@ -56,7 +56,7 @@ const roadmaps: SeedRoadmap[] = [
     title: "DevOps",
     description: "Linux, Docker, CI/CD và Kubernetes cho vận hành hiện đại.",
     thumbnailUrl: "https://placehold.co/600x338/10b981/ffffff?text=DevOps",
-    isPublished: true,
+    publishStatus: "PUBLISHED",
   },
   {
     id: "rm-ai",
@@ -64,7 +64,7 @@ const roadmaps: SeedRoadmap[] = [
     title: "AI Engineer",
     description: "Bản nháp lộ trình AI Engineer — chưa xuất bản.",
     thumbnailUrl: null,
-    isPublished: false,
+    publishStatus: "DRAFT",
   },
 ]
 

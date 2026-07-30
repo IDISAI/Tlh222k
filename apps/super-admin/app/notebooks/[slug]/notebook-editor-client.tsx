@@ -8,7 +8,11 @@ export function NotebookEditorClient({ slug }: { slug: string }) {
   // Dev bypass skips <ClerkProvider> (see app/layout.tsx), so useAuth would
   // throw. Route around Clerk entirely in that mode.
   const isDev =
-    devAuthRole(process.env.NODE_ENV, process.env.NEXT_PUBLIC_DEV_AUTH_ROLE) !==
+    devAuthRole(
+    process.env.NODE_ENV,
+    process.env.NEXT_PUBLIC_DEV_AUTH_ROLE,
+    process.env.NEXT_PUBLIC_ENABLE_DEV_AUTH_BYPASS
+  ) !==
     null
   return isDev ? (
     <NotebookEditor slug={slug} getToken={async () => "dev-token"} />

@@ -8,17 +8,18 @@ const isProtected = createRouteMatcher(["/dashboard(.*)"])
 const isAuthPage = createRouteMatcher(["/sign-in(.*)", "/sign-up(.*)"])
 const devRole = devAuthRole(
   process.env.NODE_ENV,
-  process.env.NEXT_PUBLIC_DEV_AUTH_ROLE
+  process.env.NEXT_PUBLIC_DEV_AUTH_ROLE,
+  process.env.NEXT_PUBLIC_ENABLE_DEV_AUTH_BYPASS
 )
 
 export default clerkMiddleware(async (auth, req) => {
   const { userId: clerkUserId } = devRole ? { userId: null } : await auth()
   const userId = devRole ? "dev-user" : clerkUserId
 
-  // Already signed in and visiting the auth pages → /roadmaps (Req 4.6).
+  // Already signed in and visiting the auth pages → home (Req 4.6).
   if (userId && isAuthPage(req)) {
     const url = req.nextUrl.clone()
-    url.pathname = "/roadmaps"
+    url.pathname = "/"
     url.search = ""
     return NextResponse.redirect(url)
   }
