@@ -381,6 +381,37 @@ export class RoadmapResolver {
     return this.service.setEmailOptIn(optedIn, user)
   }
 
+  @Query("nodeAttachments")
+  nodeAttachments(
+    @Args("nodeId") nodeId: string,
+    @CurrentUser() user: CurrentUserType | null
+  ) {
+    return this.service.nodeAttachments(nodeId, user)
+  }
+
+  @Mutation("addNodeAttachment")
+  addNodeAttachment(
+    @Args("nodeId") nodeId: string,
+    @Args("name") name: string,
+    @Args("url") url: string,
+    @Args("contentType") contentType: string,
+    @Args("sizeBytes") sizeBytes: number,
+    @CurrentUser() user: CurrentUserType | null
+  ) {
+    return this.service.addNodeAttachment(
+      { nodeId, name, url, contentType, sizeBytes },
+      user
+    )
+  }
+
+  @Mutation("deleteNodeAttachment")
+  deleteNodeAttachment(
+    @Args("id") id: string,
+    @CurrentUser() user: CurrentUserType | null
+  ) {
+    return this.service.deleteNodeAttachment(id, user)
+  }
+
   @Mutation("setNodeKeyResults")
   setNodeKeyResults(
     @Args("nodeId") nodeId: string,

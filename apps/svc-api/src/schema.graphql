@@ -91,6 +91,20 @@ type NodeKeyResult {
   position: Int!
 }
 
+"""
+A file attached to a node. It carries no access setting of its own — it
+inherits the node's, so INTERNAL content's files are INTERNAL too.
+"""
+type NodeAttachment {
+  id: ID!
+  nodeId: ID!
+  name: String!
+  url: String!
+  contentType: String!
+  sizeBytes: Int!
+  createdAt: String!
+}
+
 """One in-app card telling a learner a roadmap they follow was republished."""
 type RoadmapNotification {
   id: ID!
@@ -236,6 +250,12 @@ type Query {
   myNotifications: [RoadmapNotification!]!
   """Whether this caller opted in to email. False when no preference is stored."""
   myEmailOptIn: Boolean!
+  """
+  A node's attachments. Refuses rather than returning [] when the node is
+  INTERNAL and the caller lacks AIO access — an empty list would read as
+  "no attachments", which is a different fact from "not for you".
+  """
+  nodeAttachments(nodeId: ID!): [NodeAttachment!]!
   """Published discovery labels are public; CMS may request every status."""
   fields(includeUnpublished: Boolean = false): [Field!]!
   field(slug: String!): Field
@@ -329,6 +349,18 @@ type Mutation {
   clears them; the order you send is the order learners read.
   """
   setNodeKeyResults(nodeId: ID!, texts: [String!]!): [NodeKeyResult!]!
+  """
+  Record an uploaded attachment. The format rules run again here — a browser
+  check is a courtesy to the uploader, not a boundary.
+  """
+  addNodeAttachment(
+    nodeId: ID!
+    name: String!
+    url: String!
+    contentType: String!
+    sizeBytes: Int!
+  ): NodeAttachment!
+  deleteNodeAttachment(id: ID!): Boolean!
   createNotionDoc(input: CreateNotionDocInput!): NotionDoc!
   updateNotionDoc(input: UpdateNotionDocInput!): NotionDoc!
   archiveNotionDoc(id: ID!): Boolean!

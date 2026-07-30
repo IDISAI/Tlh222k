@@ -203,6 +203,104 @@ export const PUBLISH_BLOCKER_MESSAGES: Record<PublishBlocker, string> = {
     "Roadmap còn trỏ tới nội dung đã xoá. Gỡ nội dung đó khỏi canvas trước.",
 }
 
+/**
+ * Attachment rules. Mirrors `attachment-policy.ts` in @workspace/core —
+ * duplicated for the same reason PublishStatus is. Keep in step.
+ *
+ * The browser also checks these, but a browser check is a courtesy to the
+ * person uploading, not a boundary: anything reaching this service must be
+ * judged here too.
+ */
+export type AttachmentRejection =
+  | "NO_FILE"
+  | "FILE_TOO_LARGE"
+  | "EXECUTABLE_REJECTED"
+  | "UNSUPPORTED_FILE_TYPE"
+
+export type AttachmentDecision =
+  | { ok: true; contentType: string; sanitizedName: string }
+  | { ok: false; code: AttachmentRejection }
+
+const ATTACHMENT_MAX_BYTES = 50 * 1024 * 1024
+
+const ATTACHMENT_ALLOWED_TYPES = new Set([
+  "image/jpeg", "image/png", "image/webp", "image/gif",
+  "application/pdf",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.ms-excel",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "application/vnd.ms-powerpoint",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+])
+
+const EXECUTABLE_EXTENSIONS = new Set([
+  "exe", "com", "bat", "cmd", "msi", "scr", "pif", "cpl", "jar",
+  "sh", "bash", "zsh", "ps1", "psm1", "vbs", "vbe", "js", "mjs", "cjs",
+  "jse", "wsf", "wsh", "hta", "reg", "dll", "so", "dylib", "app",
+  "deb", "rpm", "apk", "bin", "run", "command", "py", "rb", "pl", "php",
+])
+
+const EXECUTABLE_TYPES = new Set([
+  "application/x-msdownload",
+  "application/x-msdos-program",
+  "application/x-executable",
+  "application/x-sh",
+  "application/x-shellscript",
+  "application/x-bat",
+  "application/vnd.microsoft.portable-executable",
+  "application/java-archive",
+])
+
+export function sanitizeAttachmentName(name: string): string {
+  const base = name.replaceAll("\\", "/").split("/").at(-1) ?? ""
+  const value = base
+    .normalize("NFKC")
+    .replace(/[^a-zA-Z0-9._-]+/g, "-")
+    .replace(/^[-.]+|[-.]+$/g, "")
+    .slice(0, 120)
+  return value || "tep-dinh-kem"
+}
+
+export function inspectAttachment(file: {
+  name: string
+  size: number
+  type: string
+}): AttachmentDecision {
+  if (file.size <= 0) return { ok: false, code: "NO_FILE" }
+  if (file.size > ATTACHMENT_MAX_BYTES) {
+    return { ok: false, code: "FILE_TOO_LARGE" }
+  }
+
+  const contentType = file.type.trim().toLowerCase()
+  // EVERY extension, not just the last: "report.pdf.exe" runs as an executable
+  // while reading as a PDF in a list.
+  const extensions = file.name.toLowerCase().split(".").slice(1)
+
+  if (
+    EXECUTABLE_TYPES.has(contentType) ||
+    extensions.some((ext) => EXECUTABLE_EXTENSIONS.has(ext))
+  ) {
+    return { ok: false, code: "EXECUTABLE_REJECTED" }
+  }
+  if (!ATTACHMENT_ALLOWED_TYPES.has(contentType)) {
+    return { ok: false, code: "UNSUPPORTED_FILE_TYPE" }
+  }
+  return {
+    ok: true,
+    contentType,
+    sanitizedName: sanitizeAttachmentName(file.name),
+  }
+}
+
+export const ATTACHMENT_REJECTION_MESSAGES: Record<AttachmentRejection, string> = {
+  NO_FILE: "Chưa chọn tệp.",
+  FILE_TOO_LARGE: "Tệp vượt quá 50MB.",
+  EXECUTABLE_REJECTED: "Không cho phép tệp thực thi.",
+  UNSUPPORTED_FILE_TYPE:
+    "Chỉ nhận ảnh, PDF và tài liệu office (Word, Excel, PowerPoint).",
+}
+
 export function publishStatusFromLegacy(isPublished: boolean): PublishStatus {
   return isPublished ? "PUBLISHED" : "DRAFT"
 }

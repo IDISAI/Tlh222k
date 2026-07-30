@@ -12,6 +12,8 @@ import {
   blockOpensByLink,
   isNodeType,
   legacyIsPublished,
+  ATTACHMENT_REJECTION_MESSAGES,
+  inspectAttachment,
   PUBLISH_BLOCKER_MESSAGES,
   roadmapPublishEligibility,
   normalizeHttpUrl,
@@ -149,6 +151,16 @@ export interface NodeDto {
   updatedAt?: string | null
   /** Ordered learner outcomes. Empty when the node declares none. */
   keyResults?: KeyResultDto[]
+}
+
+export interface AttachmentDto {
+  id: string
+  nodeId: string
+  name: string
+  url: string
+  contentType: string
+  sizeBytes: number
+  createdAt: string
 }
 
 export interface KeyResultDto {
@@ -538,6 +550,116 @@ export class RoadmapService implements OnModuleInit {
       text: row.text,
       position: row.position,
     }))
+  }
+
+  /**
+   * A node's attachments, gated by the node's own entitlement.
+   *
+   * The attachment carries no access setting of its own: it inherits the
+   * node's, so an INTERNAL node's files are INTERNAL without anyone having to
+   * remember to say so twice. Refusing is deliberate rather than returning an
+   * empty list — an empty list reads as "no attachments", which is a different
+   * fact from "not for you".
+   */
+  async nodeAttachments(
+    nodeId: string,
+    user: CurrentUser | null
+  ): Promise<AttachmentDto[]> {
+    const node = await this.prisma.node.findUnique({
+      where: { id: nodeId },
+      select: { id: true, isDeleted: true, visibility: true },
+    })
+    if (!node || node.isDeleted) throw new RoadmapError("NOT_FOUND")
+    if (
+      normalizeVisibility(node.visibility) === "INTERNAL" &&
+      !canAccessInternal(user)
+    ) {
+      throw new RoadmapError(
+        "PERMISSION_DENIED",
+        "Internal content requires AIO access"
+      )
+    }
+
+    const rows = await this.prisma.nodeAttachment.findMany({
+      where: { nodeId },
+      orderBy: { createdAt: "asc" },
+    })
+    return rows.map((row) => ({
+      id: row.id,
+      nodeId: row.nodeId,
+      name: row.name,
+      url: row.url,
+      contentType: row.contentType,
+      sizeBytes: row.sizeBytes,
+      createdAt: row.createdAt.toISOString(),
+    }))
+  }
+
+  /**
+   * Record an uploaded attachment.
+   *
+   * The file itself is stored by the caller (Vercel Blob); this records where
+   * it landed. The format rules run again here rather than trusting the client
+   * that already checked them — a browser check is a courtesy to the person
+   * uploading, not a boundary.
+   */
+  async addNodeAttachment(
+    input: {
+      nodeId: string
+      name: string
+      url: string
+      contentType: string
+      sizeBytes: number
+    },
+    user: CurrentUser | null
+  ): Promise<AttachmentDto> {
+    const actor = assertCanWrite(user)
+    const node = await this.prisma.node.findUnique({
+      where: { id: input.nodeId },
+      select: { id: true, isDeleted: true },
+    })
+    if (!node || node.isDeleted) throw new RoadmapError("NOT_FOUND")
+
+    const decision = inspectAttachment({
+      name: input.name,
+      size: input.sizeBytes,
+      type: input.contentType,
+    })
+    if (!decision.ok) {
+      throw new RoadmapError(
+        "VALIDATION",
+        ATTACHMENT_REJECTION_MESSAGES[decision.code]
+      )
+    }
+
+    const row = await this.prisma.nodeAttachment.create({
+      data: {
+        nodeId: input.nodeId,
+        name: decision.sanitizedName,
+        url: input.url,
+        contentType: decision.contentType,
+        sizeBytes: input.sizeBytes,
+        uploadedBy: actor.userId,
+      },
+    })
+    return {
+      id: row.id,
+      nodeId: row.nodeId,
+      name: row.name,
+      url: row.url,
+      contentType: row.contentType,
+      sizeBytes: row.sizeBytes,
+      createdAt: row.createdAt.toISOString(),
+    }
+  }
+
+  async deleteNodeAttachment(
+    id: string,
+    user: CurrentUser | null
+  ): Promise<boolean> {
+    assertCanWrite(user)
+    const result = await this.prisma.nodeAttachment.deleteMany({ where: { id } })
+    return result.count > 0
   }
 
   /** This caller's in-app notifications, newest first. Guests have none. */

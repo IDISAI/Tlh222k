@@ -114,6 +114,7 @@ model Node {
   roadmapCompletions          UserRoadmapCompletion[]
   favorites                   UserRoadmapFavorite[]   @relation("NodeFavorites")
   notifications               RoadmapNotification[]   @relation("NodeNotifications")
+  attachments                 NodeAttachment[]        @relation("NodeAttachments")
 
   @@index([roadmapId])
   @@index([parentId])
@@ -242,6 +243,28 @@ model UserProgress {
   // Composite PK → upsert(setNodeStatus) is idempotent per (user, node).
   @@id([clerkUserId, nodeId])
   @@index([nodeId])
+}
+
+/// A file attached to a node.
+///
+/// Access is not stored here on purpose: an attachment inherits the entitlement
+/// of the node it hangs off, so there is no second switch to leave inconsistent
+/// with the first.
+model NodeAttachment {
+  id          String   @id @default(cuid())
+  nodeId      String
+  /// Display name, already sanitised — never the raw name the browser sent.
+  name        String
+  url         String
+  contentType String
+  sizeBytes   Int
+  /// Clerk id of the Admin who uploaded it.
+  uploadedBy  String?
+  createdAt   DateTime @default(now())
+
+  node Node @relation("NodeAttachments", fields: [nodeId], references: [id], onDelete: Cascade)
+
+  @@index([nodeId, createdAt])
 }
 
 /// An in-app notification about a roadmap the learner follows.
