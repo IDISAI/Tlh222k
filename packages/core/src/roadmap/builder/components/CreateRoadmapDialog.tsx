@@ -21,6 +21,7 @@ import { cn } from "@workspace/ui/lib/utils"
 import { RoadmapService } from "../../api"
 import { ENTITLEMENT_LABELS } from "../../access-labels"
 import { ROADMAP_VISIBILITIES } from "../../access-policy"
+import { nextFreeSlot } from "../utils/spread-overlaps"
 import {
   SLUG_FAILURE_MESSAGES,
   validateRoadmapSlug,
@@ -91,13 +92,27 @@ export function CreateRoadmapDialog({
   // looking at the field. Without it the only feedback is the database's
   // unique-index error after submit, which names a column, not a roadmap.
   const [takenSlugs, setTakenSlugs] = useState<string[]>([])
+  // Where the existing blocks sit, so a new one is not dropped on top of them.
+  const [placedBlocks, setPlacedBlocks] = useState<
+    { id: string; positionX: number; positionY: number }[]
+  >([])
 
   useEffect(() => {
     let cancelled = false
     service
       .listNodes()
       .then((nodes) => {
-        if (!cancelled) setTakenSlugs(nodes.map((node) => node.slug))
+        if (cancelled) return
+        setTakenSlugs(nodes.map((node) => node.slug))
+        setPlacedBlocks(
+          nodes
+            .filter((node) => !node.isDeleted)
+            .map((node) => ({
+              id: node.id,
+              positionX: node.positionX,
+              positionY: node.positionY,
+            }))
+        )
       })
       // A failed lookup must not block creating a roadmap: the server still
       // rejects a duplicate, this check is only the earlier, kinder one.
@@ -134,13 +149,24 @@ export function CreateRoadmapDialog({
       // A roadmap IS a role/skill block (LEGO): one standalone node that owns
       // itself. No container roadmap, no separate root node — createBlock adds
       // it to the store so it lists in both the table and the Kho sidebar.
+      // Every block used to be created at (0, 0), so a canvas of twenty
+      // roadmaps rendered as one card with nineteen hidden underneath it. The
+      // viewer now spreads such piles at render time, but new blocks should
+      // land somewhere real rather than relying on that.
+      const slot = nextFreeSlot(
+        placedBlocks.map((block) => ({
+          id: block.id,
+          x: block.positionX,
+          y: block.positionY,
+        }))
+      )
       const node = await service.createBlock(
         {
           nodeType,
           title: title.trim(),
           description: description.trim() || undefined,
-          positionX: 0,
-          positionY: 0,
+          positionX: slot.x,
+          positionY: slot.y,
           fieldIds,
           level: level || null,
           visibility,
