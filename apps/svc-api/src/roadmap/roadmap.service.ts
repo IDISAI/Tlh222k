@@ -466,6 +466,55 @@ export class RoadmapService implements OnModuleInit {
    * One grouped query for the whole page rather than a count per card, because
    * the roadmap list renders every published roadmap at once.
    */
+  /** Roadmaps this caller has favourited. Guests hold no list. */
+  async myFavoriteRoadmapIds(user: CurrentUser | null): Promise<string[]> {
+    if (!user) return []
+    const rows = await this.prisma.userRoadmapFavorite.findMany({
+      where: { clerkUserId: user.userId },
+      orderBy: { createdAt: "desc" },
+      select: { ownerNodeId: true },
+    })
+    return rows.map((row) => row.ownerNodeId)
+  }
+
+  /**
+   * Toggle a favourite. Returns the resulting state so an optimistic UI can
+   * reconcile against what was actually stored rather than assume.
+   */
+  async setRoadmapFavorite(
+    ownerNodeId: string,
+    favorite: boolean,
+    user: CurrentUser | null
+  ): Promise<boolean> {
+    // Favouriting is account-backed by definition, so a guest gets a refusal
+    // rather than a silent no-op — the UI needs to know to offer sign-in.
+    if (!user) throw new RoadmapError("PERMISSION_DENIED")
+
+    if (!favorite) {
+      await this.prisma.userRoadmapFavorite.deleteMany({
+        where: { clerkUserId: user.userId, ownerNodeId },
+      })
+      return false
+    }
+
+    const node = await this.prisma.node.findUnique({
+      where: { id: ownerNodeId },
+      select: { id: true, isDeleted: true },
+    })
+    if (!node || node.isDeleted) throw new RoadmapError("NOT_FOUND")
+
+    await this.prisma.userRoadmapFavorite.upsert({
+      where: {
+        clerkUserId_ownerNodeId: { clerkUserId: user.userId, ownerNodeId },
+      },
+      create: { clerkUserId: user.userId, ownerNodeId },
+      // Keep the original createdAt: re-favouriting something already
+      // favourited should not reorder the learner's list.
+      update: {},
+    })
+    return true
+  }
+
   /**
    * Same rule as `learnerCounts`, but scoped to an explicit set of nodes —
    * used by the synthetic roadmap a single block is wrapped in, where the

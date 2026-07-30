@@ -1,25 +1,14 @@
 "use client"
 
 import type { FC } from "react"
-import { useEffect, useState } from "react"
 import { Heart } from "lucide-react"
 
 import { cn } from "@workspace/ui/lib/utils"
 
 import { roadmapStateSummary } from "../access-labels"
+import { useFavorite } from "../favorites"
 import type { Roadmap } from "../types"
 import { truncateDescription } from "../utils/truncate-description"
-
-const SAVED_KEY = "lh222k:saved-roadmaps"
-
-function readSaved(): string[] {
-  try {
-    const raw = window.localStorage.getItem(SAVED_KEY)
-    return raw ? (JSON.parse(raw) as string[]) : []
-  } catch {
-    return []
-  }
-}
 
 /**
  * Airbnb-style property card for a roadmap block. Photo-first: a 16:10 cover
@@ -28,31 +17,12 @@ function readSaved(): string[] {
  * NODE id (`roadmap.id`) — not the slug, which an orphaned container roadmap
  * can shadow. Root-absolute <a> works from any zone.
  *
- * The save state is per-browser (`localStorage`); there is no saved-roadmaps
- * column on the backend yet.
+ * The heart is account-backed once a backend URL is configured, so a roadmap
+ * saved on one device is there on the next; without one it falls back to the
+ * per-browser store for local development.
  */
 export const RoadmapCard: FC<{ roadmap: Roadmap }> = ({ roadmap }) => {
-  const [saved, setSaved] = useState(false)
-
-  // Read after mount so the server-rendered markup and first client render
-  // agree — localStorage is unavailable during SSR.
-  useEffect(() => {
-    setSaved(readSaved().includes(roadmap.id))
-  }, [roadmap.id])
-
-  const toggleSaved = () => {
-    const next = !saved
-    setSaved(next)
-    try {
-      const current = readSaved().filter((id) => id !== roadmap.id)
-      window.localStorage.setItem(
-        SAVED_KEY,
-        JSON.stringify(next ? [...current, roadmap.id] : current)
-      )
-    } catch {
-      /* private mode / quota — the in-memory toggle still applies */
-    }
-  }
+  const { favorite: saved, toggle: toggleSaved } = useFavorite(roadmap.id)
 
   const description = truncateDescription(roadmap.description, 90)
   // All three axes, read through the shared summary so this card cannot drift

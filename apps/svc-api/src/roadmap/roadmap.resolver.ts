@@ -336,4 +336,18 @@ export class RoadmapResolver {
   ) {
     return this.service.markNodeOpened(nodeId, user)
   }
+
+  @Query("myFavoriteRoadmapIds")
+  myFavoriteRoadmapIds(@CurrentUser() user: CurrentUserType | null) {
+    return this.service.myFavoriteRoadmapIds(user)
+  }
+
+  @Mutation("setRoadmapFavorite")
+  setRoadmapFavorite(
+    @Args("ownerNodeId") ownerNodeId: string,
+    @Args("favorite") favorite: boolean,
+    @CurrentUser() user: CurrentUserType | null
+  ) {
+    return this.service.setRoadmapFavorite(ownerNodeId, favorite, user)
+  }
 }

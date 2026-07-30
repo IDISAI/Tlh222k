@@ -112,6 +112,7 @@ model Node {
   incomingCompositionEdges    CompositionEdge[]       @relation("CompositionEdgeTarget")
   keyResults                  NodeKeyResult[]
   roadmapCompletions          UserRoadmapCompletion[]
+  favorites                   UserRoadmapFavorite[]   @relation("NodeFavorites")
 
   @@index([roadmapId])
   @@index([parentId])
@@ -240,6 +241,23 @@ model UserProgress {
   // Composite PK → upsert(setNodeStatus) is idempotent per (user, node).
   @@id([clerkUserId, nodeId])
   @@index([nodeId])
+}
+
+/// A roadmap a learner has favourited.
+///
+/// Favourites are per roadmap only — never per node — because the contract
+/// scopes them that way, and they belong to the account rather than the
+/// browser so the list survives a new device.
+model UserRoadmapFavorite {
+  clerkUserId String
+  /// The owner block the learner favourited.
+  ownerNodeId String
+  createdAt   DateTime @default(now())
+
+  owner Node @relation("NodeFavorites", fields: [ownerNodeId], references: [id], onDelete: Cascade)
+
+  @@id([clerkUserId, ownerNodeId])
+  @@index([ownerNodeId])
 }
 
 /// A roadmap a learner has finished, stamped once and never recomputed.

@@ -203,6 +203,11 @@ type Query {
   two labels must appear under both.
   """
   publicBlocks(fieldIds: [ID!]): [RoadmapNode!]!
+  """
+  Ids of the roadmaps the caller has favourited. Empty for guests — they have
+  no account to hold a list.
+  """
+  myFavoriteRoadmapIds: [ID!]!
   """Published discovery labels are public; CMS may request every status."""
   fields(includeUnpublished: Boolean = false): [Field!]!
   field(slug: String!): Field
@@ -274,6 +279,8 @@ type Mutation {
   and completion still needs the learner's explicit action.
   """
   markNodeOpened(nodeId: ID!): Boolean!
+  """Add or remove a roadmap from the caller's favourites. Returns the new state."""
+  setRoadmapFavorite(ownerNodeId: ID!, favorite: Boolean!): Boolean!
   createNotionDoc(input: CreateNotionDocInput!): NotionDoc!
   updateNotionDoc(input: UpdateNotionDocInput!): NotionDoc!
   archiveNotionDoc(id: ID!): Boolean!
