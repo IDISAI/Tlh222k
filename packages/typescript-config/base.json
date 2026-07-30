@@ -11,6 +11,13 @@
     "module": "NodeNext",
     "moduleDetection": "force",
     "moduleResolution": "NodeNext",
+    // Every consumer of this config is either type-checked only (the packages,
+    // which apps import straight from `src`) or emits through its own bundler.
+    // Without this, `declaration`/`declarationMap` above drop .js/.d.ts beside
+    // each source file, and those shadow the .ts they were built from — Next
+    // resolves next.config.js before next.config.ts, and Vite hands the emitted
+    // JSX to its JS parser. svc-api opts out by not extending this config.
+    "noEmit": true,
     "noUncheckedIndexedAccess": true,
     "resolveJsonModule": true,
     "skipLibCheck": true,
