@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { ArrowUpDown, Clock3, ExternalLink, Globe2, ImageIcon, Layers3, PencilLine, Plus, Search, Tags, Trash2, Users } from "lucide-react"
+import { ArrowUpDown, Clock3, ExternalLink, Globe2, ImageIcon, Layers3, PencilLine, Plus, Search, Tags, Trash2 } from "lucide-react"
 import { Button } from "@workspace/ui/components/button"
 import { Skeleton } from "@workspace/ui/components/skeleton"
 import { toast } from "@workspace/ui/components/sonner"
@@ -16,9 +16,11 @@ import {
 } from "@workspace/ui/components/table"
 
 import { RoadmapService } from "../../api"
-import type { CallerRole, RoadmapNode } from "../../types"
+import type { CallerRole, RoadmapNode, Visibility } from "../../types"
 import { serviceErrorMessage } from "../utils/toast-messages"
 import { reachesLearners, statusOf } from "../../publish-status"
+import { entitlementLabel } from "../../access-labels"
+import { normalizeRoadmapVisibility } from "../../access-policy"
 import { CreateRoadmapDialog } from "./CreateRoadmapDialog"
 import { FieldManagerDialog } from "./FieldManagerDialog"
 import { DeleteNodeDialog } from "./DeleteNodeDialog"
@@ -150,11 +152,13 @@ export function RoadmapListAdmin({ role, uploadCover }: RoadmapListAdminProps) {
         </div>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      {/* No learner tile: it read a hardcoded "12.4k". This list is built from
+          `listNodes`, which carries no learner figures, and an invented number
+          on an admin dashboard is worse than a missing one — it gets quoted. */}
+      <div className="grid gap-3 sm:grid-cols-3">
         <Metric label="Tổng mục" value={rows?.length ?? "—"} icon={<Layers3 className="size-4" />} />
         <Metric label="Đã xuất bản" value={publishedCount} icon={<Globe2 className="size-4" />} tone="text-emerald-600" />
         <Metric label="Đang soạn" value={draftCount} icon={<Clock3 className="size-4" />} tone="text-amber-600" />
-        <Metric label="Người học đang theo" value="12.4k" icon={<Users className="size-4" />} />
       </div>
 
       <div className="flex flex-col gap-3 xl:flex-row xl:items-center"><label className="relative block min-w-0 xl:max-w-md xl:flex-1"><Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Tìm theo tên hoặc slug…" className="h-10 w-full rounded-lg border bg-background pl-9 pr-3 text-sm outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-ring" /></label><div className="flex flex-wrap gap-2"><FilterButton active={statusFilter === "all"} onClick={() => setStatusFilter("all")}>Tất cả {rows?.length ?? 0}</FilterButton><FilterButton active={statusFilter === "published"} onClick={() => setStatusFilter("published")}>Đã xuất bản {publishedCount}</FilterButton><FilterButton active={statusFilter === "draft"} onClick={() => setStatusFilter("draft")}>Đang soạn {draftCount}</FilterButton><FilterButton active={statusFilter === "private"} onClick={() => setStatusFilter("private")}>Riêng tư {privateCount}</FilterButton></div><Button type="button" variant="outline" className="xl:ml-auto" onClick={() => setNewestFirst((value) => !value)}><ArrowUpDown className="size-4" />{newestFirst ? "Cập nhật mới nhất" : "Cập nhật cũ nhất"}</Button></div>
@@ -210,7 +214,7 @@ export function RoadmapListAdmin({ role, uploadCover }: RoadmapListAdminProps) {
                   <TableCell className="max-w-64"><span className="block truncate text-sm text-muted-foreground" title={node.description ?? undefined}>{node.description || "—"}</span></TableCell>
                   <TableCell className="max-w-40"><span className="block truncate font-mono text-xs text-muted-foreground">{node.slug}</span></TableCell>
                   <TableCell className="text-right text-sm tabular-nums">{descendants}</TableCell>
-                  <TableCell><PublishState status={statusOf(node)} /></TableCell>
+                  <TableCell><div className="flex flex-wrap items-center gap-1.5"><PublishState status={statusOf(node)} /><EntitlementPill visibility={node.visibility} /></div></TableCell>
                   <TableCell onClick={(e) => e.stopPropagation()}>
                     <div className="flex justify-end gap-1">
                       <Button size="sm" variant="outline" nativeButton={false} render={<a href={nodeHref(node)} />} aria-label={`Sửa ${node.title}`}><PencilLine className="size-3.5" /></Button>
@@ -292,6 +296,20 @@ function TypePill({ type }: { type: RoadmapNode["nodeType"] }) {
 function FieldChips({ fields }: { fields: NonNullable<RoadmapNode["fields"]> }) {
   if (fields.length === 0) return <span className="text-xs text-muted-foreground">—</span>
   return <div className="flex max-w-52 flex-wrap gap-1">{fields.slice(0, 2).map((field) => <span key={field.id} className="rounded-full bg-muted px-2 py-0.5 text-[10px] text-muted-foreground">{field.title}</span>)}{fields.length > 2 && <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] text-muted-foreground">+{fields.length - 2}</span>}</div>
+}
+
+/**
+ * Who may open this block, beside whether it is published at all. The two are
+ * independent axes, so an editor reading only "Đã xuất bản" cannot tell a
+ * roadmap anyone can open from one that needs an AIO account.
+ *
+ * Rendered for BOTH entitlements on purpose. Showing a pill only for INTERNAL
+ * makes a free roadmap look like one whose entitlement nobody set, which is
+ * the opposite of what it is.
+ */
+function EntitlementPill({ visibility }: { visibility?: Visibility | null }) {
+  const internal = normalizeRoadmapVisibility(visibility) === "INTERNAL"
+  return <span className={cn("inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium", internal ? "border-violet-200 bg-violet-50 text-violet-700" : "border-border bg-muted text-muted-foreground")}>{entitlementLabel(visibility)}</span>
 }
 
 function PublishState({ status }: { status: ReturnType<typeof statusOf> }) {

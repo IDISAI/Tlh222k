@@ -4,6 +4,9 @@ import type { FC } from "react"
 import { useEffect, useState } from "react"
 import { Heart } from "lucide-react"
 
+import { cn } from "@workspace/ui/lib/utils"
+
+import { roadmapStateSummary } from "../access-labels"
 import type { Roadmap } from "../types"
 import { truncateDescription } from "../utils/truncate-description"
 
@@ -52,6 +55,15 @@ export const RoadmapCard: FC<{ roadmap: Roadmap }> = ({ roadmap }) => {
   }
 
   const description = truncateDescription(roadmap.description, 90)
+  // All three axes, read through the shared summary so this card cannot drift
+  // from the CMS or the Field list. A card is never the place a learner should
+  // be surprised by a locked door, so anything narrowing access says so here
+  // rather than at the click.
+  const state = roadmapStateSummary({
+    lifecycleStatus: roadmap.publishStatus,
+    discoverability: roadmap.discoverability ?? null,
+    visibility: roadmap.visibility ?? null,
+  })
 
   return (
     <article className="group relative">
@@ -71,6 +83,17 @@ export const RoadmapCard: FC<{ roadmap: Roadmap }> = ({ roadmap }) => {
             🗺️
           </span>
         )}
+
+        <span
+          className={cn(
+            "absolute left-3 top-3 z-10 rounded-full px-2.5 py-1 text-[11px] font-semibold",
+            state.badge === "Miễn phí"
+              ? "bg-background text-foreground"
+              : "bg-foreground text-background"
+          )}
+        >
+          {state.badge}
+        </span>
 
         <button
           type="button"
@@ -101,6 +124,14 @@ export const RoadmapCard: FC<{ roadmap: Roadmap }> = ({ roadmap }) => {
         {description ? (
           <p className="mt-1.5 text-sm text-muted-foreground">{description}</p>
         ) : null}
+        {/* Draft and unlisted are the two states a card can be handed that the
+            public grid does not otherwise reveal. Saying nothing would present
+            them as ordinary published content. */}
+        {state.notes.length > 0 && (
+          <p className="mt-1.5 text-xs text-muted-foreground">
+            {state.notes.join(" · ")}
+          </p>
+        )}
       </div>
     </article>
   )

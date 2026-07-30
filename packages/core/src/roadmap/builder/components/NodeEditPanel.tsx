@@ -16,6 +16,8 @@ import {
 import { toast } from "@workspace/ui/components/sonner"
 import { Textarea } from "@workspace/ui/components/textarea"
 import { LEVELS, LEVEL_LABELS, type Level } from "../../level"
+import { ENTITLEMENT_LABELS } from "../../access-labels"
+import { ROADMAP_VISIBILITIES } from "../../access-policy"
 
 import {
   MAX_DESCRIPTION_LENGTH,
@@ -23,6 +25,7 @@ import {
   type ArticleType,
   type RoadmapNode,
   type UpdateNodeInput,
+  type Visibility,
 } from "../../types"
 import { FieldPicker } from "./FieldPicker"
 
@@ -62,6 +65,13 @@ export function NodeEditPanel({ node, onClose, onSave }: NodeEditPanelProps) {
   // "" is the unjudged state — a block nobody has rated yet, which is real and
   // must survive a round trip rather than defaulting to Cơ bản.
   const [level, setLevel] = useState<Level | "">(node.level ?? "")
+  const [visibility, setVisibility] = useState<Visibility>(
+    node.visibility ?? "FREE"
+  )
+  // Held as the raw comma-separated text the editor typed, not as an array, so
+  // a half-finished "ML Engineer, " does not lose its trailing separator on
+  // every keystroke.
+  const [tagsText, setTagsText] = useState((node.tags ?? []).join(", "))
   const [titleError, setTitleError] = useState("")
   const [saving, setSaving] = useState(false)
 
@@ -90,6 +100,17 @@ export function NodeEditPanel({ node, onClose, onSave }: NodeEditPanelProps) {
       input.fieldIds = fieldIds
       input.coverUrl = coverUrl.trim() || null
       input.level = level || null
+      input.visibility = visibility
+      // Split, trim, drop blanks, de-duplicate. "a, , a" is one tag, not three,
+      // and a duplicate would show the same chip twice on the Field page.
+      input.tags = [
+        ...new Set(
+          tagsText
+            .split(",")
+            .map((tag) => tag.trim())
+            .filter(Boolean)
+        ),
+      ]
     }
     if (isArticle && articleType) {
       input.articleType = articleType
@@ -186,6 +207,37 @@ export function NodeEditPanel({ node, onClose, onSave }: NodeEditPanelProps) {
                 onChange={setFieldIds}
                 disabled={saving}
               />
+
+              <Label htmlFor="edit-visibility">Quyền xem</Label>
+              <select
+                id="edit-visibility"
+                value={visibility}
+                onChange={(e) => setVisibility(e.target.value as Visibility)}
+                className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm"
+              >
+                {ROADMAP_VISIBILITIES.map((value) => (
+                  <option key={value} value={value}>
+                    {ENTITLEMENT_LABELS[value]}
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-muted-foreground">
+                {visibility === "INTERNAL"
+                  ? "Chỉ học viên AIO, Admin và Super-admin mở được."
+                  : "Mọi người đều mở được, kể cả khách chưa đăng nhập."}
+              </p>
+
+              <Label htmlFor="edit-tags">Vai trò / kỹ năng (tùy chọn)</Label>
+              <Input
+                id="edit-tags"
+                value={tagsText}
+                placeholder="ML Engineer, Data Analyst"
+                onChange={(e) => setTagsText(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                Ngăn cách bằng dấu phẩy. Đây chính là các chip lọc trên trang
+                lĩnh vực — không đặt thì roadmap chỉ hiện ở chip “Tất cả”.
+              </p>
             </div>
           )}
 

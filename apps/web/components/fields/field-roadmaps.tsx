@@ -11,7 +11,9 @@ import {
   Users,
 } from "lucide-react"
 import {
+  entitlementLabel,
   LEVEL_LABELS,
+  normalizeRoadmapVisibility,
   type Roadmap,
   useFields,
   useRoadmap,
@@ -335,7 +337,10 @@ function FieldRoadmapCard({
 }) {
   const image = roadmap.thumbnailUrl || fallbackImage
   const level = roadmap.level ? LEVEL_LABELS[roadmap.level] : null
-  const isInternal = roadmap.visibility === "INTERNAL"
+  // Normalize once. Reading the raw value for the style while the label goes
+  // through the normalizer lets a stray "internal" print the AIO wording on
+  // the free-coloured pill.
+  const isInternal = normalizeRoadmapVisibility(roadmap.visibility) === "INTERNAL"
   const learners = roadmap.learnerCount ?? 0
 
   return (
@@ -357,9 +362,6 @@ function FieldRoadmapCard({
               Chưa có ảnh bìa
             </div>
           )}
-          {/* "Premium" is deliberately not used: the access contract reserves it
-              until a billing entitlement exists, and INTERNAL today means an AIO
-              account, not a purchase. */}
           <span
             className={cn(
               "absolute left-3 top-3 rounded-full px-2.5 py-1 text-[11px] font-semibold",
@@ -368,7 +370,7 @@ function FieldRoadmapCard({
                 : "bg-background text-foreground"
             )}
           >
-            {isInternal ? "Dành cho học viên AIO" : "Miễn phí"}
+            {entitlementLabel(roadmap.visibility)}
           </span>
           <div className="absolute inset-0 grid place-items-center bg-black/42 opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-focus-within:opacity-100">
             <span className="rounded-full bg-background px-4 py-2 text-[13px] font-semibold text-foreground shadow-float">
