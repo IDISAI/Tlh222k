@@ -113,6 +113,7 @@ model Node {
   keyResults                  NodeKeyResult[]
   roadmapCompletions          UserRoadmapCompletion[]
   favorites                   UserRoadmapFavorite[]   @relation("NodeFavorites")
+  notifications               RoadmapNotification[]   @relation("NodeNotifications")
 
   @@index([roadmapId])
   @@index([parentId])
@@ -241,6 +242,34 @@ model UserProgress {
   // Composite PK → upsert(setNodeStatus) is idempotent per (user, node).
   @@id([clerkUserId, nodeId])
   @@index([nodeId])
+}
+
+/// An in-app notification about a roadmap the learner follows.
+///
+/// One row per (learner, roadmap, publish). The unique key is what keeps a
+/// republish from stacking a second card on someone who has not read the
+/// first — the contract asks for exactly one notification per publish.
+model RoadmapNotification {
+  id          String   @id @default(cuid())
+  clerkUserId String
+  ownerNodeId String
+  /// Identifies the publish this notification belongs to.
+  publishedAt DateTime
+  readAt      DateTime?
+  createdAt   DateTime @default(now())
+
+  owner Node @relation("NodeNotifications", fields: [ownerNodeId], references: [id], onDelete: Cascade)
+
+  @@unique([clerkUserId, ownerNodeId, publishedAt])
+  @@index([clerkUserId, readAt])
+}
+
+/// Per-learner delivery preferences. Absent means email off: the contract
+/// makes email strictly opt-in, so a missing row must never read as consent.
+model NotificationPreference {
+  clerkUserId  String   @id
+  emailOptedIn Boolean  @default(false)
+  updatedAt    DateTime @updatedAt
 }
 
 /// A roadmap a learner has favourited.

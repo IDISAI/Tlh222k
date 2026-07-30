@@ -355,6 +355,32 @@ export class RoadmapResolver {
     return this.service.archivedNodes(user)
   }
 
+  @Query("myNotifications")
+  myNotifications(@CurrentUser() user: CurrentUserType | null) {
+    return this.service.myNotifications(user)
+  }
+
+  @Query("myEmailOptIn")
+  myEmailOptIn(@CurrentUser() user: CurrentUserType | null) {
+    return this.service.myEmailOptIn(user)
+  }
+
+  @Mutation("markNotificationRead")
+  markNotificationRead(
+    @Args("id") id: string,
+    @CurrentUser() user: CurrentUserType | null
+  ) {
+    return this.service.markNotificationRead(id, user)
+  }
+
+  @Mutation("setEmailOptIn")
+  setEmailOptIn(
+    @Args("optedIn") optedIn: boolean,
+    @CurrentUser() user: CurrentUserType | null
+  ) {
+    return this.service.setEmailOptIn(optedIn, user)
+  }
+
   @Mutation("restoreNode")
   restoreNode(
     @Args("id") id: string,

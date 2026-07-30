@@ -149,6 +149,15 @@ export interface NodeDto {
   updatedAt?: string | null
 }
 
+export interface NotificationDto {
+  id: string
+  ownerNodeId: string
+  roadmapTitle: string
+  roadmapSlug: string
+  publishedAt: string
+  readAt: string | null
+}
+
 export interface FieldDto {
   id: string
   title: string
@@ -470,6 +479,64 @@ export class RoadmapService implements OnModuleInit {
    * One grouped query for the whole page rather than a count per card, because
    * the roadmap list renders every published roadmap at once.
    */
+  /** This caller's in-app notifications, newest first. Guests have none. */
+  async myNotifications(
+    user: CurrentUser | null
+  ): Promise<NotificationDto[]> {
+    if (!user) return []
+    const rows = await this.prisma.roadmapNotification.findMany({
+      where: { clerkUserId: user.userId },
+      orderBy: { createdAt: "desc" },
+      take: 50,
+      include: { owner: { select: { id: true, title: true, slug: true } } },
+    })
+    return rows.map((row) => ({
+      id: row.id,
+      ownerNodeId: row.ownerNodeId,
+      roadmapTitle: row.owner.title,
+      roadmapSlug: row.owner.slug,
+      publishedAt: row.publishedAt.toISOString(),
+      readAt: row.readAt?.toISOString() ?? null,
+    }))
+  }
+
+  async markNotificationRead(
+    id: string,
+    user: CurrentUser | null
+  ): Promise<boolean> {
+    if (!user) throw new RoadmapError("PERMISSION_DENIED")
+    // Scoped by owner in the same statement: without the clerkUserId in the
+    // filter, anyone holding an id could mark someone else's card read.
+    const result = await this.prisma.roadmapNotification.updateMany({
+      where: { id, clerkUserId: user.userId, readAt: null },
+      data: { readAt: new Date() },
+    })
+    return result.count > 0
+  }
+
+  /** Absent preference means email off — never treat a missing row as consent. */
+  async myEmailOptIn(user: CurrentUser | null): Promise<boolean> {
+    if (!user) return false
+    const row = await this.prisma.notificationPreference.findUnique({
+      where: { clerkUserId: user.userId },
+      select: { emailOptedIn: true },
+    })
+    return row?.emailOptedIn ?? false
+  }
+
+  async setEmailOptIn(
+    optedIn: boolean,
+    user: CurrentUser | null
+  ): Promise<boolean> {
+    if (!user) throw new RoadmapError("PERMISSION_DENIED")
+    await this.prisma.notificationPreference.upsert({
+      where: { clerkUserId: user.userId },
+      create: { clerkUserId: user.userId, emailOptedIn: optedIn },
+      update: { emailOptedIn: optedIn },
+    })
+    return optedIn
+  }
+
   /** Roadmaps this caller has favourited. Guests hold no list. */
   async myFavoriteRoadmapIds(user: CurrentUser | null): Promise<string[]> {
     if (!user) return []
@@ -1592,6 +1659,9 @@ export class RoadmapService implements OnModuleInit {
   ): Promise<CompositionDto> {
     assertCanWrite(user)
     await this.assertPublishable(ownerId)
+    // One instant shared by every notification this publish creates, so the
+    // unique key can recognise a retry.
+    const publishedAt = new Date()
     await this.prisma.$transaction(async (tx) => {
       const [members, edges] = await Promise.all([
         tx.compositionMembership.findMany({
@@ -1644,8 +1714,60 @@ export class RoadmapService implements OnModuleInit {
         where: { id: ownerId, firstPublishedAt: null },
         data: { firstPublishedAt: new Date() },
       })
+      await this.notifyFollowers(tx, ownerId, publishedAt)
     })
     return this.composition(ownerId, "PUBLISHED", user)
+  }
+
+  /**
+   * Tell the people who follow this roadmap that it changed.
+   *
+   * Audience is exactly who the contract names: learners who started content
+   * inside it, plus learners who favourited it. Both, deduplicated — someone
+   * who did both is one person and gets one card.
+   *
+   * `publishedAt` is the same instant for every recipient, which together with
+   * the unique key makes the write idempotent: a retried or double-submitted
+   * publish cannot stack a second card on someone who has not read the first.
+   * Draft edits reach none of this — nothing here runs until publish.
+   */
+  private async notifyFollowers(
+    tx: Prisma.TransactionClient,
+    ownerNodeId: string,
+    publishedAt: Date
+  ): Promise<void> {
+    const members = await tx.compositionMembership.findMany({
+      where: { ownerId: ownerNodeId, scope: "PUBLISHED" },
+      select: { nodeId: true },
+    })
+    const nodeIds = [ownerNodeId, ...members.map((m) => m.nodeId)]
+
+    const [started, favorited] = await Promise.all([
+      tx.userProgress.findMany({
+        where: { nodeId: { in: nodeIds }, status: { in: ["in_progress", "done"] } },
+        select: { clerkUserId: true },
+        distinct: ["clerkUserId"],
+      }),
+      tx.userRoadmapFavorite.findMany({
+        where: { ownerNodeId },
+        select: { clerkUserId: true },
+      }),
+    ])
+
+    const audience = new Set([
+      ...started.map((row) => row.clerkUserId),
+      ...favorited.map((row) => row.clerkUserId),
+    ])
+    if (audience.size === 0) return
+
+    await tx.roadmapNotification.createMany({
+      data: [...audience].map((clerkUserId) => ({
+        clerkUserId,
+        ownerNodeId,
+        publishedAt,
+      })),
+      skipDuplicates: true,
+    })
   }
 
   /**

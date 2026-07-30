@@ -81,6 +81,16 @@ type Composition {
   edges: [CompositionEdge!]!
 }
 
+"""One in-app card telling a learner a roadmap they follow was republished."""
+type RoadmapNotification {
+  id: ID!
+  ownerNodeId: ID!
+  roadmapTitle: String!
+  roadmapSlug: String!
+  publishedAt: String!
+  readAt: String
+}
+
 type Roadmap {
   id: ID!
   slug: String!
@@ -210,6 +220,10 @@ type Query {
   myFavoriteRoadmapIds: [ID!]!
   """Archived blocks, so the CMS can offer them back. Admin only."""
   archivedNodes: [RoadmapNode!]!
+  """This caller's in-app notifications, newest first. Empty for guests."""
+  myNotifications: [RoadmapNotification!]!
+  """Whether this caller opted in to email. False when no preference is stored."""
+  myEmailOptIn: Boolean!
   """Published discovery labels are public; CMS may request every status."""
   fields(includeUnpublished: Boolean = false): [Field!]!
   field(slug: String!): Field
@@ -294,6 +308,10 @@ type Mutation {
   markNodeOpened(nodeId: ID!): Boolean!
   """Add or remove a roadmap from the caller's favourites. Returns the new state."""
   setRoadmapFavorite(ownerNodeId: ID!, favorite: Boolean!): Boolean!
+  """Mark one of the caller's own notifications read. Returns false if already read."""
+  markNotificationRead(id: ID!): Boolean!
+  """Turn update emails on or off. Off by default — email is strictly opt-in."""
+  setEmailOptIn(optedIn: Boolean!): Boolean!
   createNotionDoc(input: CreateNotionDocInput!): NotionDoc!
   updateNotionDoc(input: UpdateNotionDocInput!): NotionDoc!
   archiveNotionDoc(id: ID!): Boolean!
