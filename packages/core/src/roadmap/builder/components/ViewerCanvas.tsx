@@ -22,6 +22,7 @@ import type { CanvasViewport } from "../../../navigation/auth-return"
 import type { NodeType, RoadmapNode } from "../../types"
 import type { BuilderFlowNode, ChildCountEdge } from "../types"
 import { deriveCompositionFromNodes } from "../../utils/derive-composition"
+import { layoutForCanvas } from "../utils/spread-overlaps"
 import { BuilderCanvasContext } from "./builder-context"
 import { BuilderNodeComponent } from "./BuilderNodeComponent"
 import { CanvasLegend } from "./CanvasLegend"
@@ -115,65 +116,86 @@ function ViewerCanvasInner({
   }, [ownerId, nodes])
 
   const computedNodes = useMemo<BuilderFlowNode[]>(() => {
+    // Stored coordinates cannot be rendered as-is. Blocks created from the CMS
+    // table all arrived at (0, 0) — 27 of them in the database — and the ones
+    // that were placed were placed when a card was a 168x40 pill rather than
+    // today's 238x248 cover card. Either way cards land on top of each other,
+    // and the top one swallows every click meant for the ones beneath it.
+    // Render-time only: an admin dragging a card still saves where they drop it.
+    const place = (raw: { id: string; x: number; y: number }[]) => {
+      const laid = layoutForCanvas(raw)
+      return new Map(laid.map((n) => [n.id, { x: n.x, y: n.y }]))
+    }
+
     if (composition) {
       const owner = nodes.find((n) => n.id === ownerId)
       if (!owner) return []
 
-      const next: BuilderFlowNode[] = []
-      // 1. Add owner node at its global position
-      next.push({
-        id: owner.id,
-        type: "builderNode" as const,
-        position: { x: owner.positionX, y: owner.positionY },
-        data: {
-          node: owner,
-          viewerMode: true,
-          isOwner: true,
-          onDoubleClick: () => onNodeDoubleClick?.(owner),
-        },
-        draggable: false,
-        connectable: false,
-      })
-      // 2. Add member nodes at their composition positions
       const nodeById = new Map(nodes.map((n) => [n.id, n]))
-      for (const m of composition.members) {
+      const members = composition.members.filter((m) => {
         const node = nodeById.get(m.nodeId)
-        if (node && !node.isDeleted) {
-          next.push({
-            id: node.id,
-            type: "builderNode" as const,
-            position: { x: m.x, y: m.y },
-            data: {
-              node,
-              viewerMode: true,
-              isOwner: false,
-              isRequired: m.isRequired !== false,
-              onDoubleClick: () => onNodeDoubleClick?.(node),
-            },
-            draggable: false,
-            connectable: false,
-          })
-        }
+        return node && !node.isDeleted
+      })
+      const at = place([
+        { id: owner.id, x: owner.positionX, y: owner.positionY },
+        ...members.map((m) => ({ id: m.nodeId, x: m.x, y: m.y })),
+      ])
+
+      const next: BuilderFlowNode[] = [
+        {
+          id: owner.id,
+          type: "builderNode" as const,
+          position: at.get(owner.id) ?? { x: owner.positionX, y: owner.positionY },
+          data: {
+            node: owner,
+            viewerMode: true,
+            isOwner: true,
+            onDoubleClick: () => onNodeDoubleClick?.(owner),
+          },
+          draggable: false,
+          connectable: false,
+        },
+      ]
+      for (const m of members) {
+        const node = nodeById.get(m.nodeId)!
+        next.push({
+          id: node.id,
+          type: "builderNode" as const,
+          position: at.get(node.id) ?? { x: m.x, y: m.y },
+          data: {
+            node,
+            viewerMode: true,
+            isOwner: false,
+            isRequired: m.isRequired !== false,
+            onDoubleClick: () => onNodeDoubleClick?.(node),
+          },
+          draggable: false,
+          connectable: false,
+        })
       }
       return next
     }
 
     // Fallback: render all nodes at their global positions
-    return nodes
-      .filter((n) => !n.isDeleted && n.nodeType !== "article")
-      .map((n) => ({
-        id: n.id,
-        type: "builderNode" as const,
-        position: { x: n.positionX, y: n.positionY },
-        data: {
-          node: n,
-          viewerMode: true,
-          isOwner: n.id === ownerId,
-          onDoubleClick: () => onNodeDoubleClick?.(n),
-        },
-        draggable: false,
-        connectable: false,
-      }))
+    const visible = nodes.filter(
+      (n) => !n.isDeleted && n.nodeType !== "article"
+    )
+    const at = place(
+      visible.map((n) => ({ id: n.id, x: n.positionX, y: n.positionY }))
+    )
+    return visible.map((n) => ({
+      id: n.id,
+      type: "builderNode" as const,
+      position: at.get(n.id) ?? { x: n.positionX, y: n.positionY },
+      data: {
+        node: n,
+        viewerMode: true,
+        isOwner: n.id === ownerId,
+        onDoubleClick: () => onNodeDoubleClick?.(n),
+      },
+      draggable: false,
+      connectable: false,
+    }))
   }, [nodes, ownerId, composition, onNodeDoubleClick])
 
   const computedEdges = useMemo<Edge[]>(() => {
