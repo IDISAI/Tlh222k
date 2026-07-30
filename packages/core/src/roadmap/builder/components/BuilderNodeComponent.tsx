@@ -44,7 +44,7 @@ export const BuilderNodeComponent = memo(function BuilderNodeComponent({
   data,
   selected,
 }: NodeProps<BuilderFlowNode>) {
-  const { node, viewerMode, isOwner } = data
+  const { node, viewerMode, isOwner, isRequired = true } = data
   const { nodes, isDragging } = useBuilderCanvasContext()
 
   const cardRef = useRef<HTMLDivElement | null>(null)
@@ -160,9 +160,29 @@ export const BuilderNodeComponent = memo(function BuilderNodeComponent({
                 {node.nodeType}
               </span>
             )}
-            {node.isDeleted && (
-              <AlertTriangle className="size-4 text-destructive" />
-            )}
+            <span className="flex items-center gap-1.5">
+              {/* Filled = counts toward progress, hollow = optional. The canvas
+                  legend names both, so the marker has to be on every card and
+                  not only the optional ones — otherwise "bắt buộc" points at
+                  nothing a reader can see. */}
+              <span
+                title={
+                  isRequired ? "Bắt buộc — tính tiến độ" : "Tuỳ chọn"
+                }
+                aria-label={
+                  isRequired ? "Bắt buộc — tính tiến độ" : "Tuỳ chọn"
+                }
+                className={cn(
+                  "size-2.5 rounded-full",
+                  isRequired
+                    ? "bg-foreground"
+                    : "border border-muted-foreground"
+                )}
+              />
+              {node.isDeleted && (
+                <AlertTriangle className="size-4 text-destructive" />
+              )}
+            </span>
           </div>
           <p className="mt-2 min-h-10 text-base leading-5 font-semibold">
             {node.title}

@@ -14,6 +14,7 @@ import {
   type Node,
 } from "@xyflow/react"
 import { useTheme } from "next-themes"
+import { cn } from "@workspace/ui/lib/utils"
 
 import "@xyflow/react/dist/style.css"
 
@@ -23,6 +24,7 @@ import type { BuilderFlowNode, ChildCountEdge } from "../types"
 import { deriveCompositionFromNodes } from "../../utils/derive-composition"
 import { BuilderCanvasContext } from "./builder-context"
 import { BuilderNodeComponent } from "./BuilderNodeComponent"
+import { CanvasLegend } from "./CanvasLegend"
 import { ChildCountEdgeComponent } from "./ChildCountEdge"
 
 const nodeTypes = { builderNode: BuilderNodeComponent }
@@ -145,6 +147,7 @@ function ViewerCanvasInner({
               node,
               viewerMode: true,
               isOwner: false,
+              isRequired: m.isRequired !== false,
               onDoubleClick: () => onNodeDoubleClick?.(node),
             },
             draggable: false,
@@ -206,7 +209,7 @@ function ViewerCanvasInner({
 
   return (
     <BuilderCanvasContext.Provider value={contextValue}>
-      <div className={className ?? "h-full w-full"}>
+      <div className={cn("relative", className ?? "h-full w-full")}>
         <ReactFlow
           nodes={rfNodes}
           edges={rfEdges}
@@ -221,6 +224,12 @@ function ViewerCanvasInner({
           defaultViewport={initialViewport ?? undefined}
           zoomOnDoubleClick={false}
           nodesConnectable={false}
+          nodesDraggable={false}
+          // React Flow binds Delete/Backspace to "remove selection" by default.
+          // Nothing here writes back, so it would not corrupt the roadmap — but
+          // a reader who taps Backspace watches blocks vanish off a canvas they
+          // were told is read-only, and only a reload brings them back.
+          deleteKeyCode={null}
           elementsSelectable
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
@@ -242,6 +251,7 @@ function ViewerCanvasInner({
             className="!bg-background"
           />
         </ReactFlow>
+        <CanvasLegend />
       </div>
     </BuilderCanvasContext.Provider>
   )
