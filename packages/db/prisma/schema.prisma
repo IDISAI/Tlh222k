@@ -111,6 +111,7 @@ model Node {
   outgoingCompositionEdges    CompositionEdge[]       @relation("CompositionEdgeSource")
   incomingCompositionEdges    CompositionEdge[]       @relation("CompositionEdgeTarget")
   keyResults                  NodeKeyResult[]
+  roadmapCompletions          UserRoadmapCompletion[]
 
   @@index([roadmapId])
   @@index([parentId])
@@ -239,6 +240,25 @@ model UserProgress {
   // Composite PK → upsert(setNodeStatus) is idempotent per (user, node).
   @@id([clerkUserId, nodeId])
   @@index([nodeId])
+}
+
+/// A roadmap a learner has finished, stamped once and never recomputed.
+///
+/// Node progress alone cannot answer "did they complete this roadmap", because
+/// an editor adding a required node afterwards would silently un-complete
+/// everyone who had finished — which the access contract forbids. Recording
+/// the moment instead makes the completion a fact about the past that later
+/// edits cannot reach.
+model UserRoadmapCompletion {
+  clerkUserId String
+  /// The owner block whose composition the learner finished.
+  ownerNodeId String
+  completedAt DateTime @default(now())
+
+  owner Node @relation(fields: [ownerNodeId], references: [id], onDelete: Cascade)
+
+  @@id([clerkUserId, ownerNodeId])
+  @@index([ownerNodeId])
 }
 
 // Notion-style hierarchical document (packages/core/src/notion). `slug` is set

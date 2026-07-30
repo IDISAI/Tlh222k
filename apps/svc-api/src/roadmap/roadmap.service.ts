@@ -1542,7 +1542,81 @@ export class RoadmapService implements OnModuleInit {
       create: { clerkUserId: user.userId, nodeId, status },
       update: { status },
     })
+    if (status === "done") await this.stampFinishedRoadmaps(user.userId, nodeId)
     return true
+  }
+
+  /**
+   * First open starts a node. Completion is never implied by opening — the
+   * contract requires an explicit learner action for that — so this only ever
+   * moves a node forward out of the untouched state, and leaves `in_progress`
+   * and `done` exactly where they are. Guests are a no-op rather than an
+   * error: they may read content, they simply have nowhere to record it.
+   */
+  async markNodeOpened(
+    nodeId: string,
+    user: CurrentUser | null
+  ): Promise<boolean> {
+    if (!user) return false
+    const existing = await this.prisma.userProgress.findUnique({
+      where: { clerkUserId_nodeId: { clerkUserId: user.userId, nodeId } },
+      select: { status: true },
+    })
+    if (existing && existing.status !== "locked") return false
+    await this.prisma.userProgress.upsert({
+      where: { clerkUserId_nodeId: { clerkUserId: user.userId, nodeId } },
+      create: { clerkUserId: user.userId, nodeId, status: "in_progress" },
+      update: { status: "in_progress" },
+    })
+    return true
+  }
+
+  /**
+   * Record any roadmap this node's completion just finished.
+   *
+   * Written at the moment it happens rather than derived on read, because a
+   * derived answer changes when the roadmap does: an editor adding a required
+   * node would un-complete everyone who had finished, which the access
+   * contract forbids. Only the canvases this node actually sits on are
+   * examined — the same node can be required on one and optional on another.
+   */
+  private async stampFinishedRoadmaps(
+    clerkUserId: string,
+    nodeId: string
+  ): Promise<void> {
+    const owners = await this.prisma.compositionMembership.findMany({
+      where: { nodeId, scope: "PUBLISHED", isRequired: true },
+      select: { ownerId: true },
+    })
+    if (owners.length === 0) return
+
+    for (const { ownerId } of owners) {
+      const required = await this.prisma.compositionMembership.findMany({
+        where: { ownerId, scope: "PUBLISHED", isRequired: true },
+        select: { nodeId: true },
+      })
+      // Nothing to finish is not the same as finished.
+      if (required.length === 0) continue
+
+      const doneCount = await this.prisma.userProgress.count({
+        where: {
+          clerkUserId,
+          status: "done",
+          nodeId: { in: required.map((member) => member.nodeId) },
+        },
+      })
+      if (doneCount < required.length) continue
+
+      await this.prisma.userRoadmapCompletion.upsert({
+        where: {
+          clerkUserId_ownerNodeId: { clerkUserId, ownerNodeId: ownerId },
+        },
+        create: { clerkUserId, ownerNodeId: ownerId },
+        // Keep the original timestamp: the learner finished it when they
+        // finished it, and re-marking a node does not move that date.
+        update: {},
+      })
+    }
   }
 
   // ── Internals ────────────────────────────────────────────────────────────────

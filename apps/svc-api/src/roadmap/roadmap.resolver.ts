@@ -328,4 +328,12 @@ export class RoadmapResolver {
   ) {
     return this.service.setNodeStatus(nodeId, status, user)
   }
+
+  @Mutation("markNodeOpened")
+  markNodeOpened(
+    @Args("nodeId") nodeId: string,
+    @CurrentUser() user: CurrentUserType | null
+  ) {
+    return this.service.markNodeOpened(nodeId, user)
+  }
 }

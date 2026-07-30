@@ -269,6 +269,11 @@ type Mutation {
   ): Composition!
   publishComposition(ownerId: ID!): Composition!
   setNodeStatus(nodeId: ID!, status: NodeStatus!): Boolean!
+  """
+  Opening content starts it. Never downgrades: a node already done stays done,
+  and completion still needs the learner's explicit action.
+  """
+  markNodeOpened(nodeId: ID!): Boolean!
   createNotionDoc(input: CreateNotionDocInput!): NotionDoc!
   updateNotionDoc(input: UpdateNotionDocInput!): NotionDoc!
   archiveNotionDoc(id: ID!): Boolean!
