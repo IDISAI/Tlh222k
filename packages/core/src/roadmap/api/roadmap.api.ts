@@ -14,6 +14,7 @@ import type {
   Roadmap,
   RoadmapEdge,
   RoadmapGraph,
+  NodeKeyResult,
   RoadmapNode,
   UpdateFieldInput,
   UpdateNodeInput,
@@ -35,6 +36,7 @@ const NODE_FIELDS = `
   id roadmapId parentId title slug description nodeType notionPageId
   articleType jupyterUrl positionX positionY order status isDeleted
   linkedRoadmapId publishStatus coverUrl level visibility tags authorId
+  keyResults { id text position }
   fields { ${FIELD_FIELDS} }
 `
 const COMPOSITION_FIELDS = `
@@ -324,12 +326,22 @@ export class RoadmapApi {
     input: UpdateNodeInput,
     _callerRole: CallerRole
   ): Promise<RoadmapNode> {
+    // Key Results have their own mutation — strip them out before the node
+    // update, or the server rejects an input field it does not declare.
+    const { keyResults, ...nodeInput } = input
     const data = await gql<{ updateNode: RoadmapNode }>(
       `mutation ($id: ID!, $input: UpdateNodeInput!) {
          updateNode(id: $id, input: $input) { ${NODE_FIELDS} }
        }`,
-      { id, input }
+      { id, input: nodeInput }
     )
+    if (keyResults) {
+      data.updateNode.keyResults = await this.setNodeKeyResults(
+        id,
+        keyResults,
+        _callerRole
+      )
+    }
     if (input.publishStatus === "PUBLISHED") {
       await gql<{ publishComposition: Composition }>(
         `mutation ($ownerId: ID!) {
@@ -341,6 +353,25 @@ export class RoadmapApi {
       )
     }
     return data.updateNode
+  }
+
+  /**
+   * Replace a node's Key Results with this ordered list. Sending the whole
+   * list rather than a diff matches how the editor works — reordering and
+   * deleting as much as adding — and cannot strand a row.
+   */
+  async setNodeKeyResults(
+    nodeId: string,
+    texts: string[],
+    _callerRole: CallerRole
+  ): Promise<NodeKeyResult[]> {
+    const data = await gql<{ setNodeKeyResults: NodeKeyResult[] }>(
+      `mutation ($nodeId: ID!, $texts: [String!]!) {
+        setNodeKeyResults(nodeId: $nodeId, texts: $texts) { id text position }
+      }`,
+      { nodeId, texts }
+    )
+    return data.setNodeKeyResults
   }
 
   async deleteNode(id: string, _callerRole: CallerRole): Promise<boolean> {

@@ -165,6 +165,12 @@ export interface RoadmapNode {
   level?: Level | null
   /** Internal blocks remain available to staff but never satisfy public Field rules. */
   visibility?: Visibility
+  /**
+   * Ordered learner outcomes shown in the detail panel. Read-only on the
+   * public side: a Key Result states what someone will be able to do, not a
+   * task they tick off.
+   */
+  keyResults?: NodeKeyResult[]
   /** ISO 8601 last-update time. Present on list responses. */
   updatedAt?: string
   /** ISO 8601 create time. */
@@ -253,6 +259,13 @@ export interface CreateRoadmapInput {
   authorId?: string
 }
 
+/** One learner outcome for a node, in the order it should be read. */
+export interface NodeKeyResult {
+  id: string
+  text: string
+  position: number
+}
+
 export interface CreateNodeInput {
   roadmapId: string
   parentId?: string | null
@@ -282,6 +295,12 @@ export type UpdateNodeInput = Partial<
 > & {
   linkedRoadmapId?: string | null
   publishStatus?: PublishStatus
+  /**
+   * Ordered Key Result texts, replacing whatever the node had. Carried on the
+   * node input so the edit panel saves once; the service fans it out to its
+   * own mutation, the same way publishing does.
+   */
+  keyResults?: string[]
 }
 
 // ── Service errors ──────────────────────────────────────────────────────────

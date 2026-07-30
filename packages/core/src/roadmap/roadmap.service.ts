@@ -13,6 +13,7 @@ import {
   type EdgeKind,
   type Field,
   type Level,
+  type NodeKeyResult,
   type NodeStatus,
   type NodeType,
   type PublishStatus,
@@ -25,6 +26,7 @@ import {
   type Visibility,
 } from "./types"
 import { fieldDeleteEligibility } from "./field-policy"
+import { MAX_KEY_RESULTS } from "./key-results"
 import { getStore, persistStore } from "./mock/builder-store"
 import { reachesLearners, statusOf } from "./publish-status"
 import { deriveCompositionFromNodes } from "./utils/derive-composition"
@@ -603,6 +605,28 @@ export class RoadmapService {
    * up to the deleted node's parent so a sub-roadmap is never lost when its
    * parent roadmap is deleted.
    */
+  // ponytail: → `setNodeKeyResults` mutation
+  async setNodeKeyResults(
+    nodeId: string,
+    texts: string[],
+    callerRole: CallerRole
+  ): Promise<NodeKeyResult[]> {
+    assertCanWrite(callerRole)
+    await delay()
+    const store = getStore()
+    const node = store.nodes.find((item) => item.id === nodeId)
+    if (!node) throw new RoadmapServiceError("NOT_FOUND")
+    // Same replace-not-patch shape and same cap as the backend, so a
+    // mock-backed session cannot produce a node the real one would reject.
+    node.keyResults = texts
+      .map((text) => text.trim())
+      .filter(Boolean)
+      .slice(0, MAX_KEY_RESULTS)
+      .map((text, position) => ({ id: `kr-${nodeId}-${position}`, text, position }))
+    persistStore()
+    return node.keyResults
+  }
+
   // ponytail: → `deleteNode` mutation (reparent children up)
   async deleteNode(id: string, callerRole: CallerRole): Promise<boolean> {
     assertCanWrite(callerRole)

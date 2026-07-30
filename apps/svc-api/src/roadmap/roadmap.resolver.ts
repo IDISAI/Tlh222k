@@ -381,6 +381,15 @@ export class RoadmapResolver {
     return this.service.setEmailOptIn(optedIn, user)
   }
 
+  @Mutation("setNodeKeyResults")
+  setNodeKeyResults(
+    @Args("nodeId") nodeId: string,
+    @Args("texts") texts: string[],
+    @CurrentUser() user: CurrentUserType | null
+  ) {
+    return this.service.setNodeKeyResults(nodeId, texts, user)
+  }
+
   @Mutation("restoreNode")
   restoreNode(
     @Args("id") id: string,

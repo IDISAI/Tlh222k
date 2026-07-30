@@ -17,6 +17,7 @@ import { toast } from "@workspace/ui/components/sonner"
 import { Textarea } from "@workspace/ui/components/textarea"
 import { LEVELS, LEVEL_LABELS, type Level } from "../../level"
 import { ENTITLEMENT_LABELS } from "../../access-labels"
+import { MAX_KEY_RESULTS, parseKeyResults } from "../../key-results"
 import { ROADMAP_VISIBILITIES } from "../../access-policy"
 
 import {
@@ -72,6 +73,14 @@ export function NodeEditPanel({ node, onClose, onSave }: NodeEditPanelProps) {
   // a half-finished "ML Engineer, " does not lose its trailing separator on
   // every keystroke.
   const [tagsText, setTagsText] = useState((node.tags ?? []).join(", "))
+  // One per line rather than comma-separated: a learner outcome is a sentence
+  // and sentences contain commas.
+  const [keyResultsText, setKeyResultsText] = useState(() =>
+    [...(node.keyResults ?? [])]
+      .sort((left, right) => left.position - right.position)
+      .map((result) => result.text)
+      .join("\n")
+  )
   const [titleError, setTitleError] = useState("")
   const [saving, setSaving] = useState(false)
 
@@ -111,6 +120,7 @@ export function NodeEditPanel({ node, onClose, onSave }: NodeEditPanelProps) {
             .filter(Boolean)
         ),
       ]
+      input.keyResults = parseKeyResults(keyResultsText)
     }
     if (isArticle && articleType) {
       input.articleType = articleType
@@ -237,6 +247,19 @@ export function NodeEditPanel({ node, onClose, onSave }: NodeEditPanelProps) {
               <p className="text-xs text-muted-foreground">
                 Ngăn cách bằng dấu phẩy. Đây chính là các chip lọc trên trang
                 lĩnh vực — không đặt thì roadmap chỉ hiện ở chip “Tất cả”.
+              </p>
+
+              <Label htmlFor="edit-key-results">Kết quả đạt được</Label>
+              <Textarea
+                id="edit-key-results"
+                rows={4}
+                value={keyResultsText}
+                placeholder={"Đọc hiểu ký hiệu ma trận\nTự cài đặt phép nhân ma trận"}
+                onChange={(e) => setKeyResultsText(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                Mỗi dòng một kết quả, tối đa {MAX_KEY_RESULTS}. Viết điều người
+                học sẽ <em>làm được</em>, không phải việc họ phải tick xong.
               </p>
             </div>
           )}

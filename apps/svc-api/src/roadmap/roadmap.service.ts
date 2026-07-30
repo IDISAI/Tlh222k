@@ -147,6 +147,14 @@ export interface NodeDto {
   createdAt?: string | null
   /** Last edit time. */
   updatedAt?: string | null
+  /** Ordered learner outcomes. Empty when the node declares none. */
+  keyResults?: KeyResultDto[]
+}
+
+export interface KeyResultDto {
+  id: string
+  text: string
+  position: number
 }
 
 export interface NotificationDto {
@@ -225,7 +233,17 @@ function toFieldDto(f: DbField): FieldDto {
 }
 
 /** A `Node` row with its labels joined in. */
-type DbNodeWithFields = DbNode & { fields?: DbField[] }
+/**
+ * A cap on Key Results. A node listing thirty outcomes is not describing what
+ * a learner will be able to do, it is pasting a syllabus — and the detail
+ * panel it renders in has no room for that.
+ */
+const MAX_KEY_RESULTS = 12
+
+type DbNodeWithFields = DbNode & {
+  fields?: DbField[]
+  keyResults?: { id: string; text: string; position: number }[]
+}
 
 export interface GraphDto {
   roadmap: RoadmapDto
@@ -479,6 +497,49 @@ export class RoadmapService implements OnModuleInit {
    * One grouped query for the whole page rather than a count per card, because
    * the roadmap list renders every published roadmap at once.
    */
+  /**
+   * Replace a node's Key Results with an ordered list.
+   *
+   * Replace rather than patch: the editor works on the whole list — reordering
+   * and deleting as much as adding — so sending the final state is simpler to
+   * reason about than a diff, and cannot leave an orphaned row behind.
+   * Position is the array index, so the order sent is the order read.
+   */
+  async setNodeKeyResults(
+    nodeId: string,
+    texts: string[],
+    user: CurrentUser | null
+  ): Promise<KeyResultDto[]> {
+    assertCanWrite(user)
+    const node = await this.prisma.node.findUnique({
+      where: { id: nodeId },
+      select: { id: true, isDeleted: true },
+    })
+    if (!node || node.isDeleted) throw new RoadmapError("NOT_FOUND")
+
+    const cleaned = texts
+      .map((text) => text.trim())
+      .filter(Boolean)
+      .slice(0, MAX_KEY_RESULTS)
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.nodeKeyResult.deleteMany({ where: { nodeId } })
+      for (const [position, text] of cleaned.entries()) {
+        await tx.nodeKeyResult.create({ data: { nodeId, text, position } })
+      }
+    })
+
+    const rows = await this.prisma.nodeKeyResult.findMany({
+      where: { nodeId },
+      orderBy: { position: "asc" },
+    })
+    return rows.map((row) => ({
+      id: row.id,
+      text: row.text,
+      position: row.position,
+    }))
+  }
+
   /** This caller's in-app notifications, newest first. Guests have none. */
   async myNotifications(
     user: CurrentUser | null
@@ -728,6 +789,7 @@ export class RoadmapService implements OnModuleInit {
     const nodes = await this.prisma.node.findMany({
       where: { roadmapId: id, isDeleted: false },
       orderBy: { order: "asc" },
+      include: { keyResults: { orderBy: { position: "asc" } } },
     })
     return this.buildGraph(
       this.toRoadmapDto(roadmap, roadmap._count.nodes),
@@ -871,6 +933,7 @@ export class RoadmapService implements OnModuleInit {
     const roadmapNodes = await this.prisma.node.findMany({
       where: { roadmapId: node.roadmapId, isDeleted: false },
       orderBy: { order: "asc" },
+      include: { keyResults: { orderBy: { position: "asc" } } },
     })
     const visibleNodes = canAccessInternal(user)
       ? roadmapNodes
@@ -2041,6 +2104,13 @@ export class RoadmapService implements OnModuleInit {
       learnerCount: 0,
       createdAt: n.createdAt ? n.createdAt.toISOString() : null,
       updatedAt: n.updatedAt ? n.updatedAt.toISOString() : null,
+      // Only queries that `include` them fill this in; the GraphQL field is a
+      // non-null list, so every other caller sees [] rather than null.
+      keyResults: (n.keyResults ?? []).map((kr) => ({
+        id: kr.id,
+        text: kr.text,
+        position: kr.position,
+      })),
     }
   }
 
@@ -2306,6 +2376,10 @@ export class RoadmapService implements OnModuleInit {
     return this.prisma.node.findMany({
       where: { roadmapId, isDeleted: false },
       orderBy: { order: "asc" },
+      // Key Results ride along with the graph: the detail panel opens from a
+      // node already in hand, so fetching them separately would show an empty
+      // outcomes list for a frame on every open.
+      include: { keyResults: { orderBy: { position: "asc" } } },
     })
   }
 
@@ -2313,6 +2387,7 @@ export class RoadmapService implements OnModuleInit {
     const all = await this.prisma.node.findMany({
       where: { roadmapId: root.roadmapId, isDeleted: false },
       orderBy: { order: "asc" },
+      include: { keyResults: { orderBy: { position: "asc" } } },
     })
     const byParent = new Map<string, DbNode[]>()
     for (const n of all) {

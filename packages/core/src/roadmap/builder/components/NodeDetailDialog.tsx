@@ -296,6 +296,22 @@ export function NodeDetailDialog({
             </div>
           )}
 
+          {(node.keyResults?.length ?? 0) > 0 && (
+            <div className="space-y-1.5">
+              <Label>Kết quả đạt được</Label>
+              {/* Numbered and read-only: a Key Result states what a learner
+                  will be able to do, not a task they tick off. Progress is
+                  tracked per node, never per outcome. */}
+              <ol className="list-decimal space-y-1 pl-5 text-muted-foreground">
+                {[...(node.keyResults ?? [])]
+                  .sort((left, right) => left.position - right.position)
+                  .map((result) => (
+                    <li key={result.id}>{result.text}</li>
+                  ))}
+              </ol>
+            </div>
+          )}
+
           {!isArticle && (node.fields?.length ?? 0) > 0 && (
             <div className="space-y-1.5">
               <Label>Lĩnh vực</Label>

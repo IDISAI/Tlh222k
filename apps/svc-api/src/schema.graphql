@@ -81,6 +81,16 @@ type Composition {
   edges: [CompositionEdge!]!
 }
 
+"""
+One learner outcome for a node. Ordered, read-only on the public side — a Key
+Result states what someone will be able to do, not a task they tick off.
+"""
+type NodeKeyResult {
+  id: ID!
+  text: String!
+  position: Int!
+}
+
 """One in-app card telling a learner a roadmap they follow was republished."""
 type RoadmapNotification {
   id: ID!
@@ -156,6 +166,8 @@ type RoadmapNode {
   createdAt: String
   """Last edit time. The public card selects it, so it must resolve."""
   updatedAt: String
+  """Ordered learner outcomes. Empty when the node declares none."""
+  keyResults: [NodeKeyResult!]!
 }
 
 """
@@ -312,6 +324,11 @@ type Mutation {
   markNotificationRead(id: ID!): Boolean!
   """Turn update emails on or off. Off by default — email is strictly opt-in."""
   setEmailOptIn(optedIn: Boolean!): Boolean!
+  """
+  Replace a node's Key Results with this ordered list. Sending an empty list
+  clears them; the order you send is the order learners read.
+  """
+  setNodeKeyResults(nodeId: ID!, texts: [String!]!): [NodeKeyResult!]!
   createNotionDoc(input: CreateNotionDocInput!): NotionDoc!
   updateNotionDoc(input: UpdateNotionDocInput!): NotionDoc!
   archiveNotionDoc(id: ID!): Boolean!
