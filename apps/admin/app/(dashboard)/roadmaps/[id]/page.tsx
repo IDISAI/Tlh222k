@@ -8,7 +8,7 @@ import {
   createDocumentForNode,
   syncPublishByNotionPageId,
   syncTitleBySlug,
-} from "@/app/notion/actions"
+} from "@/app/(dashboard)/notion/actions"
 
 export const metadata = { title: "Roadmap Builder" }
 

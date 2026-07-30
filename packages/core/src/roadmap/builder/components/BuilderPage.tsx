@@ -100,7 +100,7 @@ export function BuilderPage({
   // One question, asked through one helper, so this badge cannot disagree with
   // the gate that decides whether learners actually see the block.
   const ownerIsPublic = owner ? reachesLearners(statusOf(owner)) : false
-  const publicUrl = publicOrigin && owner ? `${publicOrigin}/roadmaps/${owner.slug}` : null
+  const publicUrl = publicOrigin && owner ? `${publicOrigin}/roadmap/${owner.slug}` : null
 
   const copyPublicUrl = () => {
     if (!publicUrl) return

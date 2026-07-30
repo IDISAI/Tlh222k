@@ -1,14 +1,12 @@
 "use client"
 
 import { useEffect, useMemo, useRef, useState } from "react"
-import { Check, ChevronDown, Plus, X } from "lucide-react"
+import { Check, ChevronDown, X } from "lucide-react"
 import { Input } from "@workspace/ui/components/input"
-import { toast } from "@workspace/ui/components/sonner"
 import { cn } from "@workspace/ui/lib/utils"
 
 import { RoadmapService } from "../../api"
 import type { CallerRole, Field } from "../../types"
-import { serviceErrorMessage } from "../utils/toast-messages"
 
 /** Case- and accent-insensitive so "lập trình" matches "Lap Trinh". */
 function fold(value: string): string {
@@ -21,10 +19,8 @@ function fold(value: string): string {
 
 interface FieldPickerProps {
   /**
-   * Passed straight to the service. NOT a security boundary — the real backend
-   * derives the caller from the Clerk token and ignores this, so it defaults to
-   * `admin` for call sites (canvas panels) that don't thread a role down. Only
-   * the mock service reads it, and the mock refuses label writes anyway.
+   * Kept for call-site compatibility. Selection is read-only; backend auth
+   * still protects writes in the Field Workspace.
    */
   role?: CallerRole
   /** Selected label ids. A block may carry several. */
@@ -33,16 +29,9 @@ interface FieldPickerProps {
   disabled?: boolean
 }
 
-/**
- * Notion-style creatable multi-select for discovery labels.
- *
- * Typing filters the existing labels; the "create" row only appears when
- * nothing matches EXACTLY. That ordering is the whole point — offering
- * "create" next to an exact match is how a label list silently accumulates
- * "AI" / "ai" / "A.I." variants that then split the tab strip.
- */
+/** Multi-select for existing discovery labels. Fields are created only in the
+ * Field Workspace, so this picker cannot mint an incomplete second record. */
 export function FieldPicker({
-  role = "admin",
   value,
   onChange,
   disabled = false,
@@ -50,7 +39,6 @@ export function FieldPicker({
   const service = useMemo(() => new RoadmapService(), [])
   const [fields, setFields] = useState<Field[]>([])
   const [query, setQuery] = useState("")
-  const [creating, setCreating] = useState(false)
   const [open, setOpen] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -75,33 +63,11 @@ export function FieldPicker({
   const matches = needle
     ? fields.filter((f) => fold(f.title).includes(needle))
     : fields
-  const exactExists = fields.some((f) => fold(f.title) === needle)
-  const canCreate = needle.length > 0 && !exactExists
 
   const selected = fields.filter((f) => value.includes(f.id))
 
   const toggle = (id: string) => {
     onChange(value.includes(id) ? value.filter((v) => v !== id) : [...value, id])
-  }
-
-  const handleCreate = async () => {
-    const title = query.trim()
-    if (!title || creating) return
-    setCreating(true)
-    try {
-      const created = await service.createField(title, role)
-      // The server dedupes, so `created` may be a label already in the list.
-      setFields((prev) =>
-        prev.some((f) => f.id === created.id) ? prev : [...prev, created]
-      )
-      if (!value.includes(created.id)) onChange([...value, created.id])
-      setQuery("")
-      inputRef.current?.focus()
-    } catch (err) {
-      toast.error(serviceErrorMessage(err))
-    } finally {
-      setCreating(false)
-    }
   }
 
   return (
@@ -133,7 +99,7 @@ export function FieldPicker({
           ref={inputRef}
           value={query}
           disabled={disabled}
-          placeholder="Tìm hoặc tạo lĩnh vực…"
+          placeholder="Tìm lĩnh vực…"
           aria-expanded={open}
           aria-controls="field-picker-options"
           className="pr-10"
@@ -146,12 +112,7 @@ export function FieldPicker({
             if (e.key === "Escape") {
               setOpen(false)
               inputRef.current?.blur()
-              return
             }
-            if (e.key !== "Enter") return
-            // Enter inside a dialog would otherwise submit the whole form.
-            e.preventDefault()
-            if (canCreate) void handleCreate()
           }}
         />
         <button
@@ -167,10 +128,10 @@ export function FieldPicker({
       </div>
 
       {open && <div id="field-picker-options" className="max-h-40 overflow-y-auto rounded-md border">
-        {matches.length === 0 && !canCreate ? (
+        {matches.length === 0 ? (
           <p className="px-3 py-2 text-xs text-muted-foreground">
             {fields.length === 0
-              ? "Chưa có lĩnh vực nào. Gõ tên để tạo mới."
+              ? "Chưa có lĩnh vực nào. Tạo lĩnh vực trong Workspace trước."
               : "Không tìm thấy lĩnh vực phù hợp."}
           </p>
         ) : null}
@@ -195,17 +156,6 @@ export function FieldPicker({
           )
         })}
 
-        {canCreate && (
-          <button
-            type="button"
-            disabled={disabled || creating}
-            onClick={() => void handleCreate()}
-            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-muted"
-          >
-            <Plus className="size-4" />
-            {creating ? "Đang tạo…" : `Tạo "${query.trim()}"`}
-          </button>
-        )}
       </div>}
     </div>
   )

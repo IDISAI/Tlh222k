@@ -12,6 +12,7 @@ import {
 } from "@workspace/ui/components/dialog"
 import { Input } from "@workspace/ui/components/input"
 import { Label } from "@workspace/ui/components/label"
+import { RequiredMark } from "@workspace/ui/components/required-mark"
 import { toast } from "@workspace/ui/components/sonner"
 import { Textarea } from "@workspace/ui/components/textarea"
 
@@ -27,6 +28,7 @@ import {
   type Visibility,
 } from "../../types"
 import { serviceErrorMessage } from "../utils/toast-messages"
+import { CoverUploadField } from "./CoverUploadField"
 import { FieldPicker } from "./FieldPicker"
 
 /** A roadmap is a role or a skill (a role/skill node IS a roadmap block). */
@@ -52,6 +54,8 @@ interface CreateRoadmapDialogProps {
   role: CallerRole
   onClose: () => void
   onCreated: (node: RoadmapNode) => void
+  /** Validates and persists a roadmap block's cover image, returning its URL. */
+  uploadCover: (file: File) => Promise<string>
 }
 
 /** "+ Tạo roadmap mới" (Req 1.1) — creates an unpublished draft. */
@@ -59,6 +63,7 @@ export function CreateRoadmapDialog({
   role,
   onClose,
   onCreated,
+  uploadCover,
 }: CreateRoadmapDialogProps) {
   const service = useMemo(() => new RoadmapService(), [])
   const [title, setTitle] = useState("")
@@ -133,15 +138,13 @@ export function CreateRoadmapDialog({
 
         <div className="space-y-5 px-6 pb-2">
           <div className="space-y-1.5">
-            <div className="flex items-center justify-between">
-              <Label htmlFor="rm-title">Tiêu đề</Label>
-              <span className="text-xs text-destructive">Bắt buộc</span>
-            </div>
+            <Label htmlFor="rm-title">Tiêu đề<RequiredMark /></Label>
             <Input
               id="rm-title"
               autoFocus
               value={title}
               maxLength={MAX_TITLE_LENGTH}
+              aria-required="true"
               placeholder="vd: Lộ trình Frontend 2026"
               onChange={(e) => handleTitle(e.target.value)}
             />
@@ -213,10 +216,18 @@ export function CreateRoadmapDialog({
             </p>
           </div>
 
-          <div className="space-y-1.5">
-            <Label htmlFor="rm-cover">Ảnh bìa (URL HTTPS)</Label>
-            <Input id="rm-cover" type="url" value={coverUrl} onChange={(event) => setCoverUrl(event.target.value)} placeholder="https://…" />
-          </div>
+          <CoverUploadField
+            id="rm-cover"
+            label="Ảnh bìa"
+            imageUrl={coverUrl || null}
+            aspectClassName="aspect-video"
+            placeholderHint="Bấm để chọn ảnh JPG, PNG hoặc WebP"
+            helpText="Dưới 3 MB. Ảnh sẽ tự crop cho vừa khung khi hiển thị."
+            disabled={busy}
+            accept="image/jpeg,image/webp,image/png"
+            upload={uploadCover}
+            onUploaded={setCoverUrl}
+          />
 
           <div className="space-y-1.5">
             <Label htmlFor="rm-tags">Thẻ</Label>

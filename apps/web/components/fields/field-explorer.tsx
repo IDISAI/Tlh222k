@@ -20,7 +20,6 @@ import {
   ScanLine,
 } from "lucide-react"
 import {
-  fieldRoadmapCta,
   RoadmapService,
   type Field,
   useFields,
@@ -197,11 +196,33 @@ export function FieldExplorer() {
     }
   }
 
-  if (loading) return <main className="min-h-screen bg-[#101010]" />
+  // CLAUDE.md: the Clerk auth control lives in the page header on every page,
+  // no exceptions — including these early-return states, which used to skip
+  // straight to a bare <main> and drop the header (and the logo) entirely.
+  if (loading) {
+    return (
+      <main className="min-h-screen bg-[#101010] text-white">
+        <EmptyStateHeader />
+      </main>
+    )
+  }
   if (!active) {
     return (
-      <main className="grid min-h-screen place-items-center bg-[#101010] px-6 text-center text-sm text-white/65">
-        Chưa có lĩnh vực đã xuất bản.
+      <main className="relative min-h-screen overflow-hidden bg-black text-white">
+        <EmptyStateVideoBackground />
+        {/* Same scrim treatment as the active-field view below: without it,
+            text sitting directly on the video is unreadable whenever a
+            bright/busy frame plays underneath. */}
+        <div className="pointer-events-none fixed inset-0 z-[1] bg-[linear-gradient(180deg,rgba(0,0,0,.46),transparent_22%,transparent_66%,rgba(0,0,0,.5)),linear-gradient(90deg,rgba(4,8,14,.38),rgba(4,8,14,.08)_48%,rgba(4,8,14,.36))]" />
+        <div className="pointer-events-none fixed inset-0 z-[2] bg-[radial-gradient(ellipse_at_50%_48%,rgba(0,0,0,.46),rgba(0,0,0,.12)_45%,transparent_70%)]" />
+        <div className="relative z-10 grid min-h-screen grid-rows-[auto_1fr]">
+          <EmptyStateHeader />
+          <div className="grid place-items-center px-6 text-center">
+            <p className="rounded-full border border-white/20 bg-black/55 px-4 py-2 text-sm font-medium text-white shadow-lg backdrop-blur-sm [text-shadow:0_2px_8px_rgba(0,0,0,.95)]">
+              Chưa có lĩnh vực đã xuất bản.
+            </p>
+          </div>
+        </div>
       </main>
     )
   }
@@ -215,7 +236,10 @@ export function FieldExplorer() {
       roadmap.fields.some((field) => field.id === active.id)
     ) ?? []
   const roadmapCount = fieldRoadmaps.length
-  const cta = fieldRoadmapCta(active, fieldRoadmaps)
+  const fieldHref =
+    roadmapCount === 1 && fieldRoadmaps[0]
+      ? `/roadmap/${fieldRoadmaps[0].id}`
+      : `/roadmaps?field=${encodeURIComponent(active.slug)}`
   const rail = zen || galleryRail
   const selectByIndex = (nextIndex: number) => {
     const next = visible[nextIndex]
@@ -343,21 +367,22 @@ export function FieldExplorer() {
           {active.description ||
             "Khám phá các roadmap được tuyển chọn trong lĩnh vực này."}
         </p>
-        {!cta.disabled && cta.href ? (
+        {roadmapCount > 0 ? (
           <Link
-            href={cta.href}
-            className="mt-8 inline-flex items-center gap-2 rounded-lg bg-primary px-6 py-4 text-sm font-bold shadow-float transition hover:bg-[var(--color-primary-active)]"
+            href={fieldHref}
+            className="mt-8 inline-flex items-center gap-2 rounded-full bg-[#ff385c] px-6 py-4 text-sm font-bold shadow-[0_10px_30px_rgba(255,56,92,.22)] transition hover:bg-[#e31c5f]"
           >
-            {cta.label}{" "}
+            {roadmapCount === 1
+              ? "Khám phá roadmap"
+              : `Xem ${roadmapCount} roadmap`}{" "}
             <ArrowRight className="size-4" />
           </Link>
         ) : (
           <span
             aria-disabled="true"
-            title={cta.reason ?? undefined}
-            className="mt-8 inline-flex cursor-not-allowed items-center gap-2 rounded-lg bg-[var(--color-primary-disabled)] px-6 py-4 text-sm font-bold text-white"
+            className="mt-8 inline-flex cursor-not-allowed items-center gap-2 rounded-full bg-[#ffd1da] px-6 py-4 text-sm font-bold text-white"
           >
-            {cta.label} <ArrowRight className="size-4" />
+            Chưa có roadmap <ArrowRight className="size-4" />
           </span>
         )}
       </section>
@@ -382,7 +407,7 @@ export function FieldExplorer() {
             className={cn(
               "group w-[76px] shrink-0 overflow-hidden rounded-xl border border-white/35 bg-black/20 text-left transition hover:border-white/70 sm:w-[82px]",
               rail && "h-[70px] w-[78px]",
-              field.id === active.id && "border-primary ring-1 ring-primary"
+              field.id === active.id && "border-[#ff385c] ring-1 ring-[#ff385c]"
             )}
           >
             <span
@@ -427,7 +452,7 @@ export function FieldExplorer() {
             max={Math.max(visible.length - 1, 0)}
             value={index}
             onChange={(event) => selectByIndex(Number(event.target.value))}
-            className="h-1 flex-1 cursor-pointer accent-primary"
+            className="h-1 flex-1 cursor-pointer accent-[#ff385c]"
           />
           <span className="text-[10px] font-bold text-white">
             {index + 1}/{visible.length}
@@ -484,5 +509,107 @@ export function FieldExplorer() {
         }
       `}</style>
     </main>
+  )
+}
+
+/**
+ * Header for the loading / no-published-field states — just the logo and
+ * auth control, none of the gallery controls (zen, rail, fullscreen) since
+ * there's no gallery to control yet.
+ */
+function EmptyStateHeader() {
+  return (
+    <header className="flex h-16 items-center justify-between bg-gradient-to-b from-black/45 to-transparent px-5 sm:px-8">
+      <span className="text-xl font-extrabold tracking-[-1px] text-white [text-shadow:0_2px_12px_rgba(0,0,0,.92)]">
+        lh222k
+      </span>
+      <AuthHeader tone="on-dark" />
+    </header>
+  )
+}
+
+const EMPTY_STATE_VIDEO_URL =
+  "https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260328_115001_bcdaa3b4-03de-47e7-ad63-ae3e392c32d4.mp4"
+
+/**
+ * Full-viewport muted autoplay video for the no-published-field state.
+ * Loops itself via a manual fade (not the native `loop` attribute) so the
+ * loop point gets a 500ms crossfade instead of a hard cut: fades in on
+ * load/loop-restart, starts fading out 0.55s before the clip ends, and on
+ * `ended` snaps to 0 opacity, rewinds, and fades back in. Each fade resumes
+ * from the video's current opacity rather than snapping to 0/1, so a fade-out
+ * interrupted by a new event doesn't visibly jump.
+ */
+function EmptyStateVideoBackground() {
+  const videoRef = useRef<HTMLVideoElement>(null)
+  const fadingOutRef = useRef(false)
+  const rafRef = useRef<number | null>(null)
+
+  useEffect(() => {
+    const video = videoRef.current
+    if (!video) return
+
+    const cancelFade = () => {
+      if (rafRef.current !== null) {
+        cancelAnimationFrame(rafRef.current)
+        rafRef.current = null
+      }
+    }
+
+    const fadeTo = (target: number, duration: number) => {
+      cancelFade()
+      const current = Number.parseFloat(video.style.opacity)
+      const from = Number.isNaN(current) ? (target === 1 ? 0 : 1) : current
+      const start = performance.now()
+      const tick = (now: number) => {
+        const t = Math.min((now - start) / duration, 1)
+        video.style.opacity = String(from + (target - from) * t)
+        rafRef.current = t < 1 ? requestAnimationFrame(tick) : null
+      }
+      rafRef.current = requestAnimationFrame(tick)
+    }
+
+    const handleLoadedData = () => fadeTo(1, 500)
+
+    const handleTimeUpdate = () => {
+      if (fadingOutRef.current) return
+      const remaining = video.duration - video.currentTime
+      if (!Number.isNaN(remaining) && remaining <= 0.55) {
+        fadingOutRef.current = true
+        fadeTo(0, 500)
+      }
+    }
+
+    const handleEnded = () => {
+      video.style.opacity = "0"
+      window.setTimeout(() => {
+        fadingOutRef.current = false
+        video.currentTime = 0
+        void video.play()
+        fadeTo(1, 500)
+      }, 100)
+    }
+
+    video.addEventListener("loadeddata", handleLoadedData)
+    video.addEventListener("timeupdate", handleTimeUpdate)
+    video.addEventListener("ended", handleEnded)
+    return () => {
+      cancelFade()
+      video.removeEventListener("loadeddata", handleLoadedData)
+      video.removeEventListener("timeupdate", handleTimeUpdate)
+      video.removeEventListener("ended", handleEnded)
+    }
+  }, [])
+
+  return (
+    <video
+      ref={videoRef}
+      aria-hidden="true"
+      className="absolute inset-0 h-full w-full translate-y-[17%] object-cover opacity-0"
+      src={EMPTY_STATE_VIDEO_URL}
+      muted
+      autoPlay
+      playsInline
+    />
   )
 }

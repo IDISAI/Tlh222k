@@ -67,10 +67,21 @@ for (const project of manifest.projects) {
 
     const rows = scopes.get(v.key) ?? []
     const want = new Set(manifest.environments)
-    const isExactRow = (s) => s.size === want.size && [...want].every((e) => s.has(e))
-    const alreadyMerged = rows.length === 1 && isExactRow(rows[0])
+    // A single row that covers every wanted environment is fine even if it
+    // also covers extras (e.g. Development) — only flag it when the row is
+    // split across multiple separate entries.
+    const coversWanted = (s) => [...want].every((e) => s.has(e))
+    const alreadyMerged = rows.length === 1 && coversWanted(rows[0])
     if (alreadyMerged) {
       console.log(`  OK     ${v.key} already a single entry scoped to ${[...want].join(", ")}`)
+      continue
+    }
+    if (v.action === "ok") {
+      // Manifest says this is fine, but live state disagrees — flag the
+      // drift instead of guessing at a value to merge with.
+      console.log(
+        `  DRIFT  ${v.key} marked "ok" in manifest but Vercel shows ${rows.length} row(s) (${rows.map((s) => [...s].join("+")).join(", ") || "none"}) — re-check, manifest may be stale`
+      )
       continue
     }
     if (rows.length === 0) {

@@ -10,7 +10,7 @@ import { AdminSidebar } from "@/components/admin-sidebar"
 import { cn } from "@workspace/ui/lib/utils"
 import { getIsAuthenticated } from "@/lib/auth"
 
-export default async function RootLayout({
+export default async function DashboardRootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode

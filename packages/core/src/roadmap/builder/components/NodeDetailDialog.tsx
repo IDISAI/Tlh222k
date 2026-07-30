@@ -20,6 +20,7 @@ import {
 } from "@workspace/ui/components/card"
 import { Input } from "@workspace/ui/components/input"
 import { Label } from "@workspace/ui/components/label"
+import { RequiredMark } from "@workspace/ui/components/required-mark"
 import {
   Select,
   SelectContent,
@@ -89,12 +90,13 @@ function ArticleCreateForm({
     >
       <p className="text-xs font-medium">Bài viết mới</p>
       <div className="space-y-1">
-        <Label className="text-xs">Tiêu đề *</Label>
+        <Label className="text-xs">Tiêu đề<RequiredMark /></Label>
         <Input
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           placeholder="Tên bài viết"
           className="h-7 text-xs"
+          aria-required="true"
           autoFocus
         />
       </div>

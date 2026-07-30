@@ -35,6 +35,9 @@ const COLUMNS: { heading: string; links: string[] }[] = [
  * pickers. Flat — the system's one shadow tier is not used here.
  */
 export function SiteFooter() {
+  // The landing page, the Field pages, and the roadmap canvas each render
+  // their own full-height chrome, so the shared footer would stack a second
+  // one underneath.
   const pathname = usePathname()
   if (
     pathname === "/" ||
