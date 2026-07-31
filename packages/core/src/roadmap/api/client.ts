@@ -121,13 +121,24 @@ function makeClient(): ApolloClient<NormalizedCacheObject> {
   })
 
   const authLink = setContext(async (_operation, prevContext) => {
-    const headers = (prevContext.headers ?? {}) as Record<string, string>
+    let headers = (prevContext.headers ?? {}) as Record<string, string>
     const devRole = devAuthRole(
       process.env.NODE_ENV,
       process.env.NEXT_PUBLIC_DEV_AUTH_ROLE,
       process.env.NEXT_PUBLIC_ENABLE_DEV_AUTH_BYPASS
     )
     const token = devRole ? `dev:${devRole}` : await getClerkToken()
+    // The branch-specific svc-api preview picked by previewSvcApiUrl() sits
+    // behind Vercel Deployment Protection. A browser tab clears that via the
+    // visitor's own Vercel SSO session, but this server-to-server call (SSR /
+    // route handler) has none — so it needs the automation bypass secret.
+    // Server-only: never send a bypass secret from browser-side code.
+    if (typeof window === "undefined" && previewSvcApiUrl()) {
+      const bypassSecret = process.env.SVC_API_AUTOMATION_BYPASS_SECRET
+      if (bypassSecret) {
+        headers = { ...headers, "x-vercel-protection-bypass": bypassSecret }
+      }
+    }
     return {
       headers: token ? { ...headers, authorization: `Bearer ${token}` } : headers,
     }
