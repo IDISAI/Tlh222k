@@ -39,7 +39,7 @@ describe("NotebookWorkspace", () => {
 
     const cols = columns(container)
     expect(cols).toEqual(["ASIDE", "DIV", "ASIDE"])
-    expect(container.firstElementChild!.className).toContain("max-w-7xl")
+    expect(container.firstElementChild!.className).toContain("max-w-[120rem]")
   })
 
   it("omits the sidebar when the notebook has no headings", () => {
