@@ -33,6 +33,14 @@ const nextConfig: NextConfig = {
   assetPrefix: isProd ? "/admin-static" : "http://localhost:3002",
   allowedDevOrigins: ["localhost:3000"],
   transpilePackages: ["@workspace/ui", "@workspace/core", "@workspace/db"],
+  // Vercel's System Environment Variables (VERCEL_ENV, VERCEL_GIT_COMMIT_REF)
+  // aren't NEXT_PUBLIC_-prefixed, so Next won't inline them into the browser
+  // bundle on its own. @workspace/core's svcApiUrl() needs both, browser-side,
+  // to route a Preview deployment to its own branch's svc-api instead of prod.
+  env: {
+    NEXT_PUBLIC_VERCEL_ENV: process.env.VERCEL_ENV ?? "",
+    NEXT_PUBLIC_VERCEL_GIT_COMMIT_REF: process.env.VERCEL_GIT_COMMIT_REF ?? "",
+  },
   // Lets the CMS pages call `forbidden()`, which answers 403. Redirecting a
   // Viewer to a page that says "403" still returns 200, so nothing outside a
   // browser — a fetch, a crawler, a test — can tell refusal from success.

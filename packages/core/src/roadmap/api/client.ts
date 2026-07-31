@@ -11,10 +11,35 @@ import { setContext } from "@apollo/client/link/context"
 import { devAuthRole } from "../../navigation"
 import { RoadmapServiceError, type RoadmapErrorCode } from "../types"
 
+// Matches Vercel's own git-branch alias slugging closely enough for normal
+// branch names (lowercase, non-alnum runs collapsed to one hyphen, trimmed).
+function slugifyBranch(branch: string): string {
+  return branch
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+}
+
+// On a Vercel Preview deployment, NEXT_PUBLIC_SVC_API_URL is one static value
+// shared by every branch (Vercel env vars aren't per-branch), so it can only
+// point at one fixed backend — normally prod. That silently serves an OLDER
+// GraphQL schema to a feature branch that added fields, producing
+// GRAPHQL_VALIDATION_FAILED instead of a clear "wrong backend" signal.
+// NEXT_PUBLIC_SVC_API_PREVIEW_URL_TEMPLATE (with a `{branch}` placeholder)
+// lets Preview route to THIS branch's own svc-api preview deployment instead.
+function previewSvcApiUrl(): string | undefined {
+  if (process.env.NEXT_PUBLIC_VERCEL_ENV !== "preview") return undefined
+  const template = process.env.NEXT_PUBLIC_SVC_API_PREVIEW_URL_TEMPLATE
+  const branch = process.env.NEXT_PUBLIC_VERCEL_GIT_COMMIT_REF
+  if (!template || !branch) return undefined
+  return template.replace("{branch}", slugifyBranch(branch))
+}
+
 // NEXT_PUBLIC_SVC_ROADMAP_URL is the legacy name kept as a fallback after the
 // svc-roadmap → svc-api rename, so existing .env.local / Vercel envs still work.
 export function svcApiUrl(): string {
   return (
+    previewSvcApiUrl() ??
     process.env.NEXT_PUBLIC_SVC_API_URL ??
     process.env.NEXT_PUBLIC_SVC_ROADMAP_URL ??
     ""
