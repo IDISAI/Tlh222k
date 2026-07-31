@@ -2,7 +2,7 @@ name: Deploy Staging
 
 on:
   push:
-    branches: [develop, "release/**"]
+    branches: [develop, "release/**", "feat/**"]
 
 concurrency:
   group: staging-${{ github.ref }}
