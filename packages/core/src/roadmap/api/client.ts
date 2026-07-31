@@ -52,8 +52,16 @@ export function roadmapBackendEnabled(): boolean {
 }
 
 function endpoint(): string {
+  if (
+    typeof window !== "undefined" &&
+    process.env.NEXT_PUBLIC_VERCEL_ENV === "preview" &&
+    svcApiUrl()
+  ) {
+    return "/api/graphql"
+  }
   return `${svcApiUrl().replace(/\/$/, "")}/graphql`
 }
+
 
 interface ClerkGlobal {
   loaded?: boolean
