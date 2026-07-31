@@ -2,7 +2,7 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": null,
   "installCommand": "pnpm install --frozen-lockfile",
-  "buildCommand": "node -e \"const { execSync } = require('node:child_process'); const env = { ...process.env }; if (!env.DATABASE_URL) throw new Error('DATABASE_URL is required for svc-api build'); if (!env.DIRECT_URL) env.DIRECT_URL = env.DATABASE_URL.replace('-pooler.', '.'); execSync('pnpm -F @workspace/db db:push && pnpm --filter svc-api exec nest build', { stdio: 'inherit', env });\"",
+  "buildCommand": "node scripts/vercel-build.mjs",
   "outputDirectory": "public",
   "functions": {
     "api/index.ts": {

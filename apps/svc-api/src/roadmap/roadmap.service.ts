@@ -20,7 +20,6 @@ import {
   normalizeFieldDescription,
   normalizeLevel,
   normalizePublishStatus,
-  publishStatusFromLegacy,
   reachesLearners,
   slugify,
   type ArticleType,
