@@ -20,7 +20,6 @@ import {
 } from "lucide-react"
 
 import {
-  FallbackNotebookStore,
   HttpNotebookStore,
   RoadmapService,
   type NotebookSummary,
@@ -33,7 +32,6 @@ import { Input } from "@workspace/ui/components/input"
 import { RequiredMark } from "@workspace/ui/components/required-mark"
 import { cn } from "@workspace/ui/lib/utils"
 
-const KERNEL_SERVER_URL = process.env.NEXT_PUBLIC_KERNEL_SERVER_URL
 const PUBLIC_WEB_ORIGIN = process.env.NEXT_PUBLIC_WEB_URL ?? "http://localhost:3000"
 
 export function NotebooksIndexClient() {
@@ -65,12 +63,11 @@ function NotebooksLoading() {
 
 function NotebooksIndex({ getToken }: { getToken: () => Promise<string | null> }) {
   const router = useRouter()
+  // Blob is the CRUD source of truth (web reads published notebooks from it
+  // too) — kernel-server is execution-only, never notebook storage.
   const store = useMemo(() => {
     const apiBase = typeof window !== "undefined" && window.location.pathname.startsWith("/admin") ? "/admin" : ""
-    const fallback = new HttpNotebookStore(apiBase, getToken)
-    return KERNEL_SERVER_URL
-      ? new FallbackNotebookStore(new HttpNotebookStore(KERNEL_SERVER_URL, getToken, 5_000), fallback)
-      : fallback
+    return new HttpNotebookStore(apiBase, getToken)
   }, [getToken])
   const [notebooks, setNotebooks] = useState<NotebookSummary[] | null>(null)
   const [title, setTitle] = useState("")
