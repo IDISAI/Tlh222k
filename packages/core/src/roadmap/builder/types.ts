@@ -11,6 +11,15 @@ export type BuilderFlowNode = Node<
      * (notion-article-node Req 6.2).
      */
     viewerMode?: boolean
+    /** Owner card receives the scarce Rausch label on viewer and builder. */
+    isOwner?: boolean
+    /**
+     * Whether this placement counts toward roadmap progress. Carried per
+     * membership rather than per block, because the same block can be required
+     * on one canvas and optional on another. Undefined means required, which
+     * matches both the column default and how every pre-existing block behaves.
+     */
+    isRequired?: boolean
     /** Optional double-click handler to bypass React Flow event swallowing. */
     onDoubleClick?: () => void
   },

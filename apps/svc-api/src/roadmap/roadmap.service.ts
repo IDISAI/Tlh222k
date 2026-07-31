@@ -8,13 +8,18 @@ import { assertCanWrite, canAccessInternal, type CurrentUser } from "../auth/cle
 import {
   MAX_TITLE_LENGTH,
   NODE_TYPES,
+  blockIsListed,
+  blockOpensByLink,
   isNodeType,
   legacyIsPublished,
+  ATTACHMENT_REJECTION_MESSAGES,
+  inspectAttachment,
+  PUBLISH_BLOCKER_MESSAGES,
+  roadmapPublishEligibility,
   normalizeHttpUrl,
   normalizeFieldDescription,
   normalizeLevel,
   normalizePublishStatus,
-  publishStatusFromLegacy,
   reachesLearners,
   slugify,
   type ArticleType,
@@ -89,7 +94,16 @@ export interface RoadmapDto {
   description: string | null
   thumbnailUrl: string | null
   publishStatus: PublishStatus
+  discoverability: "PUBLIC" | "PRIVATE"
+  visibility: Visibility
+  ownerId: string | null
+  roleTags: string[]
+  dueDate: string | null
+  firstPublishedAt: string | null
+  archivedAt: string | null
   nodeCount: number
+  /** Distinct learners who have started content inside this roadmap. */
+  learnerCount: number
   createdAt?: string | null
   updatedAt?: string | null
 }
@@ -124,6 +138,58 @@ export interface NodeDto {
    * the GraphQL field is a non-null list, so callers see `[]`, never null.
    */
   fields: FieldDto[]
+  /**
+   * Distinct learners who started anything in this block's subtree. Only the
+   * public block list fills it in; elsewhere it stays 0 rather than absent so
+   * the GraphQL non-null contract holds.
+   */
+  learnerCount?: number
+  /** Block creation time. Discovery sorts on it; it is not a publish time. */
+  createdAt?: string | null
+  /** Last edit time. */
+  updatedAt?: string | null
+  /** Ordered learner outcomes. Empty when the node declares none. */
+  keyResults?: KeyResultDto[]
+}
+
+export interface LearnerRoadmapRef {
+  ownerNodeId: string
+  title: string
+  completedAt?: string
+}
+
+export interface LearnerActivityDto {
+  clerkUserId: string
+  startedNodeCount: number
+  completedNodeCount: number
+  completedRoadmaps: LearnerRoadmapRef[]
+  favoriteRoadmaps: LearnerRoadmapRef[]
+  lastActiveAt: string | null
+}
+
+export interface AttachmentDto {
+  id: string
+  nodeId: string
+  name: string
+  url: string
+  contentType: string
+  sizeBytes: number
+  createdAt: string
+}
+
+export interface KeyResultDto {
+  id: string
+  text: string
+  position: number
+}
+
+export interface NotificationDto {
+  id: string
+  ownerNodeId: string
+  roadmapTitle: string
+  roadmapSlug: string
+  publishedAt: string
+  readAt: string | null
 }
 
 export interface FieldDto {
@@ -193,7 +259,17 @@ function toFieldDto(f: DbField): FieldDto {
 }
 
 /** A `Node` row with its labels joined in. */
-type DbNodeWithFields = DbNode & { fields?: DbField[] }
+/**
+ * A cap on Key Results. A node listing thirty outcomes is not describing what
+ * a learner will be able to do, it is pasting a syllabus — and the detail
+ * panel it renders in has no room for that.
+ */
+const MAX_KEY_RESULTS = 12
+
+type DbNodeWithFields = DbNode & {
+  fields?: DbField[]
+  keyResults?: { id: string; text: string; position: number }[]
+}
 
 export interface GraphDto {
   roadmap: RoadmapDto
@@ -205,6 +281,10 @@ export interface CreateRoadmapInput {
   title: string
   description?: string | null
   thumbnailUrl?: string | null
+  discoverability?: "PUBLIC" | "PRIVATE" | null
+  visibility?: Visibility | null
+  roleTags?: string[] | null
+  dueDate?: string | null
 }
 
 export interface UpdateRoadmapInput {
@@ -212,6 +292,10 @@ export interface UpdateRoadmapInput {
   description?: string | null
   thumbnailUrl?: string | null
   publishStatus?: PublishStatus | null
+  discoverability?: "PUBLIC" | "PRIVATE" | null
+  visibility?: Visibility | null
+  roleTags?: string[] | null
+  dueDate?: string | null
 }
 
 export interface CreateFieldInput {
@@ -277,6 +361,42 @@ export interface SaveNodeInput {
   parentId?: string | null
   positionX: number
   positionY: number
+}
+
+export type CompositionScope = "DRAFT" | "PUBLISHED"
+export type CompositionEdgeKind = "solid" | "dashed"
+
+export interface CompositionMemberDto {
+  nodeId: string
+  x: number
+  y: number
+  isRequired: boolean
+}
+
+export interface CompositionEdgeDto {
+  id: string
+  sourceId: string
+  targetId: string
+  kind: CompositionEdgeKind
+}
+
+export interface CompositionDto {
+  ownerId: string
+  members: CompositionMemberDto[]
+  edges: CompositionEdgeDto[]
+}
+
+export interface ReplaceCompositionMemberInput {
+  nodeId: string
+  x: number
+  y: number
+  isRequired?: boolean | null
+}
+
+export interface ReplaceCompositionEdgeInput {
+  sourceId: string
+  targetId: string
+  kind: CompositionEdgeKind
 }
 
 @Injectable()
@@ -374,7 +494,10 @@ export class RoadmapService implements OnModuleInit {
       },
       orderBy: { createdAt: "asc" },
     })
-    return rows.map((r) => this.toRoadmapDto(r, r._count.nodes))
+    const learners = await this.learnerCounts(rows.map((r) => r.id))
+    return rows.map((r) =>
+      this.toRoadmapDto(r, r._count.nodes, learners.get(r.id) ?? 0)
+    )
   }
 
   async roadmapBySlug(slug: string): Promise<RoadmapDto | null> {
@@ -384,7 +507,384 @@ export class RoadmapService implements OnModuleInit {
         _count: { select: { nodes: { where: { isDeleted: false } } } },
       },
     })
-    return r ? this.toRoadmapDto(r, r._count.nodes) : null
+    if (!r) return null
+    const learners = await this.learnerCounts([r.id])
+    return this.toRoadmapDto(r, r._count.nodes, learners.get(r.id) ?? 0)
+  }
+
+  /**
+   * Unique learners per roadmap: people who have started content inside it.
+   *
+   * Counted as distinct `clerkUserId`, never as rows — one learner working
+   * through twelve nodes is one learner. Page views are deliberately not part
+   * of this: the access contract makes popularity mean "someone began", so a
+   * roadmap cannot climb the sort by being opened and abandoned.
+   *
+   * One grouped query for the whole page rather than a count per card, because
+   * the roadmap list renders every published roadmap at once.
+   */
+  /**
+   * Replace a node's Key Results with an ordered list.
+   *
+   * Replace rather than patch: the editor works on the whole list — reordering
+   * and deleting as much as adding — so sending the final state is simpler to
+   * reason about than a diff, and cannot leave an orphaned row behind.
+   * Position is the array index, so the order sent is the order read.
+   */
+  async setNodeKeyResults(
+    nodeId: string,
+    texts: string[],
+    user: CurrentUser | null
+  ): Promise<KeyResultDto[]> {
+    assertCanWrite(user)
+    const node = await this.prisma.node.findUnique({
+      where: { id: nodeId },
+      select: { id: true, isDeleted: true },
+    })
+    if (!node || node.isDeleted) throw new RoadmapError("NOT_FOUND")
+
+    const cleaned = texts
+      .map((text) => text.trim())
+      .filter(Boolean)
+      .slice(0, MAX_KEY_RESULTS)
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.nodeKeyResult.deleteMany({ where: { nodeId } })
+      for (const [position, text] of cleaned.entries()) {
+        await tx.nodeKeyResult.create({ data: { nodeId, text, position } })
+      }
+    })
+
+    const rows = await this.prisma.nodeKeyResult.findMany({
+      where: { nodeId },
+      orderBy: { position: "asc" },
+    })
+    return rows.map((row) => ({
+      id: row.id,
+      text: row.text,
+      position: row.position,
+    }))
+  }
+
+  /**
+   * A node's attachments, gated by the node's own entitlement.
+   *
+   * The attachment carries no access setting of its own: it inherits the
+   * node's, so an INTERNAL node's files are INTERNAL without anyone having to
+   * remember to say so twice. Refusing is deliberate rather than returning an
+   * empty list — an empty list reads as "no attachments", which is a different
+   * fact from "not for you".
+   */
+  async nodeAttachments(
+    nodeId: string,
+    user: CurrentUser | null
+  ): Promise<AttachmentDto[]> {
+    const node = await this.prisma.node.findUnique({
+      where: { id: nodeId },
+      select: { id: true, isDeleted: true, visibility: true },
+    })
+    if (!node || node.isDeleted) throw new RoadmapError("NOT_FOUND")
+    if (
+      normalizeVisibility(node.visibility) === "INTERNAL" &&
+      !canAccessInternal(user)
+    ) {
+      throw new RoadmapError(
+        "PERMISSION_DENIED",
+        "Internal content requires AIO access"
+      )
+    }
+
+    const rows = await this.prisma.nodeAttachment.findMany({
+      where: { nodeId },
+      orderBy: { createdAt: "asc" },
+    })
+    return rows.map((row) => ({
+      id: row.id,
+      nodeId: row.nodeId,
+      name: row.name,
+      url: row.url,
+      contentType: row.contentType,
+      sizeBytes: row.sizeBytes,
+      createdAt: row.createdAt.toISOString(),
+    }))
+  }
+
+  /**
+   * Record an uploaded attachment.
+   *
+   * The file itself is stored by the caller (Vercel Blob); this records where
+   * it landed. The format rules run again here rather than trusting the client
+   * that already checked them — a browser check is a courtesy to the person
+   * uploading, not a boundary.
+   */
+  async addNodeAttachment(
+    input: {
+      nodeId: string
+      name: string
+      url: string
+      contentType: string
+      sizeBytes: number
+    },
+    user: CurrentUser | null
+  ): Promise<AttachmentDto> {
+    const actor = assertCanWrite(user)
+    const node = await this.prisma.node.findUnique({
+      where: { id: input.nodeId },
+      select: { id: true, isDeleted: true },
+    })
+    if (!node || node.isDeleted) throw new RoadmapError("NOT_FOUND")
+
+    const decision = inspectAttachment({
+      name: input.name,
+      size: input.sizeBytes,
+      type: input.contentType,
+    })
+    if (!decision.ok) {
+      throw new RoadmapError(
+        "VALIDATION",
+        ATTACHMENT_REJECTION_MESSAGES[decision.code]
+      )
+    }
+
+    const row = await this.prisma.nodeAttachment.create({
+      data: {
+        nodeId: input.nodeId,
+        name: decision.sanitizedName,
+        url: input.url,
+        contentType: decision.contentType,
+        sizeBytes: input.sizeBytes,
+        uploadedBy: actor.userId,
+      },
+    })
+    return {
+      id: row.id,
+      nodeId: row.nodeId,
+      name: row.name,
+      url: row.url,
+      contentType: row.contentType,
+      sizeBytes: row.sizeBytes,
+      createdAt: row.createdAt.toISOString(),
+    }
+  }
+
+  async deleteNodeAttachment(
+    id: string,
+    user: CurrentUser | null
+  ): Promise<boolean> {
+    assertCanWrite(user)
+    const result = await this.prisma.nodeAttachment.deleteMany({ where: { id } })
+    return result.count > 0
+  }
+
+  /**
+   * One learner's activity, for the Admin/Super-admin learner profile.
+   *
+   * Identity stays with Clerk — this returns ids and counts, and the caller
+   * joins the name, avatar and email from Clerk. Duplicating those here would
+   * make this service a second, staler source of personal data.
+   */
+  async learnerActivity(
+    clerkUserId: string,
+    user: CurrentUser | null
+  ): Promise<LearnerActivityDto> {
+    assertCanWrite(user)
+
+    const [progress, completions, favorites] = await Promise.all([
+      this.prisma.userProgress.findMany({
+        where: { clerkUserId, status: { in: ["in_progress", "done"] } },
+        orderBy: { updatedAt: "desc" },
+        select: {
+          nodeId: true,
+          status: true,
+          updatedAt: true,
+          node: { select: { title: true, roadmapId: true } },
+        },
+      }),
+      this.prisma.userRoadmapCompletion.findMany({
+        where: { clerkUserId },
+        orderBy: { completedAt: "desc" },
+        select: {
+          ownerNodeId: true,
+          completedAt: true,
+          owner: { select: { title: true } },
+        },
+      }),
+      this.prisma.userRoadmapFavorite.findMany({
+        where: { clerkUserId },
+        orderBy: { createdAt: "desc" },
+        select: { ownerNodeId: true, owner: { select: { title: true } } },
+      }),
+    ])
+
+    return {
+      clerkUserId,
+      startedNodeCount: progress.length,
+      completedNodeCount: progress.filter((row) => row.status === "done").length,
+      completedRoadmaps: completions.map((row) => ({
+        ownerNodeId: row.ownerNodeId,
+        title: row.owner.title,
+        completedAt: row.completedAt.toISOString(),
+      })),
+      favoriteRoadmaps: favorites.map((row) => ({
+        ownerNodeId: row.ownerNodeId,
+        title: row.owner.title,
+      })),
+      // The most recent progress row IS the last activity: nothing else a
+      // learner does writes a timestamp we could honestly call activity.
+      lastActiveAt: progress[0]?.updatedAt.toISOString() ?? null,
+    }
+  }
+
+  /** This caller's in-app notifications, newest first. Guests have none. */
+  async myNotifications(
+    user: CurrentUser | null
+  ): Promise<NotificationDto[]> {
+    if (!user) return []
+    const rows = await this.prisma.roadmapNotification.findMany({
+      where: { clerkUserId: user.userId },
+      orderBy: { createdAt: "desc" },
+      take: 50,
+      include: { owner: { select: { id: true, title: true, slug: true } } },
+    })
+    return rows.map((row) => ({
+      id: row.id,
+      ownerNodeId: row.ownerNodeId,
+      roadmapTitle: row.owner.title,
+      roadmapSlug: row.owner.slug,
+      publishedAt: row.publishedAt.toISOString(),
+      readAt: row.readAt?.toISOString() ?? null,
+    }))
+  }
+
+  async markNotificationRead(
+    id: string,
+    user: CurrentUser | null
+  ): Promise<boolean> {
+    if (!user) throw new RoadmapError("PERMISSION_DENIED")
+    // Scoped by owner in the same statement: without the clerkUserId in the
+    // filter, anyone holding an id could mark someone else's card read.
+    const result = await this.prisma.roadmapNotification.updateMany({
+      where: { id, clerkUserId: user.userId, readAt: null },
+      data: { readAt: new Date() },
+    })
+    return result.count > 0
+  }
+
+  /** Absent preference means email off — never treat a missing row as consent. */
+  async myEmailOptIn(user: CurrentUser | null): Promise<boolean> {
+    if (!user) return false
+    const row = await this.prisma.notificationPreference.findUnique({
+      where: { clerkUserId: user.userId },
+      select: { emailOptedIn: true },
+    })
+    return row?.emailOptedIn ?? false
+  }
+
+  async setEmailOptIn(
+    optedIn: boolean,
+    user: CurrentUser | null
+  ): Promise<boolean> {
+    if (!user) throw new RoadmapError("PERMISSION_DENIED")
+    await this.prisma.notificationPreference.upsert({
+      where: { clerkUserId: user.userId },
+      create: { clerkUserId: user.userId, emailOptedIn: optedIn },
+      update: { emailOptedIn: optedIn },
+    })
+    return optedIn
+  }
+
+  /** Roadmaps this caller has favourited. Guests hold no list. */
+  async myFavoriteRoadmapIds(user: CurrentUser | null): Promise<string[]> {
+    if (!user) return []
+    const rows = await this.prisma.userRoadmapFavorite.findMany({
+      where: { clerkUserId: user.userId },
+      orderBy: { createdAt: "desc" },
+      select: { ownerNodeId: true },
+    })
+    return rows.map((row) => row.ownerNodeId)
+  }
+
+  /**
+   * Toggle a favourite. Returns the resulting state so an optimistic UI can
+   * reconcile against what was actually stored rather than assume.
+   */
+  async setRoadmapFavorite(
+    ownerNodeId: string,
+    favorite: boolean,
+    user: CurrentUser | null
+  ): Promise<boolean> {
+    // Favouriting is account-backed by definition, so a guest gets a refusal
+    // rather than a silent no-op — the UI needs to know to offer sign-in.
+    if (!user) throw new RoadmapError("PERMISSION_DENIED")
+
+    if (!favorite) {
+      await this.prisma.userRoadmapFavorite.deleteMany({
+        where: { clerkUserId: user.userId, ownerNodeId },
+      })
+      return false
+    }
+
+    const node = await this.prisma.node.findUnique({
+      where: { id: ownerNodeId },
+      select: { id: true, isDeleted: true },
+    })
+    if (!node || node.isDeleted) throw new RoadmapError("NOT_FOUND")
+
+    await this.prisma.userRoadmapFavorite.upsert({
+      where: {
+        clerkUserId_ownerNodeId: { clerkUserId: user.userId, ownerNodeId },
+      },
+      create: { clerkUserId: user.userId, ownerNodeId },
+      // Keep the original createdAt: re-favouriting something already
+      // favourited should not reorder the learner's list.
+      update: {},
+    })
+    return true
+  }
+
+  /**
+   * Same rule as `learnerCounts`, but scoped to an explicit set of nodes —
+   * used by the synthetic roadmap a single block is wrapped in, where the
+   * block's subtree is the whole of "inside this roadmap".
+   */
+  private async learnersOfNodes(nodeIds: string[]): Promise<number> {
+    if (nodeIds.length === 0) return 0
+    const rows = await this.prisma.userProgress.findMany({
+      where: {
+        status: { in: ["in_progress", "done"] },
+        nodeId: { in: nodeIds },
+      },
+      select: { clerkUserId: true },
+      distinct: ["clerkUserId"],
+    })
+    return rows.length
+  }
+
+  private async learnerCounts(
+    roadmapIds: string[]
+  ): Promise<Map<string, number>> {
+    const counts = new Map<string, number>()
+    if (roadmapIds.length === 0) return counts
+
+    const rows = await this.prisma.userProgress.findMany({
+      where: {
+        // "locked" is the resting state every node reports before anyone opens
+        // it, so counting it would credit a roadmap with learners it never had.
+        status: { in: ["in_progress", "done"] },
+        node: { roadmapId: { in: roadmapIds }, isDeleted: false },
+      },
+      select: { clerkUserId: true, node: { select: { roadmapId: true } } },
+    })
+
+    const seen = new Map<string, Set<string>>()
+    for (const row of rows) {
+      const roadmapId = row.node.roadmapId
+      const users = seen.get(roadmapId) ?? new Set<string>()
+      users.add(row.clerkUserId)
+      seen.set(roadmapId, users)
+    }
+    for (const [roadmapId, users] of seen) counts.set(roadmapId, users.size)
+    return counts
   }
 
   /**
@@ -440,6 +940,7 @@ export class RoadmapService implements OnModuleInit {
     }
 
     const subtree = await this.subtreeOf(node)
+    const subtreeLearners = await this.learnersOfNodes(subtree.map((n) => n.id))
     const synthetic: RoadmapDto = {
       id: node.id,
       slug: node.slug,
@@ -450,7 +951,15 @@ export class RoadmapService implements OnModuleInit {
       // rather than a hardcoded one, so a private block cannot be dressed as
       // published by the shape used to render it.
       publishStatus: normalizePublishStatus(node.publishStatus),
+      discoverability: "PUBLIC",
+      visibility: normalizeVisibility(node.visibility),
+      ownerId: node.authorId,
+      roleTags: node.tags,
+      dueDate: null,
+      firstPublishedAt: null,
+      archivedAt: null,
       nodeCount: subtree.length,
+      learnerCount: subtreeLearners,
     }
     return this.buildGraph(
       synthetic,
@@ -475,6 +984,7 @@ export class RoadmapService implements OnModuleInit {
     const nodes = await this.prisma.node.findMany({
       where: { roadmapId: id, isDeleted: false },
       orderBy: { order: "asc" },
+      include: { keyResults: { orderBy: { position: "asc" } } },
     })
     return this.buildGraph(
       this.toRoadmapDto(roadmap, roadmap._count.nodes),
@@ -527,6 +1037,31 @@ export class RoadmapService implements OnModuleInit {
         childCount.set(n.parentId, (childCount.get(n.parentId) ?? 0) + 1)
       }
     }
+
+    // Learners per block, rolled up its subtree: someone working a chapter deep
+    // inside a role has started that role. Counted as distinct people, so one
+    // learner across five of its nodes stays one. Done in memory over the rows
+    // already fetched above rather than a query per card — this list renders
+    // every published block at once.
+    const started = await this.prisma.userProgress.findMany({
+      where: { status: { in: ["in_progress", "done"] }, node: { isDeleted: false } },
+      select: { clerkUserId: true, nodeId: true },
+    })
+    const parentOf = new Map(all.map((n) => [n.id, n.parentId]))
+    const learnersByBlock = new Map<string, Set<string>>()
+    for (const row of started) {
+      // Walk to the root, marking every ancestor. `seen` guards the walk against
+      // a parentId cycle, which would otherwise hang the request.
+      const seen = new Set<string>()
+      let current: string | null | undefined = row.nodeId
+      while (current && !seen.has(current)) {
+        seen.add(current)
+        const users = learnersByBlock.get(current) ?? new Set<string>()
+        users.add(row.clerkUserId)
+        learnersByBlock.set(current, users)
+        current = parentOf.get(current)
+      }
+    }
     // OR across labels: the strip selects one tab at a time, and a block
     // carrying both AI and Data must show up under either.
     const wanted = fieldIds?.length ? new Set(fieldIds) : null
@@ -545,7 +1080,10 @@ export class RoadmapService implements OnModuleInit {
     return all
       .filter(
         (n) =>
-          reachesLearners(statusOf(n)) &&
+          // Listing gate: published AND discoverable. An unlisted block still
+          // opens by direct link (see publicBlockGraph) but must never appear
+          // in a grid, a tab strip, or a search result.
+          blockIsListed(n.publishStatus) &&
           (n.nodeType === "role" || n.nodeType === "skill")
       )
       .filter((n) => !wanted || n.fields.some((f) => wanted.has(f.id)))
@@ -555,7 +1093,10 @@ export class RoadmapService implements OnModuleInit {
             (fieldPosition.get(right.id) ?? right.order) ||
           left.order - right.order
       )
-      .map((n) => this.toNodeDto(n, "locked", childCount.get(n.id) ?? 0))
+      .map((n) => ({
+        ...this.toNodeDto(n, "locked", childCount.get(n.id) ?? 0),
+        learnerCount: learnersByBlock.get(n.id)?.size ?? 0,
+      }))
   }
 
   /**
@@ -571,11 +1112,15 @@ export class RoadmapService implements OnModuleInit {
     if (normalizeVisibility(node.visibility) === "INTERNAL" && !canAccessInternal(user)) {
       throw new RoadmapError("PERMISSION_DENIED", "Internal block requires AIO access")
     }
-    if (!reachesLearners(statusOf(node))) {
+    // Direct-link gate. Deliberately NOT `reachesLearners`, which answers
+    // "published" and so refused an unlisted block — the one case a direct
+    // link exists to serve. Only a draft 404s here; discoverability decides
+    // listings, not whether a named block opens.
+    if (!blockOpensByLink(node.publishStatus)) {
       const parent = await this.prisma.roadmap.findUnique({
         where: { id: node.roadmapId },
       })
-      if (!parent || !reachesLearners(statusOf(parent))) return null
+      if (!parent || !blockOpensByLink(parent.publishStatus)) return null
     }
     // Return the WHOLE roadmap's nodes so the web viewer derives the exact same
     // composition (deriveCompositionFromNodes) the admin builder renders — one
@@ -583,10 +1128,14 @@ export class RoadmapService implements OnModuleInit {
     const roadmapNodes = await this.prisma.node.findMany({
       where: { roadmapId: node.roadmapId, isDeleted: false },
       orderBy: { order: "asc" },
+      include: { keyResults: { orderBy: { position: "asc" } } },
     })
     const visibleNodes = canAccessInternal(user)
       ? roadmapNodes
       : roadmapNodes.filter((item) => normalizeVisibility(item.visibility) !== "INTERNAL")
+    const visibleLearners = await this.learnersOfNodes(
+      visibleNodes.map((item) => item.id)
+    )
     const synthetic: RoadmapDto = {
       id: node.id,
       slug: node.slug,
@@ -597,7 +1146,15 @@ export class RoadmapService implements OnModuleInit {
       // rather than a hardcoded one, so a private block cannot be dressed as
       // published by the shape used to render it.
       publishStatus: normalizePublishStatus(node.publishStatus),
+      discoverability: "PUBLIC",
+      visibility: normalizeVisibility(node.visibility),
+      ownerId: node.authorId,
+      roleTags: node.tags,
+      dueDate: null,
+      firstPublishedAt: null,
+      archivedAt: null,
       nodeCount: visibleNodes.length,
+      learnerCount: visibleLearners,
     }
     return this.buildGraph(synthetic, visibleNodes, {})
   }
@@ -645,7 +1202,7 @@ export class RoadmapService implements OnModuleInit {
     input: CreateRoadmapInput,
     user: CurrentUser | null
   ): Promise<RoadmapDto> {
-    assertCanWrite(user)
+    const actor = assertCanWrite(user)
     const slug = await this.uniqueRoadmapSlug(
       input.slug?.trim() || slugify(input.title)
     )
@@ -656,6 +1213,11 @@ export class RoadmapService implements OnModuleInit {
         description: input.description?.trim() || null,
         thumbnailUrl: input.thumbnailUrl ?? null,
         publishStatus: "DRAFT",
+        discoverability: input.discoverability ?? "PUBLIC",
+        visibility: input.visibility ?? "FREE",
+        ownerId: actor.userId,
+        roleTags: input.roleTags ?? [],
+        dueDate: input.dueDate ? new Date(input.dueDate) : null,
       },
     })
     await this.events.emit(created.id)
@@ -688,6 +1250,19 @@ export class RoadmapService implements OnModuleInit {
         publishStatus:
           input.publishStatus !== undefined && input.publishStatus !== null
             ? input.publishStatus
+            : undefined,
+        discoverability: input.discoverability ?? undefined,
+        visibility: input.visibility ?? undefined,
+        roleTags: input.roleTags ?? undefined,
+        dueDate:
+          input.dueDate !== undefined
+            ? input.dueDate
+              ? new Date(input.dueDate)
+              : null
+            : undefined,
+        firstPublishedAt:
+          input.publishStatus === "PUBLISHED" && !existing.firstPublishedAt
+            ? new Date()
             : undefined,
       },
       include: {
@@ -962,6 +1537,48 @@ export class RoadmapService implements OnModuleInit {
   }
 
   /**
+   * Bring an archived block back.
+   *
+   * Deletion here is a soft delete, which the contract calls archiving — but
+   * an archive nobody can reverse is a delete with extra steps. Restoring
+   * returns it as a DRAFT rather than to whatever status it had: it has been
+   * off the public side, possibly for a long time, and an editor should look
+   * at it before learners do.
+   */
+  async restoreNode(id: string, user: CurrentUser | null): Promise<boolean> {
+    assertCanWrite(user)
+    const node = await this.prisma.node.findUnique({ where: { id } })
+    if (!node) throw new RoadmapError("NOT_FOUND")
+    if (!node.isDeleted) return false
+
+    await this.prisma.$transaction(async (tx) => {
+      if (node.notionPageId) {
+        await tx.document.updateMany({
+          where: { id: node.notionPageId },
+          data: { isArchived: false },
+        })
+      }
+      await tx.node.update({
+        where: { id },
+        data: { isDeleted: false, publishStatus: "DRAFT" },
+      })
+    })
+    await this.events.emit(node.roadmapId)
+    return true
+  }
+
+  /** Archived blocks, so the CMS can offer them back. */
+  async archivedNodes(user: CurrentUser | null): Promise<NodeDto[]> {
+    assertCanWrite(user)
+    const rows = await this.prisma.node.findMany({
+      where: { isDeleted: true },
+      orderBy: { updatedAt: "desc" },
+      include: { fields: { orderBy: FIELD_ORDER_BY, select: FIELD_SELECT } },
+    })
+    return rows.map((n) => this.toNodeDto(n, "locked", 0))
+  }
+
+  /**
    * Move a node into another roadmap (sidebar drag-drop). No clone: the node
    * keeps its identity, slug and linked resources — it just changes owner.
    * Children left behind in the source roadmap are detached so no edge ever
@@ -1053,6 +1670,466 @@ export class RoadmapService implements OnModuleInit {
     return true
   }
 
+  async composition(
+    ownerId: string,
+    scope: CompositionScope,
+    user: CurrentUser | null
+  ): Promise<CompositionDto> {
+    if (scope === "DRAFT") assertCanWrite(user)
+    const owner = await this.prisma.node.findFirst({
+      where: { id: ownerId, isDeleted: false },
+      select: { id: true },
+    })
+    if (!owner) throw new RoadmapError("NOT_FOUND")
+
+    const [members, edges] = await Promise.all([
+      this.prisma.compositionMembership.findMany({
+        where: { ownerId, scope },
+        orderBy: [{ createdAt: "asc" }, { nodeId: "asc" }],
+      }),
+      this.prisma.compositionEdge.findMany({
+        where: { ownerId, scope },
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+      }),
+    ])
+
+    return {
+      ownerId,
+      members: members.map((member) => ({
+        nodeId: member.nodeId,
+        x: member.positionX,
+        y: member.positionY,
+        isRequired: member.isRequired,
+      })),
+      edges: edges.map((edge) => ({
+        id: edge.id,
+        sourceId: edge.sourceId,
+        targetId: edge.targetId,
+        kind: edge.kind === "dashed" ? "dashed" : "solid",
+      })),
+    }
+  }
+
+  async addCompositionMember(
+    ownerId: string,
+    nodeId: string,
+    positionX: number,
+    positionY: number,
+    isRequired: boolean,
+    user: CurrentUser | null
+  ): Promise<CompositionDto> {
+    assertCanWrite(user)
+    if (ownerId === nodeId) {
+      throw new RoadmapError("INVALID_HIERARCHY", "OWNER_IS_NOT_A_MEMBER")
+    }
+    const count = await this.prisma.node.count({
+      where: { id: { in: [ownerId, nodeId] }, isDeleted: false },
+    })
+    if (count !== 2) throw new RoadmapError("NOT_FOUND")
+
+    await this.prisma.compositionMembership.upsert({
+      where: {
+        ownerId_nodeId_scope: { ownerId, nodeId, scope: "DRAFT" },
+      },
+      create: {
+        ownerId,
+        nodeId,
+        scope: "DRAFT",
+        positionX,
+        positionY,
+        isRequired,
+      },
+      update: { positionX, positionY, isRequired },
+    })
+    return this.composition(ownerId, "DRAFT", user)
+  }
+
+  async moveCompositionMember(
+    ownerId: string,
+    nodeId: string,
+    positionX: number,
+    positionY: number,
+    user: CurrentUser | null
+  ): Promise<boolean> {
+    assertCanWrite(user)
+    const result = await this.prisma.compositionMembership.updateMany({
+      where: { ownerId, nodeId, scope: "DRAFT" },
+      data: { positionX, positionY },
+    })
+    if (result.count === 0) throw new RoadmapError("NOT_FOUND")
+    return true
+  }
+
+  async removeCompositionMember(
+    ownerId: string,
+    nodeId: string,
+    user: CurrentUser | null
+  ): Promise<CompositionDto> {
+    assertCanWrite(user)
+    await this.prisma.$transaction([
+      this.prisma.compositionEdge.deleteMany({
+        where: {
+          ownerId,
+          scope: "DRAFT",
+          OR: [{ sourceId: nodeId }, { targetId: nodeId }],
+        },
+      }),
+      this.prisma.compositionMembership.deleteMany({
+        where: { ownerId, nodeId, scope: "DRAFT" },
+      }),
+    ])
+    return this.composition(ownerId, "DRAFT", user)
+  }
+
+  async addCompositionEdge(
+    ownerId: string,
+    sourceId: string,
+    targetId: string,
+    kind: CompositionEdgeKind,
+    user: CurrentUser | null
+  ): Promise<CompositionEdgeDto> {
+    assertCanWrite(user)
+    if (sourceId === targetId) {
+      throw new RoadmapError("INVALID_HIERARCHY", "SELF_EDGE")
+    }
+    const memberIds = [sourceId, targetId].filter((id) => id !== ownerId)
+    const memberCount = await this.prisma.compositionMembership.count({
+      where: { ownerId, scope: "DRAFT", nodeId: { in: memberIds } },
+    })
+    if (memberCount !== new Set(memberIds).size) {
+      throw new RoadmapError("INVALID_HIERARCHY", "EDGE_OUTSIDE_COMPOSITION")
+    }
+    const edge = await this.prisma.compositionEdge.upsert({
+      where: {
+        ownerId_sourceId_targetId_scope: {
+          ownerId,
+          sourceId,
+          targetId,
+          scope: "DRAFT",
+        },
+      },
+      create: { ownerId, sourceId, targetId, scope: "DRAFT", kind },
+      update: { kind },
+    })
+    return {
+      id: edge.id,
+      sourceId: edge.sourceId,
+      targetId: edge.targetId,
+      kind: edge.kind === "dashed" ? "dashed" : "solid",
+    }
+  }
+
+  async updateCompositionEdgeKind(
+    ownerId: string,
+    edgeId: string,
+    kind: CompositionEdgeKind,
+    user: CurrentUser | null
+  ): Promise<CompositionEdgeDto> {
+    assertCanWrite(user)
+    const existing = await this.prisma.compositionEdge.findFirst({
+      where: { id: edgeId, ownerId, scope: "DRAFT" },
+    })
+    if (!existing) throw new RoadmapError("NOT_FOUND")
+    const edge = await this.prisma.compositionEdge.update({
+      where: { id: edgeId },
+      data: { kind },
+    })
+    return {
+      id: edge.id,
+      sourceId: edge.sourceId,
+      targetId: edge.targetId,
+      kind: edge.kind === "dashed" ? "dashed" : "solid",
+    }
+  }
+
+  async removeCompositionEdge(
+    ownerId: string,
+    edgeId: string,
+    user: CurrentUser | null
+  ): Promise<CompositionDto> {
+    assertCanWrite(user)
+    await this.prisma.compositionEdge.deleteMany({
+      where: { id: edgeId, ownerId, scope: "DRAFT" },
+    })
+    return this.composition(ownerId, "DRAFT", user)
+  }
+
+  async replaceComposition(
+    ownerId: string,
+    members: ReplaceCompositionMemberInput[],
+    edges: ReplaceCompositionEdgeInput[],
+    user: CurrentUser | null
+  ): Promise<CompositionDto> {
+    assertCanWrite(user)
+    const memberIds = [...new Set(members.map((member) => member.nodeId))]
+    if (memberIds.length !== members.length || memberIds.includes(ownerId)) {
+      throw new RoadmapError("INVALID_HIERARCHY", "INVALID_MEMBERS")
+    }
+    const existingCount = await this.prisma.node.count({
+      where: { id: { in: [ownerId, ...memberIds] }, isDeleted: false },
+    })
+    if (existingCount !== memberIds.length + 1) {
+      throw new RoadmapError("NOT_FOUND")
+    }
+    const allowed = new Set([ownerId, ...memberIds])
+    if (
+      edges.some(
+        (edge) =>
+          edge.sourceId === edge.targetId ||
+          !allowed.has(edge.sourceId) ||
+          !allowed.has(edge.targetId)
+      )
+    ) {
+      throw new RoadmapError("INVALID_HIERARCHY", "INVALID_EDGES")
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.compositionEdge.deleteMany({
+        where: { ownerId, scope: "DRAFT" },
+      })
+      await tx.compositionMembership.deleteMany({
+        where: { ownerId, scope: "DRAFT" },
+      })
+      for (const member of members) {
+        await tx.compositionMembership.create({
+          data: {
+            ownerId,
+            nodeId: member.nodeId,
+            scope: "DRAFT",
+            positionX: member.x,
+            positionY: member.y,
+            isRequired: member.isRequired ?? true,
+          },
+        })
+      }
+      for (const edge of edges) {
+        await tx.compositionEdge.create({
+          data: { ownerId, scope: "DRAFT", ...edge },
+        })
+      }
+    })
+    return this.composition(ownerId, "DRAFT", user)
+  }
+
+  async publishComposition(
+    ownerId: string,
+    user: CurrentUser | null
+  ): Promise<CompositionDto> {
+    assertCanWrite(user)
+    await this.assertPublishable(ownerId)
+    // One instant shared by every notification this publish creates, so the
+    // unique key can recognise a retry.
+    const publishedAt = new Date()
+    await this.prisma.$transaction(async (tx) => {
+      const [members, edges] = await Promise.all([
+        tx.compositionMembership.findMany({
+          where: { ownerId, scope: "DRAFT" },
+        }),
+        tx.compositionEdge.findMany({
+          where: { ownerId, scope: "DRAFT" },
+        }),
+      ])
+      await tx.compositionEdge.deleteMany({
+        where: { ownerId, scope: "PUBLISHED" },
+      })
+      await tx.compositionMembership.deleteMany({
+        where: { ownerId, scope: "PUBLISHED" },
+      })
+      for (const member of members) {
+        await tx.compositionMembership.create({
+          data: {
+            ownerId,
+            nodeId: member.nodeId,
+            scope: "PUBLISHED",
+            positionX: member.positionX,
+            positionY: member.positionY,
+            isRequired: member.isRequired,
+          },
+        })
+      }
+      for (const edge of edges) {
+        await tx.compositionEdge.create({
+          data: {
+            ownerId,
+            sourceId: edge.sourceId,
+            targetId: edge.targetId,
+            scope: "PUBLISHED",
+            kind: edge.kind,
+          },
+        })
+      }
+      // Inside the same transaction as the composition copy. The contract asks
+      // for ONE atomic publish covering metadata, content, composition and
+      // positions — flipping the status afterwards would leave a window where
+      // the roadmap is public but still showing its previous layout.
+      await tx.node.update({
+        where: { id: ownerId },
+        data: { publishStatus: "PUBLISHED" },
+      })
+      await tx.roadmap.updateMany({
+        // First publish only: the date a roadmap first reached learners does
+        // not move when it is later edited and republished.
+        where: { id: ownerId, firstPublishedAt: null },
+        data: { firstPublishedAt: new Date() },
+      })
+      await this.notifyFollowers(tx, ownerId, publishedAt)
+    })
+    return this.composition(ownerId, "PUBLISHED", user)
+  }
+
+  /**
+   * Tell the people who follow this roadmap that it changed.
+   *
+   * Audience is exactly who the contract names: learners who started content
+   * inside it, plus learners who favourited it. Both, deduplicated — someone
+   * who did both is one person and gets one card.
+   *
+   * `publishedAt` is the same instant for every recipient, which together with
+   * the unique key makes the write idempotent: a retried or double-submitted
+   * publish cannot stack a second card on someone who has not read the first.
+   * Draft edits reach none of this — nothing here runs until publish.
+   */
+  private async notifyFollowers(
+    tx: Prisma.TransactionClient,
+    ownerNodeId: string,
+    publishedAt: Date
+  ): Promise<void> {
+    const members = await tx.compositionMembership.findMany({
+      where: { ownerId: ownerNodeId, scope: "PUBLISHED" },
+      select: { nodeId: true },
+    })
+    const nodeIds = [ownerNodeId, ...members.map((m) => m.nodeId)]
+
+    const [started, favorited] = await Promise.all([
+      tx.userProgress.findMany({
+        where: { nodeId: { in: nodeIds }, status: { in: ["in_progress", "done"] } },
+        select: { clerkUserId: true },
+        distinct: ["clerkUserId"],
+      }),
+      tx.userRoadmapFavorite.findMany({
+        where: { ownerNodeId },
+        select: { clerkUserId: true },
+      }),
+    ])
+
+    const audience = new Set([
+      ...started.map((row) => row.clerkUserId),
+      ...favorited.map((row) => row.clerkUserId),
+    ])
+    if (audience.size === 0) return
+
+    await tx.roadmapNotification.createMany({
+      data: [...audience].map((clerkUserId) => ({
+        clerkUserId,
+        ownerNodeId,
+        publishedAt,
+      })),
+      skipDuplicates: true,
+    })
+  }
+
+  /**
+   * Refuse a publish that would put an unfinished roadmap in front of
+   * learners. Reads the DRAFT composition, because that is what is about to
+   * become public.
+   */
+  private async assertPublishable(ownerId: string): Promise<void> {
+    const owner = await this.prisma.node.findUnique({
+      where: { id: ownerId },
+      include: { fields: { select: { id: true } } },
+    })
+    if (!owner || owner.isDeleted) throw new RoadmapError("NOT_FOUND")
+
+    // The contract gates the FIRST publish. A roadmap already facing learners
+    // is re-published every time an editor saves a layout change, and blocking
+    // that on a rule it predates would strand existing content — the editor
+    // could no longer save, with no way to satisfy a check about its debut.
+    if (normalizePublishStatus(owner.publishStatus) !== "DRAFT") return
+
+    const draftMembers = await this.prisma.compositionMembership.findMany({
+      where: { ownerId, scope: "DRAFT" },
+      select: { nodeId: true, isRequired: true },
+    })
+    const memberNodes = await this.prisma.node.findMany({
+      where: { id: { in: draftMembers.map((m) => m.nodeId) } },
+      select: { id: true, isDeleted: true },
+    })
+    const deleted = new Set(
+      memberNodes.filter((n) => n.isDeleted).map((n) => n.id)
+    )
+    // A member row whose node row is gone entirely counts as deleted too —
+    // publishing it would put a door on the canvas that opens onto nothing.
+    const known = new Set(memberNodes.map((n) => n.id))
+    const referencesDeletedContent = draftMembers.some(
+      (m) => deleted.has(m.nodeId) || !known.has(m.nodeId)
+    )
+
+    const verdict = roadmapPublishEligibility({
+      title: owner.title,
+      slug: owner.slug,
+      description: owner.description,
+      fieldCount: owner.fields.length,
+      coverUrl: owner.coverUrl,
+      requiredNodeCount: draftMembers.filter(
+        (m) => m.isRequired && !deleted.has(m.nodeId) && known.has(m.nodeId)
+      ).length,
+      referencesDeletedContent,
+    })
+    if (!verdict.ok) {
+      throw new RoadmapError("VALIDATION", PUBLISH_BLOCKER_MESSAGES[verdict.code])
+    }
+  }
+
+  /**
+   * Throw the working draft away and start again from what is public.
+   *
+   * The inverse of publish: it copies PUBLISHED back over DRAFT rather than
+   * emptying it, so discarding lands the editor on the live layout instead of
+   * a blank canvas.
+   */
+  async discardCompositionDraft(
+    ownerId: string,
+    user: CurrentUser | null
+  ): Promise<CompositionDto> {
+    assertCanWrite(user)
+    await this.prisma.$transaction(async (tx) => {
+      const [members, edges] = await Promise.all([
+        tx.compositionMembership.findMany({
+          where: { ownerId, scope: "PUBLISHED" },
+        }),
+        tx.compositionEdge.findMany({ where: { ownerId, scope: "PUBLISHED" } }),
+      ])
+      await tx.compositionEdge.deleteMany({ where: { ownerId, scope: "DRAFT" } })
+      await tx.compositionMembership.deleteMany({
+        where: { ownerId, scope: "DRAFT" },
+      })
+      for (const member of members) {
+        await tx.compositionMembership.create({
+          data: {
+            ownerId,
+            nodeId: member.nodeId,
+            scope: "DRAFT",
+            positionX: member.positionX,
+            positionY: member.positionY,
+            isRequired: member.isRequired,
+          },
+        })
+      }
+      for (const edge of edges) {
+        await tx.compositionEdge.create({
+          data: {
+            ownerId,
+            sourceId: edge.sourceId,
+            targetId: edge.targetId,
+            scope: "DRAFT",
+            kind: edge.kind,
+          },
+        })
+      }
+    })
+    return this.composition(ownerId, "DRAFT", user)
+  }
+
   async setNodeStatus(
     nodeId: string,
     status: NodeStatus,
@@ -1064,7 +2141,81 @@ export class RoadmapService implements OnModuleInit {
       create: { clerkUserId: user.userId, nodeId, status },
       update: { status },
     })
+    if (status === "done") await this.stampFinishedRoadmaps(user.userId, nodeId)
     return true
+  }
+
+  /**
+   * First open starts a node. Completion is never implied by opening — the
+   * contract requires an explicit learner action for that — so this only ever
+   * moves a node forward out of the untouched state, and leaves `in_progress`
+   * and `done` exactly where they are. Guests are a no-op rather than an
+   * error: they may read content, they simply have nowhere to record it.
+   */
+  async markNodeOpened(
+    nodeId: string,
+    user: CurrentUser | null
+  ): Promise<boolean> {
+    if (!user) return false
+    const existing = await this.prisma.userProgress.findUnique({
+      where: { clerkUserId_nodeId: { clerkUserId: user.userId, nodeId } },
+      select: { status: true },
+    })
+    if (existing && existing.status !== "locked") return false
+    await this.prisma.userProgress.upsert({
+      where: { clerkUserId_nodeId: { clerkUserId: user.userId, nodeId } },
+      create: { clerkUserId: user.userId, nodeId, status: "in_progress" },
+      update: { status: "in_progress" },
+    })
+    return true
+  }
+
+  /**
+   * Record any roadmap this node's completion just finished.
+   *
+   * Written at the moment it happens rather than derived on read, because a
+   * derived answer changes when the roadmap does: an editor adding a required
+   * node would un-complete everyone who had finished, which the access
+   * contract forbids. Only the canvases this node actually sits on are
+   * examined — the same node can be required on one and optional on another.
+   */
+  private async stampFinishedRoadmaps(
+    clerkUserId: string,
+    nodeId: string
+  ): Promise<void> {
+    const owners = await this.prisma.compositionMembership.findMany({
+      where: { nodeId, scope: "PUBLISHED", isRequired: true },
+      select: { ownerId: true },
+    })
+    if (owners.length === 0) return
+
+    for (const { ownerId } of owners) {
+      const required = await this.prisma.compositionMembership.findMany({
+        where: { ownerId, scope: "PUBLISHED", isRequired: true },
+        select: { nodeId: true },
+      })
+      // Nothing to finish is not the same as finished.
+      if (required.length === 0) continue
+
+      const doneCount = await this.prisma.userProgress.count({
+        where: {
+          clerkUserId,
+          status: "done",
+          nodeId: { in: required.map((member) => member.nodeId) },
+        },
+      })
+      if (doneCount < required.length) continue
+
+      await this.prisma.userRoadmapCompletion.upsert({
+        where: {
+          clerkUserId_ownerNodeId: { clerkUserId, ownerNodeId: ownerId },
+        },
+        create: { clerkUserId, ownerNodeId: ownerId },
+        // Keep the original timestamp: the learner finished it when they
+        // finished it, and re-marking a node does not move that date.
+        update: {},
+      })
+    }
   }
 
   // ── Internals ────────────────────────────────────────────────────────────────
@@ -1077,10 +2228,18 @@ export class RoadmapService implements OnModuleInit {
       description: string | null
       thumbnailUrl: string | null
       publishStatus: string
+      discoverability: string
+      visibility: string
+      ownerId: string | null
+      roleTags: string[]
+      dueDate: Date | null
+      firstPublishedAt: Date | null
+      archivedAt: Date | null
       createdAt?: Date
       updatedAt?: Date
     },
-    nodeCount: number
+    nodeCount: number,
+    learnerCount = 0
   ): RoadmapDto {
     return {
       id: r.id,
@@ -1089,7 +2248,15 @@ export class RoadmapService implements OnModuleInit {
       description: r.description,
       thumbnailUrl: r.thumbnailUrl,
       publishStatus: normalizePublishStatus(r.publishStatus),
+      discoverability: r.discoverability === "PRIVATE" ? "PRIVATE" : "PUBLIC",
+      visibility: normalizeVisibility(r.visibility),
+      ownerId: r.ownerId,
+      roleTags: r.roleTags,
+      dueDate: r.dueDate?.toISOString() ?? null,
+      firstPublishedAt: r.firstPublishedAt?.toISOString() ?? null,
+      archivedAt: r.archivedAt?.toISOString() ?? null,
       nodeCount,
+      learnerCount,
       createdAt: r.createdAt ? r.createdAt.toISOString() : null,
       updatedAt: r.updatedAt ? r.updatedAt.toISOString() : null,
     }
@@ -1127,6 +2294,18 @@ export class RoadmapService implements OnModuleInit {
       level: normalizeLevel(n.level),
       visibility: normalizeVisibility(n.visibility),
       fields: (n.fields ?? []).map(toFieldDto),
+      // Only `publicBlocks` rolls up real learner numbers; every other caller
+      // reports 0 so the non-null GraphQL field always has a value.
+      learnerCount: 0,
+      createdAt: n.createdAt ? n.createdAt.toISOString() : null,
+      updatedAt: n.updatedAt ? n.updatedAt.toISOString() : null,
+      // Only queries that `include` them fill this in; the GraphQL field is a
+      // non-null list, so every other caller sees [] rather than null.
+      keyResults: (n.keyResults ?? []).map((kr) => ({
+        id: kr.id,
+        text: kr.text,
+        position: kr.position,
+      })),
     }
   }
 
@@ -1278,6 +2457,19 @@ export class RoadmapService implements OnModuleInit {
     if (normalizePublishStatus(field.publishStatus) !== "DRAFT") {
       throw new RoadmapError("VALIDATION", "Only draft Fields can be deleted; take this Field back to Draft first")
     }
+    // A Field must be empty before it goes. The delete does not touch the
+    // roadmaps themselves — FieldMembership cascades, the blocks survive — but
+    // it would quietly pull them out of the grouping readers browse by, and
+    // nothing downstream would report that. Make the admin move them first.
+    const memberCount = await this.prisma.fieldMembership.count({
+      where: { fieldId: id },
+    })
+    if (memberCount > 0) {
+      throw new RoadmapError(
+        "VALIDATION",
+        "This Field still holds roadmaps; move them to another Field before deleting it"
+      )
+    }
     await this.prisma.field.delete({ where: { id } })
     return true
   }
@@ -1379,6 +2571,10 @@ export class RoadmapService implements OnModuleInit {
     return this.prisma.node.findMany({
       where: { roadmapId, isDeleted: false },
       orderBy: { order: "asc" },
+      // Key Results ride along with the graph: the detail panel opens from a
+      // node already in hand, so fetching them separately would show an empty
+      // outcomes list for a frame on every open.
+      include: { keyResults: { orderBy: { position: "asc" } } },
     })
   }
 
@@ -1386,6 +2582,7 @@ export class RoadmapService implements OnModuleInit {
     const all = await this.prisma.node.findMany({
       where: { roadmapId: root.roadmapId, isDeleted: false },
       orderBy: { order: "asc" },
+      include: { keyResults: { orderBy: { position: "asc" } } },
     })
     const byParent = new Map<string, DbNode[]>()
     for (const n of all) {

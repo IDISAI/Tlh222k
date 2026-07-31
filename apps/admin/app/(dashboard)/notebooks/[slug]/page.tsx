@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation"
-import { getRole } from "@/lib/auth"
+import { requireCmsRole } from "@/lib/auth"
 import { FORBIDDEN_PATH } from "@/lib/paths"
 import { NotebookEditorClient } from "./notebook-editor-client"
 
@@ -21,8 +21,7 @@ export default async function AdminNotebookEditorPage({
 }) {
   const { slug } = await params
   const { title } = await searchParams
-  const role = await getRole()
-  if (role !== "admin" && role !== "super-admin") redirect(FORBIDDEN_PATH)
+  const role = await requireCmsRole()
 
   return <NotebookEditorClient slug={slug} defaultTitle={title} />
 }

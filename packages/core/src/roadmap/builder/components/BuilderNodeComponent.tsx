@@ -10,12 +10,12 @@ import {
 } from "react"
 import { createPortal } from "react-dom"
 import { Handle, Position, type NodeProps } from "@xyflow/react"
-import { AlertTriangle, FileText, NotebookText } from "lucide-react"
+import { AlertTriangle, FileText, ImageIcon, NotebookText } from "lucide-react"
 import { Badge } from "@workspace/ui/components/badge"
 import { cn } from "@workspace/ui/lib/utils"
 
 import type { BuilderFlowNode } from "../types"
-import { NODE_TYPE_COLORS, NODE_TYPE_ICONS } from "../utils/node-type-styles"
+import { LEVEL_LABELS } from "../../level"
 import { useBuilderCanvasContext } from "./builder-context"
 import { HoverPreview } from "./HoverPreview"
 
@@ -44,7 +44,7 @@ export const BuilderNodeComponent = memo(function BuilderNodeComponent({
   data,
   selected,
 }: NodeProps<BuilderFlowNode>) {
-  const { node, viewerMode } = data
+  const { node, viewerMode, isOwner, isRequired = true } = data
   const { nodes, isDragging } = useBuilderCanvasContext()
 
   const cardRef = useRef<HTMLDivElement | null>(null)
@@ -106,7 +106,6 @@ export const BuilderNodeComponent = memo(function BuilderNodeComponent({
     setShowPreview(false)
   }, [cancelTimers])
 
-  const Icon = NODE_TYPE_ICONS[node.nodeType]
   // jupyter = always internal by slug (no jupyterUrl needed).
   // notion = needs linked Document (auto-created on article create).
   const articleUnlinked =
@@ -128,9 +127,8 @@ export const BuilderNodeComponent = memo(function BuilderNodeComponent({
       <div
         ref={cardRef}
         className={cn(
-          "flex min-w-[168px] items-center gap-2 rounded-xl border-2 px-4 py-2 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all dark:shadow-[2px_2px_0px_0px_rgba(255,255,255,0.15)]",
-          NODE_TYPE_COLORS[node.nodeType],
-          selected && "ring-2 ring-ring ring-offset-2",
+          "w-[238px] overflow-hidden rounded-[14px] border border-border bg-card text-card-foreground shadow-float transition-[border-color,transform,box-shadow] duration-200",
+          selected && "border-2 border-primary",
           node.isDeleted && "cursor-not-allowed opacity-50 grayscale",
           viewerDisabled && "pointer-events-none cursor-not-allowed opacity-50"
         )}
@@ -148,33 +146,98 @@ export const BuilderNodeComponent = memo(function BuilderNodeComponent({
         <Handle
           type="target"
           position={Position.Top}
-          className="!bg-zinc-400"
+          className="!size-2 !border-0 !bg-muted-foreground"
           isConnectable={!node.isDeleted}
         />
-        {node.isDeleted && (
-          <AlertTriangle className="size-4 shrink-0 text-destructive" />
-        )}
-        <Icon className="size-4 shrink-0" />
-        <span className="text-sm font-semibold">{node.title}</span>
-        {node.nodeType === "article" &&
-          (articleUnlinked ? (
-            // Req 6.6: unlinked articles warn instead of navigating.
-            <span title="Tài liệu chưa được liên kết">
-              <AlertTriangle className="size-3.5 shrink-0 text-amber-500" />
+        <div className="p-4">
+          <div className="flex min-h-6 items-center justify-between gap-2">
+            {isOwner ? (
+              <span className="rounded-full bg-primary/10 px-2.5 py-1 text-[11px] font-semibold text-primary">
+                Owner
+              </span>
+            ) : (
+              <span className="text-[11px] font-semibold uppercase tracking-[.06em] text-muted-foreground">
+                {node.nodeType}
+              </span>
+            )}
+            <span className="flex items-center gap-1.5">
+              {/* Filled = counts toward progress, hollow = optional. The canvas
+                  legend names both, so the marker has to be on every card and
+                  not only the optional ones — otherwise "bắt buộc" points at
+                  nothing a reader can see. */}
+              <span
+                title={
+                  isRequired ? "Bắt buộc — tính tiến độ" : "Tuỳ chọn"
+                }
+                aria-label={
+                  isRequired ? "Bắt buộc — tính tiến độ" : "Tuỳ chọn"
+                }
+                className={cn(
+                  "size-2.5 rounded-full",
+                  isRequired
+                    ? "bg-foreground"
+                    : "border border-muted-foreground"
+                )}
+              />
+              {node.isDeleted && (
+                <AlertTriangle className="size-4 text-destructive" />
+              )}
             </span>
-          ) : node.articleType === "notion" ? (
-            <Badge className="ml-1 gap-1 border-transparent bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900">
-              <FileText className="size-3" /> Notion
-            </Badge>
-          ) : (
-            <Badge className="ml-1 gap-1 border-transparent bg-orange-500 text-white">
-              <NotebookText className="size-3" /> Jupyter
-            </Badge>
-          ))}
+          </div>
+          <p className="mt-2 min-h-10 text-base leading-5 font-semibold">
+            {node.title}
+          </p>
+          <div className="mt-3 aspect-[16/8] overflow-hidden rounded-lg border border-border bg-muted">
+            {node.coverUrl ? (
+              <img
+                src={node.coverUrl}
+                alt=""
+                className="size-full object-cover"
+              />
+            ) : (
+              <div className="grid size-full place-items-center text-xs text-muted-foreground">
+                <span className="flex flex-col items-center gap-1">
+                  <ImageIcon className="size-5" />
+                  Chưa có ảnh bìa
+                </span>
+              </div>
+            )}
+          </div>
+          <div className="mt-3 flex items-center justify-between gap-2 text-xs text-muted-foreground">
+            <span className="max-w-[116px] truncate">
+              {node.authorName || node.authorId || "lh222k"}
+            </span>
+            <span>
+              {node.level ? LEVEL_LABELS[node.level] : "Chưa xếp cấp"}
+            </span>
+          </div>
+          {node.status === "in_progress" && (
+            <div className="mt-3 h-1 overflow-hidden rounded-full bg-muted">
+              <div className="h-full w-2/5 rounded-full bg-foreground" />
+            </div>
+          )}
+          {node.nodeType === "article" &&
+            (articleUnlinked ? (
+              <Badge
+                variant="outline"
+                className="mt-3 gap-1 border-amber-300 text-amber-700"
+              >
+                <AlertTriangle className="size-3" /> Chưa liên kết
+              </Badge>
+            ) : node.articleType === "notion" ? (
+              <Badge variant="outline" className="mt-3 gap-1">
+                <FileText className="size-3" /> Notion
+              </Badge>
+            ) : (
+              <Badge variant="outline" className="mt-3 gap-1">
+                <NotebookText className="size-3" /> Jupyter
+              </Badge>
+            ))}
+        </div>
         <Handle
           type="source"
           position={Position.Bottom}
-          className="!bg-zinc-400"
+          className="!size-2 !border-0 !bg-muted-foreground"
           isConnectable={!node.isDeleted}
         />
       </div>

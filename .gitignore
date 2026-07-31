@@ -65,6 +65,11 @@ next-env.d.ts
 /packages/db/prisma/**/*.js
 /packages/db/prisma/**/*.d.ts
 /packages/db/prisma/**/*.d.ts.map
+# Package-root configs emit too, and the src/** rules above never reach them —
+# which is how vitest.config.js/.d.ts once got committed.
+/packages/*/vitest.config.js
+/packages/*/vitest.config.d.ts
+/packages/*/vitest.config.d.ts.map
 # CocoIndex Code (ccc)
 /.cocoindex_code/
 .gstack/

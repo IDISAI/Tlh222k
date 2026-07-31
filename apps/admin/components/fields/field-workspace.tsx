@@ -7,7 +7,7 @@ import { Button } from "@workspace/ui/components/button"
 import { Input } from "@workspace/ui/components/input"
 import { RequiredMark } from "@workspace/ui/components/required-mark"
 import { cn } from "@workspace/ui/lib/utils"
-import { CoverUploadField, fieldPublishEligibility, orphanedFieldMemberIds, reorderFieldMemberIds, RoadmapService, roadmapBackendEnabled, slugify, statusOf, type CallerRole, type Field, type PublishStatus, type RoadmapNode } from "@workspace/core"
+import { CoverUploadField, fieldDeleteEligibility, fieldPublishEligibility, orphanedFieldMemberIds, reorderFieldMemberIds, RoadmapService, roadmapBackendEnabled, slugify, statusOf, type CallerRole, type Field, type PublishStatus, type RoadmapNode } from "@workspace/core"
 import { FIELD_DESCRIPTION_MAX, FIELD_DESCRIPTION_WARN } from "@workspace/core"
 
 import { BASE_PATH } from "@/lib/paths"
@@ -262,7 +262,21 @@ export function FieldWorkspace({ id, role }: { id: string; role: CallerRole }) {
   }
 
   const remove = async () => {
-    if (field.publishStatus !== "DRAFT" || deleting) return
+    if (deleting) return
+    // Ask the same function the server asks, so the admin hears "no" here
+    // rather than after confirming a destructive-sounding dialog.
+    const eligibility = fieldDeleteEligibility(
+      field.publishStatus,
+      membershipIds.length
+    )
+    if (!eligibility.ok) {
+      setError(
+        eligibility.code === "FIELD_STILL_HAS_ROADMAPS"
+          ? `Lĩnh vực này còn ${membershipIds.length} roadmap. Hãy chuyển chúng sang lĩnh vực khác trước khi xóa.`
+          : "Chỉ xóa được lĩnh vực đang ở trạng thái nháp."
+      )
+      return
+    }
     // Every node's own `.fields` is already the full cross-Field membership
     // list, loaded once with `nodes` — flatten it into the (fieldId, nodeId)
     // pairs the pure orphan-detection function expects, rather than adding a

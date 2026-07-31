@@ -9,6 +9,8 @@ export {
 } from "./languages"
 export type { LanguageSpec, NotebookLanguage } from "./languages"
 export { BROWSER_LANGUAGES, runAvailability } from "./run-availability"
+export { canRunNotebook, chooseRuntime } from "./runtime-policy"
+export type { RuntimeChoice } from "./runtime-policy"
 export type { RunAvailability } from "./run-availability"
 export { SandboxSessionClient } from "./session-client"
 export type { ClerkTokenGetter } from "./session-client"

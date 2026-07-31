@@ -46,6 +46,96 @@ enum Visibility {
   INTERNAL
 }
 
+enum Discoverability {
+  PUBLIC
+  PRIVATE
+}
+
+enum CompositionScope {
+  DRAFT
+  PUBLISHED
+}
+
+enum EdgeKind {
+  solid
+  dashed
+}
+
+type CompositionMember {
+  nodeId: ID!
+  x: Float!
+  y: Float!
+  isRequired: Boolean!
+}
+
+type CompositionEdge {
+  id: ID!
+  sourceId: ID!
+  targetId: ID!
+  kind: EdgeKind!
+}
+
+type Composition {
+  ownerId: ID!
+  members: [CompositionMember!]!
+  edges: [CompositionEdge!]!
+}
+
+"""
+One learner outcome for a node. Ordered, read-only on the public side — a Key
+Result states what someone will be able to do, not a task they tick off.
+"""
+type NodeKeyResult {
+  id: ID!
+  text: String!
+  position: Int!
+}
+
+type LearnerRoadmapRef {
+  ownerNodeId: ID!
+  title: String!
+  completedAt: String
+}
+
+"""
+One learner's activity for the Admin/Super-admin profile screen.
+
+Ids and counts only: name, avatar and email stay with Clerk, so this service
+never becomes a second, staler copy of someone's personal data.
+"""
+type LearnerActivity {
+  clerkUserId: ID!
+  startedNodeCount: Int!
+  completedNodeCount: Int!
+  completedRoadmaps: [LearnerRoadmapRef!]!
+  favoriteRoadmaps: [LearnerRoadmapRef!]!
+  lastActiveAt: String
+}
+
+"""
+A file attached to a node. It carries no access setting of its own — it
+inherits the node's, so INTERNAL content's files are INTERNAL too.
+"""
+type NodeAttachment {
+  id: ID!
+  nodeId: ID!
+  name: String!
+  url: String!
+  contentType: String!
+  sizeBytes: Int!
+  createdAt: String!
+}
+
+"""One in-app card telling a learner a roadmap they follow was republished."""
+type RoadmapNotification {
+  id: ID!
+  ownerNodeId: ID!
+  roadmapTitle: String!
+  roadmapSlug: String!
+  publishedAt: String!
+  readAt: String
+}
+
 type Roadmap {
   id: ID!
   slug: String!
@@ -53,7 +143,16 @@ type Roadmap {
   description: String
   thumbnailUrl: String
   publishStatus: PublishStatus!
+  discoverability: Discoverability!
+  visibility: Visibility!
+  ownerId: ID
+  roleTags: [String!]!
+  dueDate: String
+  firstPublishedAt: String
+  archivedAt: String
   nodeCount: Int!
+  """Distinct learners who started content inside this roadmap. Never page views."""
+  learnerCount: Int!
   createdAt: String
   updatedAt: String
 }
@@ -83,6 +182,11 @@ type RoadmapNode {
   visibility: Visibility!
   """Editorial free-text tags, narrower than a Field — used by the roadmap picker's tag filter."""
   tags: [String!]!
+  """
+  Distinct learners who started anything in this block's subtree. Never page
+  views. Only `publicBlocks` computes it; other queries report 0.
+  """
+  learnerCount: Int!
   """Clerk id of whoever created this block. Stamped server-side on create; never a mutation input."""
   authorId: ID
   """
@@ -90,6 +194,15 @@ type RoadmapNode {
   can sit under both AI and Data, so it surfaces under either tab.
   """
   fields: [Field!]!
+  """
+  When the block was created. Not the same as first publish — blocks have no
+  publish timestamp yet, so discovery sorts on this and says "Mới nhất".
+  """
+  createdAt: String
+  """Last edit time. The public card selects it, so it must resolve."""
+  updatedAt: String
+  """Ordered learner outcomes. Empty when the node declares none."""
+  keyResults: [NodeKeyResult!]!
 }
 
 """
@@ -147,11 +260,31 @@ type Query {
   two labels must appear under both.
   """
   publicBlocks(fieldIds: [ID!]): [RoadmapNode!]!
+  """
+  Ids of the roadmaps the caller has favourited. Empty for guests — they have
+  no account to hold a list.
+  """
+  myFavoriteRoadmapIds: [ID!]!
+  """Archived blocks, so the CMS can offer them back. Admin only."""
+  archivedNodes: [RoadmapNode!]!
+  """This caller's in-app notifications, newest first. Empty for guests."""
+  myNotifications: [RoadmapNotification!]!
+  """Whether this caller opted in to email. False when no preference is stored."""
+  myEmailOptIn: Boolean!
+  """
+  A node's attachments. Refuses rather than returning [] when the node is
+  INTERNAL and the caller lacks AIO access — an empty list would read as
+  "no attachments", which is a different fact from "not for you".
+  """
+  nodeAttachments(nodeId: ID!): [NodeAttachment!]!
+  """One learner's activity. Admin and Super-admin only."""
+  learnerActivity(clerkUserId: ID!): LearnerActivity!
   """Published discovery labels are public; CMS may request every status."""
   fields(includeUnpublished: Boolean = false): [Field!]!
   field(slug: String!): Field
   publicBlockGraph(id: ID!): RoadmapGraph
   myProgress: [RoadmapProgress!]!
+  composition(ownerId: ID!, scope: CompositionScope = DRAFT): Composition!
   notionDoc(id: ID!): NotionDoc
   notionDocBySlug(slug: String!): NotionDoc
   notionChildren(parentDocumentId: ID!): [NotionDoc!]!
@@ -179,7 +312,78 @@ type Mutation {
   deleteNode(id: ID!): Boolean!
   moveNode(nodeId: ID!, roadmapId: ID!, positionX: Float!, positionY: Float!): RoadmapNode!
   saveRoadmap(roadmapId: ID!, nodes: [NodeInput!]!): Boolean!
+  addCompositionMember(
+    ownerId: ID!
+    nodeId: ID!
+    positionX: Float!
+    positionY: Float!
+    isRequired: Boolean = true
+  ): Composition!
+  moveCompositionMember(
+    ownerId: ID!
+    nodeId: ID!
+    positionX: Float!
+    positionY: Float!
+  ): Boolean!
+  removeCompositionMember(ownerId: ID!, nodeId: ID!): Composition!
+  addCompositionEdge(
+    ownerId: ID!
+    sourceId: ID!
+    targetId: ID!
+    kind: EdgeKind!
+  ): CompositionEdge!
+  updateCompositionEdgeKind(
+    ownerId: ID!
+    edgeId: ID!
+    kind: EdgeKind!
+  ): CompositionEdge!
+  removeCompositionEdge(ownerId: ID!, edgeId: ID!): Composition!
+  replaceComposition(
+    ownerId: ID!
+    members: [CompositionMemberInput!]!
+    edges: [CompositionEdgeInput!]!
+  ): Composition!
+  """
+  One atomic publish: metadata, composition and positions together. Refuses a
+  first publish that is missing anything the access contract requires.
+  """
+  publishComposition(ownerId: ID!): Composition!
+  """Throw the working draft away and start again from what is public."""
+  discardCompositionDraft(ownerId: ID!): Composition!
+  """
+  Bring an archived block back, as a DRAFT — it has been off the public side
+  and an editor should look at it before learners do.
+  """
+  restoreNode(id: ID!): Boolean!
   setNodeStatus(nodeId: ID!, status: NodeStatus!): Boolean!
+  """
+  Opening content starts it. Never downgrades: a node already done stays done,
+  and completion still needs the learner's explicit action.
+  """
+  markNodeOpened(nodeId: ID!): Boolean!
+  """Add or remove a roadmap from the caller's favourites. Returns the new state."""
+  setRoadmapFavorite(ownerNodeId: ID!, favorite: Boolean!): Boolean!
+  """Mark one of the caller's own notifications read. Returns false if already read."""
+  markNotificationRead(id: ID!): Boolean!
+  """Turn update emails on or off. Off by default — email is strictly opt-in."""
+  setEmailOptIn(optedIn: Boolean!): Boolean!
+  """
+  Replace a node's Key Results with this ordered list. Sending an empty list
+  clears them; the order you send is the order learners read.
+  """
+  setNodeKeyResults(nodeId: ID!, texts: [String!]!): [NodeKeyResult!]!
+  """
+  Record an uploaded attachment. The format rules run again here — a browser
+  check is a courtesy to the uploader, not a boundary.
+  """
+  addNodeAttachment(
+    nodeId: ID!
+    name: String!
+    url: String!
+    contentType: String!
+    sizeBytes: Int!
+  ): NodeAttachment!
+  deleteNodeAttachment(id: ID!): Boolean!
   createNotionDoc(input: CreateNotionDocInput!): NotionDoc!
   updateNotionDoc(input: UpdateNotionDocInput!): NotionDoc!
   archiveNotionDoc(id: ID!): Boolean!
@@ -211,6 +415,10 @@ input CreateRoadmapInput {
   title: String!
   description: String
   thumbnailUrl: String
+  discoverability: Discoverability
+  visibility: Visibility
+  roleTags: [String!]
+  dueDate: String
 }
 
 input UpdateRoadmapInput {
@@ -218,6 +426,10 @@ input UpdateRoadmapInput {
   description: String
   thumbnailUrl: String
   publishStatus: PublishStatus
+  discoverability: Discoverability
+  visibility: Visibility
+  roleTags: [String!]
+  dueDate: String
 }
 
 input CreateFieldInput {
@@ -283,4 +495,17 @@ input NodeInput {
   parentId: ID
   positionX: Float!
   positionY: Float!
+}
+
+input CompositionMemberInput {
+  nodeId: ID!
+  x: Float!
+  y: Float!
+  isRequired: Boolean = true
+}
+
+input CompositionEdgeInput {
+  sourceId: ID!
+  targetId: ID!
+  kind: EdgeKind!
 }

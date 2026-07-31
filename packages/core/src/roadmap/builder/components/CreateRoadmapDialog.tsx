@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { Button } from "@workspace/ui/components/button"
 import {
   Dialog,
@@ -19,6 +19,13 @@ import { Textarea } from "@workspace/ui/components/textarea"
 import { cn } from "@workspace/ui/lib/utils"
 
 import { RoadmapService } from "../../api"
+import { ENTITLEMENT_LABELS } from "../../access-labels"
+import { ROADMAP_VISIBILITIES } from "../../access-policy"
+import { nextFreeSlot } from "../utils/spread-overlaps"
+import {
+  SLUG_FAILURE_MESSAGES,
+  validateRoadmapSlug,
+} from "../../slug-policy"
 import {
   MAX_DESCRIPTION_LENGTH,
   MAX_TITLE_LENGTH,
@@ -37,8 +44,9 @@ const ROADMAP_KINDS = [
   { value: "skill" as const, label: "Kỹ năng" },
 ]
 
-function createSlugPreview(title: string) {
-  const slug = title
+/** The bare slug the server will store — what the uniqueness check judges. */
+function slugFromTitle(title: string) {
+  return title
     .trim()
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
@@ -46,7 +54,11 @@ function createSlugPreview(title: string) {
     .replace(/đ/g, "d")
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
+}
 
+/** The same slug dressed as the URL it becomes, for the read-only field. */
+function createSlugPreview(title: string) {
+  const slug = slugFromTitle(title)
   return slug ? `/roadmaps/${slug}` : "/roadmaps/..."
 }
 
@@ -76,6 +88,47 @@ export function CreateRoadmapDialog({
   const [tagsInput, setTagsInput] = useState("")
   const [error, setError] = useState("")
   const [busy, setBusy] = useState(false)
+  // Slugs already in use, so a collision is caught while the editor is still
+  // looking at the field. Without it the only feedback is the database's
+  // unique-index error after submit, which names a column, not a roadmap.
+  const [takenSlugs, setTakenSlugs] = useState<string[]>([])
+  // Where the existing blocks sit, so a new one is not dropped on top of them.
+  const [placedBlocks, setPlacedBlocks] = useState<
+    { id: string; positionX: number; positionY: number }[]
+  >([])
+
+  useEffect(() => {
+    let cancelled = false
+    service
+      .listNodes()
+      .then((nodes) => {
+        if (cancelled) return
+        setTakenSlugs(nodes.map((node) => node.slug))
+        setPlacedBlocks(
+          nodes
+            .filter((node) => !node.isDeleted)
+            .map((node) => ({
+              id: node.id,
+              positionX: node.positionX,
+              positionY: node.positionY,
+            }))
+        )
+      })
+      // A failed lookup must not block creating a roadmap: the server still
+      // rejects a duplicate, this check is only the earlier, kinder one.
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [service, role])
+
+  // Validate the bare slug, not the "/roadmaps/…" preview — the slashes in the
+  // preview would fail the pattern no matter what the editor typed.
+  const slugCheck = validateRoadmapSlug(slugFromTitle(title), takenSlugs)
+  const slugError =
+    title.trim() && !slugCheck.ok
+      ? SLUG_FAILURE_MESSAGES[slugCheck.code]
+      : ""
 
   const handleTitle = (value: string) => {
     setTitle(value)
@@ -87,18 +140,33 @@ export function CreateRoadmapDialog({
       setError("Tên roadmap không được để trống")
       return
     }
+    if (!slugCheck.ok) {
+      setError(SLUG_FAILURE_MESSAGES[slugCheck.code])
+      return
+    }
     setBusy(true)
     try {
       // A roadmap IS a role/skill block (LEGO): one standalone node that owns
       // itself. No container roadmap, no separate root node — createBlock adds
       // it to the store so it lists in both the table and the Kho sidebar.
+      // Every block used to be created at (0, 0), so a canvas of twenty
+      // roadmaps rendered as one card with nineteen hidden underneath it. The
+      // viewer now spreads such piles at render time, but new blocks should
+      // land somewhere real rather than relying on that.
+      const slot = nextFreeSlot(
+        placedBlocks.map((block) => ({
+          id: block.id,
+          x: block.positionX,
+          y: block.positionY,
+        }))
+      )
       const node = await service.createBlock(
         {
           nodeType,
           title: title.trim(),
           description: description.trim() || undefined,
-          positionX: 0,
-          positionY: 0,
+          positionX: slot.x,
+          positionY: slot.y,
           fieldIds,
           level: level || null,
           visibility,
@@ -158,8 +226,12 @@ export function CreateRoadmapDialog({
               value={createSlugPreview(title)}
               readOnly
               aria-label="Slug được tạo từ tiêu đề"
+              aria-invalid={Boolean(slugError)}
               className="bg-muted font-mono text-muted-foreground"
             />
+            {slugError && (
+              <p className="text-xs text-destructive">{slugError}</p>
+            )}
           </div>
 
           <div className="space-y-1.5">
@@ -204,7 +276,7 @@ export function CreateRoadmapDialog({
 
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="space-y-1.5"><Label htmlFor="rm-level">Cấp độ</Label><select id="rm-level" value={level} onChange={(event) => setLevel(event.target.value as Level | "")} className="h-10 w-full rounded-md border bg-background px-3 text-sm"><option value="">Chưa chọn</option><option value="BASIC">Cơ bản</option><option value="INTERMEDIATE">Trung cấp</option><option value="ADVANCED">Nâng cao</option></select></label>
-            <label className="space-y-1.5"><Label htmlFor="rm-visibility">Quyền xem</Label><select id="rm-visibility" value={visibility} onChange={(event) => setVisibility(event.target.value as Visibility)} className="h-10 w-full rounded-md border bg-background px-3 text-sm"><option value="FREE">Miễn phí</option><option value="INTERNAL">Nội bộ AIO</option></select></label>
+            <label className="space-y-1.5"><Label htmlFor="rm-visibility">Quyền xem</Label><select id="rm-visibility" value={visibility} onChange={(event) => setVisibility(event.target.value as Visibility)} className="h-10 w-full rounded-md border bg-background px-3 text-sm">{ROADMAP_VISIBILITIES.map((value) => (<option key={value} value={value}>{ENTITLEMENT_LABELS[value]}</option>))}</select></label>
           </div>
 
           <div className="space-y-1.5">

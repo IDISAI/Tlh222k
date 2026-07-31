@@ -1,4 +1,5 @@
 import { auth } from "@clerk/nextjs/server"
+import { forbidden } from "next/navigation"
 import { devAuthRole, roleFromClaims, type UserRole } from "@workspace/core"
 
 declare global {
@@ -39,6 +40,21 @@ export async function getRole(): Promise<UserRole> {
   if (devRole) return devRole
   const { sessionClaims } = await auth()
   return roleFromClaims(sessionClaims)
+}
+
+/** The two roles that may reach any page in this zone. */
+export type CmsRole = Extract<UserRole, "admin" | "super-admin">
+
+/**
+ * The CMS gate every page in this zone runs first. Answers 403 rather than
+ * redirecting, because a redirect to a page that reads "403" is still a 200
+ * and hides the refusal from anything that is not a human with a browser.
+ * Returns the narrowed role so callers can keep passing it straight down.
+ */
+export async function requireCmsRole(): Promise<CmsRole> {
+  const role = await getRole()
+  if (role !== "admin" && role !== "super-admin") forbidden()
+  return role
 }
 
 /**

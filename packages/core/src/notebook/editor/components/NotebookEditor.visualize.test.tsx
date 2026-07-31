@@ -209,7 +209,7 @@ describe("NotebookEditor visualization", () => {
     const row = panel.closest("aside")!.parentElement!
     expect(row.lastElementChild!.tagName).toBe("ASIDE")
     expect(row.firstElementChild!.tagName).not.toBe("ASIDE")
-    expect(row.className).toContain("max-w-7xl")
+    expect(row.className).toContain("max-w-[120rem]")
 
     fireEvent.click(screen.getByRole("button", { name: "Close visualization" }))
     expect(screen.queryByLabelText("Execution visualization")).toBeNull()

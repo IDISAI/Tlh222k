@@ -29,6 +29,17 @@ describe("Field policy", () => {
     expect(fieldDeleteEligibility("PRIVATE")).toEqual({ ok: false, code: "FIELD_NOT_DRAFT" })
   })
 
+  it("refuses to delete a Field that still holds roadmaps", () => {
+    expect(fieldDeleteEligibility("DRAFT", 1)).toEqual({ ok: false, code: "FIELD_STILL_HAS_ROADMAPS" })
+    expect(fieldDeleteEligibility("DRAFT", 0)).toEqual({ ok: true })
+  })
+
+  it("reports the lifecycle problem first when a Field fails both rules", () => {
+    // Telling an admin to empty a Published Field would send them down a path
+    // that still ends in a refusal.
+    expect(fieldDeleteEligibility("PUBLISHED", 3)).toEqual({ ok: false, code: "FIELD_NOT_DRAFT" })
+  })
+
   it("moves one Field order without touching another", () => {
     expect(reorderFieldMemberIds(["a", "b", "c"], "c", "a")).toEqual(["c", "a", "b"])
     expect(reorderFieldMemberIds(["a", "b", "c"], "missing", "a")).toEqual(["a", "b", "c"])

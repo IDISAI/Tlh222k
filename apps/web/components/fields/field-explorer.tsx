@@ -20,6 +20,7 @@ import {
   ScanLine,
 } from "lucide-react"
 import {
+  fieldRoadmapCta,
   RoadmapService,
   type Field,
   useFields,
@@ -236,10 +237,11 @@ export function FieldExplorer() {
       roadmap.fields.some((field) => field.id === active.id)
     ) ?? []
   const roadmapCount = fieldRoadmaps.length
-  const fieldHref =
-    roadmapCount === 1 && fieldRoadmaps[0]
-      ? `/roadmap/${fieldRoadmaps[0].id}`
-      : `/roadmaps?field=${encodeURIComponent(active.slug)}`
+  // The navigation contract lives in `fieldRoadmapCta`, which is tested against
+  // all three cases. Building the href inline here meant the Field Roadmaps
+  // page was unreachable from the Explorer — the contract's primary entry
+  // point — and the single-roadmap case pointed at the legacy singular route.
+  const cta = fieldRoadmapCta(active, fieldRoadmaps)
   const rail = zen || galleryRail
   const selectByIndex = (nextIndex: number) => {
     const next = visible[nextIndex]
@@ -367,23 +369,24 @@ export function FieldExplorer() {
           {active.description ||
             "Khám phá các roadmap được tuyển chọn trong lĩnh vực này."}
         </p>
-        {roadmapCount > 0 ? (
+        {cta.href ? (
           <Link
-            href={fieldHref}
+            href={cta.href}
             className="mt-8 inline-flex items-center gap-2 rounded-full bg-[#ff385c] px-6 py-4 text-sm font-bold shadow-[0_10px_30px_rgba(255,56,92,.22)] transition hover:bg-[#e31c5f]"
           >
-            {roadmapCount === 1
-              ? "Khám phá roadmap"
-              : `Xem ${roadmapCount} roadmap`}{" "}
-            <ArrowRight className="size-4" />
+            {cta.label} <ArrowRight className="size-4" />
           </Link>
         ) : (
           <span
             aria-disabled="true"
+            title={cta.reason ?? undefined}
             className="mt-8 inline-flex cursor-not-allowed items-center gap-2 rounded-full bg-[#ffd1da] px-6 py-4 text-sm font-bold text-white"
           >
-            Chưa có roadmap <ArrowRight className="size-4" />
+            {cta.label} <ArrowRight className="size-4" />
           </span>
+        )}
+        {cta.reason && (
+          <p className="mt-2 text-sm text-white/80">{cta.reason}</p>
         )}
       </section>
 

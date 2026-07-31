@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation"
 import { RoadmapViewer } from "@workspace/core"
 
-import { getRole } from "@/lib/auth"
+import { requireCmsRole } from "@/lib/auth"
 import {
   FORBIDDEN_PATH,
   NOTEBOOK_BASE_PATH,
@@ -26,8 +26,7 @@ export default async function AdminRoadmapViewPage({
   params: Promise<{ slug: string }>
 }) {
   const { slug } = await params
-  const role = await getRole()
-  if (role !== "admin" && role !== "super-admin") redirect(FORBIDDEN_PATH)
+  const role = await requireCmsRole()
 
   return (
     <RoadmapViewer
@@ -35,6 +34,8 @@ export default async function AdminRoadmapViewPage({
       isAuthenticated
       backHref={ROADMAPS_PATH}
       readOnlyBadge
+      embedded
+      homeHref={ROADMAPS_PATH}
       // Admins author content: internal articles open the EDITORS here
       // (jupyter → /notebooks, notion → the admin /notion zone), not the web
       // read-only surfaces.

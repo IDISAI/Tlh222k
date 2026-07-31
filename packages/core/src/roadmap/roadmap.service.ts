@@ -13,6 +13,7 @@ import {
   type EdgeKind,
   type Field,
   type Level,
+  type NodeKeyResult,
   type NodeStatus,
   type NodeType,
   type PublishStatus,
@@ -24,6 +25,8 @@ import {
   type UpdateNodeInput,
   type Visibility,
 } from "./types"
+import { fieldDeleteEligibility } from "./field-policy"
+import { MAX_KEY_RESULTS } from "./key-results"
 import { getStore, persistStore } from "./mock/builder-store"
 import { reachesLearners, statusOf } from "./publish-status"
 import { deriveCompositionFromNodes } from "./utils/derive-composition"
@@ -110,10 +113,15 @@ export class RoadmapService {
         slug: n.slug,
         title: n.title,
         description: n.description,
-        thumbnailUrl: null,
+        thumbnailUrl: n.coverUrl ?? null,
         publishStatus: "PUBLISHED",
         nodeCount: childCount.get(n.id) ?? 0,
         fields: n.fields ?? [],
+        blockType: n.nodeType as "role" | "skill",
+        level: n.level ?? null,
+        visibility: n.visibility ?? "FREE",
+        updatedAt: n.updatedAt,
+        authorId: n.authorId,
       }))
   }
 
@@ -241,8 +249,19 @@ export class RoadmapService {
     const store = getStore()
     const field = store.fields.find((item) => item.id === id)
     if (!field) throw new RoadmapServiceError("NOT_FOUND")
-    if (field.publishStatus !== "DRAFT") {
-      throw new RoadmapServiceError("VALIDATION", "Only draft Fields can be deleted")
+    // Same two rules the backend enforces, so a mock-backed dev session cannot
+    // reach a state the real one refuses.
+    const memberCount = store.nodes.filter((node) =>
+      (node.fields ?? []).some((item) => item.id === id)
+    ).length
+    const eligibility = fieldDeleteEligibility(field.publishStatus, memberCount)
+    if (!eligibility.ok) {
+      throw new RoadmapServiceError(
+        "VALIDATION",
+        eligibility.code === "FIELD_STILL_HAS_ROADMAPS"
+          ? "This Field still holds roadmaps; move them to another Field before deleting it"
+          : "Only draft Fields can be deleted"
+      )
     }
     store.fields = store.fields.filter((item) => item.id !== id)
     store.nodes.forEach((node) => {
@@ -586,6 +605,28 @@ export class RoadmapService {
    * up to the deleted node's parent so a sub-roadmap is never lost when its
    * parent roadmap is deleted.
    */
+  // ponytail: → `setNodeKeyResults` mutation
+  async setNodeKeyResults(
+    nodeId: string,
+    texts: string[],
+    callerRole: CallerRole
+  ): Promise<NodeKeyResult[]> {
+    assertCanWrite(callerRole)
+    await delay()
+    const store = getStore()
+    const node = store.nodes.find((item) => item.id === nodeId)
+    if (!node) throw new RoadmapServiceError("NOT_FOUND")
+    // Same replace-not-patch shape and same cap as the backend, so a
+    // mock-backed session cannot produce a node the real one would reject.
+    node.keyResults = texts
+      .map((text) => text.trim())
+      .filter(Boolean)
+      .slice(0, MAX_KEY_RESULTS)
+      .map((text, position) => ({ id: `kr-${nodeId}-${position}`, text, position }))
+    persistStore()
+    return node.keyResults
+  }
+
   // ponytail: → `deleteNode` mutation (reparent children up)
   async deleteNode(id: string, callerRole: CallerRole): Promise<boolean> {
     assertCanWrite(callerRole)

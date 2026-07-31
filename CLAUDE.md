@@ -78,6 +78,37 @@ Package scope is `@workspace/*`, not `@vizteck/*`.
 
 ## Roadmap builder model
 
+### Product access contract (approved 2026-07-29)
+
+Roadmap access uses three independent axes. Never collapse them into one enum:
+
+- lifecycle: `DRAFT | PUBLISHED`
+- discoverability: `PUBLIC | PRIVATE`
+- entitlement: `FREE | INTERNAL`
+
+`PRIVATE` means unlisted, not unfinished. A published private roadmap stays
+reachable through `/roadmaps/[slug]`. `DRAFT` is unavailable outside CMS.
+`INTERNAL` requires an AIO learner, Admin, or Super-admin account.
+
+Roles:
+
+- Guest: published FREE content, including PRIVATE through a direct link; no
+  progress or favorite persistence.
+- Viewer: Guest access plus account-backed progress and roadmap favorites.
+- AIO learner: Viewer access plus INTERNAL content.
+- Admin: full CRUD for Fields, Roadmaps, compositions, and content.
+- Super-admin: Admin access plus user and role management.
+
+Viewer and AIO learner CMS requests return 403. Clerk is the only auth engine;
+custom auth UI must preserve the originating route, node/cell, and canvas
+location. Every roadmap has exactly one immutable owner: the Admin or
+Super-admin who created it. All Admins and Super-admins can still CRUD every
+roadmap.
+
+Canonical routes are `/fields/[slug]`, `/roadmaps/[slug]`, and
+`/notion/[slug]`. Comments are outside current scope. Full rules:
+`docs/roadmap-access-and-lifecycle.md`.
+
 Current model (redesigned 2026-07-20, branch `hf/roadmap`, mock-first —
 **LEGO composition**, supersedes both the `.kiro` specs AND the earlier
 rooted-view `?node=` tree). Confirmed with the product owner via Q&A: "block

@@ -12,6 +12,8 @@ import {
   type UpdateNodeInput,
   type UpdateFieldInput,
   type UpdateRoadmapInput,
+  type ReplaceCompositionMemberInput,
+  type ReplaceCompositionEdgeInput,
 } from "./roadmap.service"
 
 @Resolver()
@@ -101,6 +103,15 @@ export class RoadmapResolver {
   @Query("myProgress")
   myProgress(@CurrentUser() user: CurrentUserType | null) {
     return this.service.myProgress(user)
+  }
+
+  @Query("composition")
+  composition(
+    @Args("ownerId") ownerId: string,
+    @Args("scope") scope: "DRAFT" | "PUBLISHED",
+    @CurrentUser() user: CurrentUserType | null
+  ) {
+    return this.service.composition(ownerId, scope, user)
   }
 
   // ── Mutations ──
@@ -210,6 +221,113 @@ export class RoadmapResolver {
     return this.service.saveRoadmap(roadmapId, nodes, user)
   }
 
+  @Mutation("addCompositionMember")
+  addCompositionMember(
+    @Args("ownerId") ownerId: string,
+    @Args("nodeId") nodeId: string,
+    @Args("positionX") positionX: number,
+    @Args("positionY") positionY: number,
+    @Args("isRequired") isRequired: boolean,
+    @CurrentUser() user: CurrentUserType | null
+  ) {
+    return this.service.addCompositionMember(
+      ownerId,
+      nodeId,
+      positionX,
+      positionY,
+      isRequired,
+      user
+    )
+  }
+
+  @Mutation("moveCompositionMember")
+  moveCompositionMember(
+    @Args("ownerId") ownerId: string,
+    @Args("nodeId") nodeId: string,
+    @Args("positionX") positionX: number,
+    @Args("positionY") positionY: number,
+    @CurrentUser() user: CurrentUserType | null
+  ) {
+    return this.service.moveCompositionMember(
+      ownerId,
+      nodeId,
+      positionX,
+      positionY,
+      user
+    )
+  }
+
+  @Mutation("removeCompositionMember")
+  removeCompositionMember(
+    @Args("ownerId") ownerId: string,
+    @Args("nodeId") nodeId: string,
+    @CurrentUser() user: CurrentUserType | null
+  ) {
+    return this.service.removeCompositionMember(ownerId, nodeId, user)
+  }
+
+  @Mutation("addCompositionEdge")
+  addCompositionEdge(
+    @Args("ownerId") ownerId: string,
+    @Args("sourceId") sourceId: string,
+    @Args("targetId") targetId: string,
+    @Args("kind") kind: "solid" | "dashed",
+    @CurrentUser() user: CurrentUserType | null
+  ) {
+    return this.service.addCompositionEdge(
+      ownerId,
+      sourceId,
+      targetId,
+      kind,
+      user
+    )
+  }
+
+  @Mutation("updateCompositionEdgeKind")
+  updateCompositionEdgeKind(
+    @Args("ownerId") ownerId: string,
+    @Args("edgeId") edgeId: string,
+    @Args("kind") kind: "solid" | "dashed",
+    @CurrentUser() user: CurrentUserType | null
+  ) {
+    return this.service.updateCompositionEdgeKind(ownerId, edgeId, kind, user)
+  }
+
+  @Mutation("removeCompositionEdge")
+  removeCompositionEdge(
+    @Args("ownerId") ownerId: string,
+    @Args("edgeId") edgeId: string,
+    @CurrentUser() user: CurrentUserType | null
+  ) {
+    return this.service.removeCompositionEdge(ownerId, edgeId, user)
+  }
+
+  @Mutation("replaceComposition")
+  replaceComposition(
+    @Args("ownerId") ownerId: string,
+    @Args("members") members: ReplaceCompositionMemberInput[],
+    @Args("edges") edges: ReplaceCompositionEdgeInput[],
+    @CurrentUser() user: CurrentUserType | null
+  ) {
+    return this.service.replaceComposition(ownerId, members, edges, user)
+  }
+
+  @Mutation("publishComposition")
+  publishComposition(
+    @Args("ownerId") ownerId: string,
+    @CurrentUser() user: CurrentUserType | null
+  ) {
+    return this.service.publishComposition(ownerId, user)
+  }
+
+  @Mutation("discardCompositionDraft")
+  discardCompositionDraft(
+    @Args("ownerId") ownerId: string,
+    @CurrentUser() user: CurrentUserType | null
+  ) {
+    return this.service.discardCompositionDraft(ownerId, user)
+  }
+
   @Mutation("setNodeStatus")
   setNodeStatus(
     @Args("nodeId") nodeId: string,
@@ -217,5 +335,114 @@ export class RoadmapResolver {
     @CurrentUser() user: CurrentUserType | null
   ) {
     return this.service.setNodeStatus(nodeId, status, user)
+  }
+
+  @Mutation("markNodeOpened")
+  markNodeOpened(
+    @Args("nodeId") nodeId: string,
+    @CurrentUser() user: CurrentUserType | null
+  ) {
+    return this.service.markNodeOpened(nodeId, user)
+  }
+
+  @Query("myFavoriteRoadmapIds")
+  myFavoriteRoadmapIds(@CurrentUser() user: CurrentUserType | null) {
+    return this.service.myFavoriteRoadmapIds(user)
+  }
+
+  @Query("archivedNodes")
+  archivedNodes(@CurrentUser() user: CurrentUserType | null) {
+    return this.service.archivedNodes(user)
+  }
+
+  @Query("myNotifications")
+  myNotifications(@CurrentUser() user: CurrentUserType | null) {
+    return this.service.myNotifications(user)
+  }
+
+  @Query("myEmailOptIn")
+  myEmailOptIn(@CurrentUser() user: CurrentUserType | null) {
+    return this.service.myEmailOptIn(user)
+  }
+
+  @Mutation("markNotificationRead")
+  markNotificationRead(
+    @Args("id") id: string,
+    @CurrentUser() user: CurrentUserType | null
+  ) {
+    return this.service.markNotificationRead(id, user)
+  }
+
+  @Mutation("setEmailOptIn")
+  setEmailOptIn(
+    @Args("optedIn") optedIn: boolean,
+    @CurrentUser() user: CurrentUserType | null
+  ) {
+    return this.service.setEmailOptIn(optedIn, user)
+  }
+
+  @Query("learnerActivity")
+  learnerActivity(
+    @Args("clerkUserId") clerkUserId: string,
+    @CurrentUser() user: CurrentUserType | null
+  ) {
+    return this.service.learnerActivity(clerkUserId, user)
+  }
+
+  @Query("nodeAttachments")
+  nodeAttachments(
+    @Args("nodeId") nodeId: string,
+    @CurrentUser() user: CurrentUserType | null
+  ) {
+    return this.service.nodeAttachments(nodeId, user)
+  }
+
+  @Mutation("addNodeAttachment")
+  addNodeAttachment(
+    @Args("nodeId") nodeId: string,
+    @Args("name") name: string,
+    @Args("url") url: string,
+    @Args("contentType") contentType: string,
+    @Args("sizeBytes") sizeBytes: number,
+    @CurrentUser() user: CurrentUserType | null
+  ) {
+    return this.service.addNodeAttachment(
+      { nodeId, name, url, contentType, sizeBytes },
+      user
+    )
+  }
+
+  @Mutation("deleteNodeAttachment")
+  deleteNodeAttachment(
+    @Args("id") id: string,
+    @CurrentUser() user: CurrentUserType | null
+  ) {
+    return this.service.deleteNodeAttachment(id, user)
+  }
+
+  @Mutation("setNodeKeyResults")
+  setNodeKeyResults(
+    @Args("nodeId") nodeId: string,
+    @Args("texts") texts: string[],
+    @CurrentUser() user: CurrentUserType | null
+  ) {
+    return this.service.setNodeKeyResults(nodeId, texts, user)
+  }
+
+  @Mutation("restoreNode")
+  restoreNode(
+    @Args("id") id: string,
+    @CurrentUser() user: CurrentUserType | null
+  ) {
+    return this.service.restoreNode(id, user)
+  }
+
+  @Mutation("setRoadmapFavorite")
+  setRoadmapFavorite(
+    @Args("ownerNodeId") ownerNodeId: string,
+    @Args("favorite") favorite: boolean,
+    @CurrentUser() user: CurrentUserType | null
+  ) {
+    return this.service.setRoadmapFavorite(ownerNodeId, favorite, user)
   }
 }

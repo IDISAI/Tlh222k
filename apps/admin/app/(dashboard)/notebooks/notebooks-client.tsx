@@ -20,7 +20,6 @@ import {
 } from "lucide-react"
 
 import {
-  FallbackNotebookStore,
   HttpNotebookStore,
   RoadmapService,
   type NotebookSummary,
@@ -33,7 +32,6 @@ import { Input } from "@workspace/ui/components/input"
 import { RequiredMark } from "@workspace/ui/components/required-mark"
 import { cn } from "@workspace/ui/lib/utils"
 
-const KERNEL_SERVER_URL = process.env.NEXT_PUBLIC_KERNEL_SERVER_URL
 const PUBLIC_WEB_ORIGIN = process.env.NEXT_PUBLIC_WEB_URL ?? "http://localhost:3000"
 
 export function NotebooksIndexClient() {
@@ -46,18 +44,30 @@ export function NotebooksIndexClient() {
 }
 
 function ClerkNotebooksIndex() {
-  const { getToken } = useAuth()
+  const { getToken, isLoaded } = useAuth()
+  // Clerk hydrates the session client-side after the first paint. A fetch
+  // fired from a mount-time effect can race ahead of that and hit the API
+  // with no session yet — the request succeeds, but the server sees a guest
+  // and answers 403, even though the page itself rendered as an admin.
+  if (!isLoaded) return <NotebooksLoading />
   return <NotebooksIndex getToken={getToken} />
+}
+
+function NotebooksLoading() {
+  return (
+    <main className="mx-auto w-full max-w-[1480px] space-y-6 p-6 lg:p-8">
+      <p className="p-8 text-sm text-muted-foreground">Đang tải notebook…</p>
+    </main>
+  )
 }
 
 function NotebooksIndex({ getToken }: { getToken: () => Promise<string | null> }) {
   const router = useRouter()
+  // Blob is the CRUD source of truth (web reads published notebooks from it
+  // too) — kernel-server is execution-only, never notebook storage.
   const store = useMemo(() => {
     const apiBase = typeof window !== "undefined" && window.location.pathname.startsWith("/admin") ? "/admin" : ""
-    const fallback = new HttpNotebookStore(apiBase, getToken)
-    return KERNEL_SERVER_URL
-      ? new FallbackNotebookStore(new HttpNotebookStore(KERNEL_SERVER_URL, getToken, 5_000), fallback)
-      : fallback
+    return new HttpNotebookStore(apiBase, getToken)
   }, [getToken])
   const [notebooks, setNotebooks] = useState<NotebookSummary[] | null>(null)
   const [title, setTitle] = useState("")

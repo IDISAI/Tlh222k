@@ -3,9 +3,12 @@
 import { useCallback, useState } from "react"
 
 import type { NodeStatus } from "../../types"
-import { ProgressService } from "../progress.service"
+import { ProgressStore } from "../progress-selector"
 
-const service = new ProgressService()
+// Backend-backed when a svc-api URL is configured, per-browser mock otherwise.
+// Before this the hook always wrote to localStorage, so a learner's progress
+// never left the browser they earned it in.
+const service = new ProgressStore()
 
 function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
   return new Promise<T>((resolve, reject) => {

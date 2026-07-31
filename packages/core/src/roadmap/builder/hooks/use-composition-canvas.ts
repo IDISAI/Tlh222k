@@ -357,8 +357,12 @@ export function useCompositionCanvas(
         await service.updateNode(id, input, role)
         await refreshNodes()
         // Keep the owner header in sync if the owner itself was edited.
+        // `keyResults` is dropped on purpose: the input carries plain strings
+        // while a node carries the stored rows, and `refreshNodes` above has
+        // already brought back the real ones.
         if (id === ownerId) {
-          setOwnerNode((prev) => (prev ? { ...prev, ...input } : prev))
+          const { keyResults: _keyResults, ...meta } = input
+          setOwnerNode((prev) => (prev ? { ...prev, ...meta } : prev))
         }
         // Sync publish state to Notion document if available. The document
         // only has a boolean, so Private collapses to "not published" — the

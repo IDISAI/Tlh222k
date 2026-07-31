@@ -64,10 +64,10 @@ describe("nodeNavigationUrl (notion-article-node Req 1/10/11)", () => {
     ).toBe("/roadmaps/nd-4")
   })
 
-  it("chapter in viewer → /roadmap/{slug}", () => {
+  it("chapter in viewer → /roadmaps/{slug}", () => {
     expect(
       nodeNavigationUrl(node({ nodeType: "chapter", slug: "nhap-mon-html" }))
-    ).toBe("/roadmap/nhap-mon-html")
+    ).toBe("/roadmaps/nhap-mon-html")
   })
 
   it("role/skill in builder → its own composition canvas {base}/{id}", () => {
