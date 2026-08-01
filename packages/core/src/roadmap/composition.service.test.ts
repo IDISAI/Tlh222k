@@ -15,7 +15,10 @@ describe("RoadmapService composition", () => {
   })
 
   async function block(nodeType: "role" | "skill" | "chapter", title: string) {
-    return svc.createBlock({ nodeType, title, positionX: 0, positionY: 0 }, ROLE)
+    return svc.createBlock(
+      { nodeType, title, positionX: 0, positionY: 0 },
+      ROLE
+    )
   }
 
   it("derives an empty canvas for a childless block", async () => {
@@ -29,7 +32,13 @@ describe("RoadmapService composition", () => {
   it("createBlock with ownerId places the new block on that canvas", async () => {
     const owner = await block("role", "Frontend")
     const child = await svc.createBlock(
-      { nodeType: "skill", title: "React", ownerId: owner.id, positionX: 10, positionY: 20 },
+      {
+        nodeType: "skill",
+        title: "React",
+        ownerId: owner.id,
+        positionX: 10,
+        positionY: 20,
+      },
       ROLE
     )
     const comp = await svc.getComposition(owner.id, { callerRole: ROLE })
@@ -77,6 +86,6 @@ describe("RoadmapService composition", () => {
     expect(comp.members).toHaveLength(0)
     expect(comp.edges).toHaveLength(0)
     const nodes = await svc.listNodes()
-    expect(nodes.find((n) => n.id === a.id)?.isDeleted).toBe(true)
+    expect(nodes.find((n) => n.id === a.id)).toBeUndefined()
   })
 })

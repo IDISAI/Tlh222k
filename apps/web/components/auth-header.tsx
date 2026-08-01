@@ -2,7 +2,7 @@
 
 import { ClerkLoaded, SignInButton, UserButton, useAuth } from "@clerk/nextjs"
 import { usePathname, useSearchParams } from "next/navigation"
-import { authReturnUrl, devAuthRole } from "@workspace/core"
+import { authReturnUrl, devAuthRole, ThemeToggle } from "@workspace/core"
 
 export function AuthHeader({ tone = "default" }: { tone?: "default" | "on-dark" }) {
   // Dev bypass: no <ClerkProvider>, so Clerk hooks/components would throw.
@@ -14,17 +14,25 @@ export function AuthHeader({ tone = "default" }: { tone?: "default" | "on-dark" 
   )
   if (dev !== null) {
     return (
-      <span className={
-        tone === "on-dark"
-          ? "rounded-full border border-white/45 bg-black/65 px-3 py-2 text-xs font-semibold text-white shadow-lg backdrop-blur-sm"
-          : "rounded-md border px-3 py-1 text-sm font-medium text-muted-foreground"
-      }>
-        dev: {dev}
-      </span>
+      <div className="flex items-center gap-2">
+        <ThemeToggle />
+        <span className={
+          tone === "on-dark"
+            ? "rounded-full border border-white/45 bg-black/65 px-3 py-2 text-xs font-semibold text-white shadow-lg backdrop-blur-sm"
+            : "rounded-md border px-3 py-1 text-sm font-medium text-muted-foreground"
+        }>
+          dev: {dev}
+        </span>
+      </div>
     )
   }
 
-  return <ClerkAuthHeader tone={tone} />
+  return (
+    <div className="flex items-center gap-2">
+      <ThemeToggle />
+      <ClerkAuthHeader tone={tone} />
+    </div>
+  )
 }
 
 function ClerkAuthHeader({ tone }: { tone: "default" | "on-dark" }) {

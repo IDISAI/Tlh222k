@@ -222,6 +222,7 @@ type Field {
 type RoadmapGraph {
   roadmap: Roadmap!
   nodes: [RoadmapNode!]!
+  composition: Composition
 }
 
 type RoadmapProgress {

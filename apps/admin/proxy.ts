@@ -17,13 +17,7 @@ function publicPath(pathname: string) {
   return `${PUBLIC_PREFIX}${pathname === "/" ? "" : pathname}`
 }
 
-// Admin does NOT use the dev-auth bypass (unlike web/super-admin). Two reasons:
-// (1) the roadmap builder calls the authenticated svc-roadmap backend, which
-// needs a real Clerk token — the bypass sends none, so write-gated queries 500;
-// (2) importing `isDevAuthBypass` from the "@workspace/core" barrel drags the
-// roadmap browser code (BroadcastChannel) into the Edge middleware bundle, which
-// the Edge runtime rejects. Real Clerk login is required in this zone.
-export default clerkMiddleware(async (auth, req) => {
+const clerkProxy = clerkMiddleware(async (auth, req) => {
   // The sign-in and forbidden pages are public (Req 1.2/1.3 exceptions).
   if (isSignIn(req) || isForbidden(req)) return
 
@@ -58,6 +52,15 @@ export default clerkMiddleware(async (auth, req) => {
     return NextResponse.redirect(url)
   }
 })
+
+// Clerk's development-instance handshake runs before the middleware callback.
+// When the explicit local dev bypass is enabled, entering clerkMiddleware first
+// causes a direct :3002 request to fail with `dev-browser-missing` before this
+// app can apply its configured super-admin role. Keep this bypass outside the
+// Clerk wrapper; devAuthRole always returns null in production.
+export default devRole
+  ? () => NextResponse.next()
+  : clerkProxy
 
 export const config = {
   matcher: [
