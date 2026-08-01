@@ -266,6 +266,11 @@ export class RoadmapApi {
          publicBlockGraph(id: $id) {
            roadmap { ${ROADMAP_FIELDS} }
            nodes { ${NODE_FIELDS} }
+           composition {
+             ownerId
+             members { nodeId x y isRequired }
+             edges { id sourceId targetId kind }
+           }
          }
        }`,
       { id }

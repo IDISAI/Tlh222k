@@ -186,6 +186,8 @@ export interface RoadmapNode {
 export interface RoadmapGraph {
   roadmap: Roadmap
   nodes: RoadmapNode[]
+  /** Persisted composition when this graph represents a LEGO canvas. */
+  composition?: Composition | null
 }
 
 // ── Composition model (LEGO redesign, hf/roadmap) ───────────────────────────

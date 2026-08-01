@@ -19,7 +19,7 @@ import { cn } from "@workspace/ui/lib/utils"
 import "@xyflow/react/dist/style.css"
 
 import type { CanvasViewport } from "../../../navigation/auth-return"
-import type { NodeType, RoadmapNode } from "../../types"
+import type { Composition, NodeType, RoadmapNode } from "../../types"
 import type { BuilderFlowNode, ChildCountEdge } from "../types"
 import { deriveCompositionFromNodes } from "../../utils/derive-composition"
 import { layoutForCanvas } from "../utils/spread-overlaps"
@@ -68,6 +68,8 @@ function minimapNodeColor(node: Node): string {
 interface ViewerCanvasProps {
   nodes: RoadmapNode[]
   ownerId?: string | null
+  /** Persisted composition wins over the legacy parentId-derived fallback. */
+  composition?: Composition | null
   onNodeClick?: (node: RoadmapNode) => void
   /** Double-click a node → open the right detail sidebar (matches the builder). */
   onNodeDoubleClick?: (node: RoadmapNode) => void
@@ -92,6 +94,7 @@ interface ViewerCanvasProps {
 function ViewerCanvasInner({
   nodes,
   ownerId,
+  composition: persistedComposition,
   onNodeClick,
   onNodeDoubleClick,
   className,
@@ -106,14 +109,17 @@ function ViewerCanvasInner({
   useEffect(() => setMounted(true), [])
 
   const colorMode: ColorMode = resolvedTheme === "dark" ? "dark" : "light"
+  const usesPersistedComposition =
+    Boolean(ownerId) && persistedComposition?.ownerId === ownerId
 
-  // Derive composition if ownerId is provided and exists in nodes
+  // Use persisted composition when present; derive only for legacy graphs.
   const composition = useMemo(() => {
     if (!ownerId) return null
     const ownerExists = nodes.some((n) => n.id === ownerId)
     if (!ownerExists) return null
+    if (usesPersistedComposition) return persistedComposition
     return deriveCompositionFromNodes(ownerId, nodes)
-  }, [ownerId, nodes])
+  }, [ownerId, nodes, persistedComposition, usesPersistedComposition])
 
   const computedNodes = useMemo<BuilderFlowNode[]>(() => {
     // Stored coordinates cannot be rendered as-is. Blocks created from the CMS
@@ -136,10 +142,16 @@ function ViewerCanvasInner({
         const node = nodeById.get(m.nodeId)
         return node && !node.isDeleted
       })
-      const at = place([
+      const rawPositions = [
         { id: owner.id, x: owner.positionX, y: owner.positionY },
         ...members.map((m) => ({ id: m.nodeId, x: m.x, y: m.y })),
-      ])
+      ]
+      // Composition coordinates are the editor's saved canvas layout. Reflowing
+      // them in the viewer makes public and admin canvases disagree. Auto-layout
+      // remains only for legacy graphs that have no persisted composition.
+      const at = usesPersistedComposition
+        ? new Map(rawPositions.map((node) => [node.id, { x: node.x, y: node.y }]))
+        : place(rawPositions)
 
       const next: BuilderFlowNode[] = [
         {
@@ -196,7 +208,7 @@ function ViewerCanvasInner({
       draggable: false,
       connectable: false,
     }))
-  }, [nodes, ownerId, composition, onNodeDoubleClick])
+  }, [nodes, ownerId, composition, onNodeDoubleClick, usesPersistedComposition])
 
   const computedEdges = useMemo<Edge[]>(() => {
     if (composition) {

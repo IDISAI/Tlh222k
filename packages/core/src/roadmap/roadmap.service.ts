@@ -51,10 +51,7 @@ const SAVE_TIMEOUT_MS = 10_000
 async function withTimeout<T>(work: Promise<T>, ms: number): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined
   const timeout = new Promise<never>((_, reject) => {
-    timer = setTimeout(
-      () => reject(new RoadmapServiceError("TIMEOUT")),
-      ms
-    )
+    timer = setTimeout(() => reject(new RoadmapServiceError("TIMEOUT")), ms)
   })
   try {
     return await Promise.race([work, timeout])
@@ -165,10 +162,14 @@ export class RoadmapService {
     await delay()
     const data = typeof input === "string" ? { title: input } : input
     const title = data.title.trim()
-    if (!title) throw new RoadmapServiceError("VALIDATION", "Field title is required")
+    if (!title)
+      throw new RoadmapServiceError("VALIDATION", "Field title is required")
     const store = getStore()
     const existing = store.fields.find(
-      (field) => field.title.localeCompare(title, undefined, { sensitivity: "accent" }) === 0
+      (field) =>
+        field.title.localeCompare(title, undefined, {
+          sensitivity: "accent",
+        }) === 0
     )
     if (existing) return clone(existing)
     const field: Field = {
@@ -201,20 +202,37 @@ export class RoadmapService {
     const data = typeof input === "string" ? { title: input } : input
     if (data.title !== undefined) {
       const title = data.title.trim()
-      if (!title) throw new RoadmapServiceError("VALIDATION", "Field title is required")
+      if (!title)
+        throw new RoadmapServiceError("VALIDATION", "Field title is required")
       field.title = title
     }
     if (data.slug !== undefined && data.slug !== field.slug) {
-      throw new RoadmapServiceError("VALIDATION", "Field slug cannot change after first save")
-    }
-    if (data.description !== undefined) field.description = data.description?.trim() || null
-    if (data.imageUrl !== undefined) field.imageUrl = data.imageUrl?.trim() || null
-    if (data.publishStatus !== undefined) {
-      const hasPublishedBlock = store.nodes.some((node) =>
-        !node.isDeleted && node.publishStatus === "PUBLISHED" && node.fields?.some((item) => item.id === id)
+      throw new RoadmapServiceError(
+        "VALIDATION",
+        "Field slug cannot change after first save"
       )
-      if (data.publishStatus !== "DRAFT" && (!field.description || !field.imageUrl?.startsWith("https://") || !hasPublishedBlock)) {
-        throw new RoadmapServiceError("VALIDATION", "Published or private Field needs description, HTTPS image, and one published block")
+    }
+    if (data.description !== undefined)
+      field.description = data.description?.trim() || null
+    if (data.imageUrl !== undefined)
+      field.imageUrl = data.imageUrl?.trim() || null
+    if (data.publishStatus !== undefined) {
+      const hasPublishedBlock = store.nodes.some(
+        (node) =>
+          !node.isDeleted &&
+          node.publishStatus === "PUBLISHED" &&
+          node.fields?.some((item) => item.id === id)
+      )
+      if (
+        data.publishStatus !== "DRAFT" &&
+        (!field.description ||
+          !field.imageUrl?.startsWith("https://") ||
+          !hasPublishedBlock)
+      ) {
+        throw new RoadmapServiceError(
+          "VALIDATION",
+          "Published or private Field needs description, HTTPS image, and one published block"
+        )
       }
       field.publishStatus = data.publishStatus
     }
@@ -224,11 +242,17 @@ export class RoadmapService {
   }
 
   /** Ordered roadmap-block memberships for one Field Workspace. */
-  async listFieldNodeIds(fieldId: string, _callerRole: CallerRole): Promise<string[]> {
+  async listFieldNodeIds(
+    fieldId: string,
+    _callerRole: CallerRole
+  ): Promise<string[]> {
     await delay()
     const store = getStore()
     return store.nodes
-      .filter((node) => !node.isDeleted && node.fields?.some((item) => item.id === fieldId))
+      .filter(
+        (node) =>
+          !node.isDeleted && node.fields?.some((item) => item.id === fieldId)
+      )
       .map((node) => node.id)
   }
 
@@ -344,7 +368,9 @@ export class RoadmapService {
 
     const nodes: RoadmapNode[] = base.nodes.map((n) => ({
       ...n,
-      status: opts.authenticated ? (opts.progress?.[n.id] ?? "locked") : "locked",
+      status: opts.authenticated
+        ? (opts.progress?.[n.id] ?? "locked")
+        : "locked",
     }))
     return { roadmap: base.roadmap, nodes }
   }
@@ -359,7 +385,11 @@ export class RoadmapService {
     await delay()
     const store = getStore()
     const node = store.nodes.find((n) => n.id === id && !n.isDeleted)
-    if (!node || node.nodeType === "article" || !reachesLearners(statusOf(node)))
+    if (
+      !node ||
+      node.nodeType === "article" ||
+      !reachesLearners(statusOf(node))
+    )
       return null
     // Whole roadmap's nodes so the web viewer derives the same composition the
     // admin builder renders (shared deriveCompositionFromNodes).
@@ -509,7 +539,9 @@ export class RoadmapService {
       jupyterUrl: input.jupyterUrl ?? null,
       positionX: input.positionX,
       positionY: input.positionY,
-      order: input.order ?? store.nodes.filter((n) => n.roadmapId === input.roadmapId).length,
+      order:
+        input.order ??
+        store.nodes.filter((n) => n.roadmapId === input.roadmapId).length,
       status: "locked",
     }
     store.nodes.push(node)
@@ -539,7 +571,8 @@ export class RoadmapService {
     if (input.description !== undefined) {
       node.description = input.description.trim() || null
     }
-    if (input.articleType !== undefined) node.articleType = input.articleType ?? null
+    if (input.articleType !== undefined)
+      node.articleType = input.articleType ?? null
     if (input.notionPageId !== undefined) {
       node.notionPageId = input.notionPageId?.trim() || null
     }
@@ -622,7 +655,11 @@ export class RoadmapService {
       .map((text) => text.trim())
       .filter(Boolean)
       .slice(0, MAX_KEY_RESULTS)
-      .map((text, position) => ({ id: `kr-${nodeId}-${position}`, text, position }))
+      .map((text, position) => ({
+        id: `kr-${nodeId}-${position}`,
+        text,
+        position,
+      }))
     persistStore()
     return node.keyResults
   }
@@ -638,7 +675,18 @@ export class RoadmapService {
     for (const n of store.nodes) {
       if (n.parentId === id) n.parentId = newParent
     }
-    node.isDeleted = true
+    store.nodes = store.nodes.filter((item) => item.id !== id)
+    for (const composition of store.compositions) {
+      composition.members = composition.members.filter(
+        (member) => member.nodeId !== id
+      )
+      composition.edges = composition.edges.filter(
+        (edge) => edge.sourceId !== id && edge.targetId !== id
+      )
+    }
+    store.compositions = store.compositions.filter(
+      (composition) => composition.ownerId !== id
+    )
     persistStore()
     emitRoadmapUpdate(node.roadmapId)
     return true
@@ -667,7 +715,7 @@ export class RoadmapService {
           .filter((n) => !n.isDeleted)
           .map((n) => ({ ...n, roadmapId }))
         const incomingIds = new Set(incoming.map((n) => n.id))
-        // Keep other roadmaps' nodes and this roadmap's soft-deleted ghosts
+        // Keep only nodes belonging to other roadmaps.
         // that the admin has not explicitly removed from the canvas.
         store.nodes = [
           ...store.nodes.filter(
@@ -855,7 +903,7 @@ export class RoadmapService {
   }
 
   /**
-   * Permanent system delete (sidebar / table "Xóa"). The block is soft-deleted
+   * Permanent system delete (sidebar / table "Xóa"). The block is removed
    * and purged from EVERY composition (as owner, member, and edge endpoint).
    * Other independent blocks are never deleted — only their link to this one.
    */
@@ -864,22 +912,7 @@ export class RoadmapService {
     nodeId: string,
     callerRole: CallerRole
   ): Promise<boolean> {
-    assertCanWrite(callerRole)
-    await delay()
-    const store = getStore()
-    const node = store.nodes.find((n) => n.id === nodeId)
-    if (!node) throw new RoadmapServiceError("NOT_FOUND")
-    node.isDeleted = true
-    for (const comp of store.compositions) {
-      comp.members = comp.members.filter((m) => m.nodeId !== nodeId)
-      comp.edges = comp.edges.filter(
-        (e) => e.sourceId !== nodeId && e.targetId !== nodeId
-      )
-    }
-    store.compositions = store.compositions.filter((c) => c.ownerId !== nodeId)
-    persistStore()
-    emitRoadmapUpdate(node.roadmapId)
-    return true
+    return this.deleteNode(nodeId, callerRole)
   }
 
   /** Draw a wire between two blocks on an owner's canvas (upserts by pair). */

@@ -291,6 +291,7 @@ export function RoadmapViewer({
           <ViewerCanvas
             nodes={visibleNodes}
             ownerId={ownerId}
+            composition={graph.composition}
             onNodeClick={handleNodeOpen}
             onNodeDoubleClick={handleNodeOpen}
             initialViewport={initialViewport}

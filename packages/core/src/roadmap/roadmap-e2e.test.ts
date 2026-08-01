@@ -24,9 +24,9 @@ describe("roadmap E2E (LEGO composition)", () => {
       ROLE
     )
     let all = await svc.listNodes()
-    expect(
-      all.some((n) => n.id === frontend.id && n.nodeType === "role")
-    ).toBe(true) // shows in table + Kho sidebar
+    expect(all.some((n) => n.id === frontend.id && n.nodeType === "role")).toBe(
+      true
+    ) // shows in table + Kho sidebar
     expect(frontend.roadmapId).toBe(frontend.id) // self-owned: block IS a roadmap
 
     // Phase 2 — opening its detail page = its (still empty) composition.
@@ -126,6 +126,6 @@ describe("roadmap E2E (LEGO composition)", () => {
     comp = await svc.getComposition(frontend.id, { callerRole: ROLE })
     expect(comp.members.map((m) => m.nodeId)).not.toContain(css.id)
     all = await svc.listNodes()
-    expect(all.find((n) => n.id === css.id)?.isDeleted).toBe(true)
+    expect(all.find((n) => n.id === css.id)).toBeUndefined()
   })
 })

@@ -4,7 +4,11 @@ import type { Node as DbNode, Prisma } from "@prisma/client"
 import { PrismaService } from "../prisma/prisma.service"
 import { RoadmapEventsService } from "../sse/roadmap-events.service"
 import { RoadmapError } from "../common/roadmap-error"
-import { assertCanWrite, canAccessInternal, type CurrentUser } from "../auth/clerk"
+import {
+  assertCanWrite,
+  canAccessInternal,
+  type CurrentUser,
+} from "../auth/clerk"
 import {
   MAX_TITLE_LENGTH,
   NODE_TYPES,
@@ -274,6 +278,7 @@ type DbNodeWithFields = DbNode & {
 export interface GraphDto {
   roadmap: RoadmapDto
   nodes: NodeDto[]
+  composition?: CompositionDto
 }
 
 export interface CreateRoadmapInput {
@@ -409,11 +414,17 @@ export class RoadmapService implements OnModuleInit {
   async onModuleInit() {
     try {
       const allDocs = await this.prisma.document.findMany({
-        select: { id: true, parentDocumentId: true, isPublished: true }
+        select: { id: true, parentDocumentId: true, isPublished: true },
       })
-      const docMap = new Map<string, { parentId: string | null; isPublished: boolean }>()
+      const docMap = new Map<
+        string,
+        { parentId: string | null; isPublished: boolean }
+      >()
       for (const d of allDocs) {
-        docMap.set(d.id, { parentId: d.parentDocumentId, isPublished: d.isPublished })
+        docMap.set(d.id, {
+          parentId: d.parentDocumentId,
+          isPublished: d.isPublished,
+        })
       }
 
       const toPublishIds = new Set<string>()
@@ -437,7 +448,7 @@ export class RoadmapService implements OnModuleInit {
       if (toPublishIds.size > 0) {
         await this.prisma.document.updateMany({
           where: { id: { in: Array.from(toPublishIds) } },
-          data: { isPublished: true }
+          data: { isPublished: true },
         })
       }
 
@@ -672,7 +683,9 @@ export class RoadmapService implements OnModuleInit {
     user: CurrentUser | null
   ): Promise<boolean> {
     assertCanWrite(user)
-    const result = await this.prisma.nodeAttachment.deleteMany({ where: { id } })
+    const result = await this.prisma.nodeAttachment.deleteMany({
+      where: { id },
+    })
     return result.count > 0
   }
 
@@ -719,7 +732,8 @@ export class RoadmapService implements OnModuleInit {
     return {
       clerkUserId,
       startedNodeCount: progress.length,
-      completedNodeCount: progress.filter((row) => row.status === "done").length,
+      completedNodeCount: progress.filter((row) => row.status === "done")
+        .length,
       completedRoadmaps: completions.map((row) => ({
         ownerNodeId: row.ownerNodeId,
         title: row.owner.title,
@@ -736,9 +750,7 @@ export class RoadmapService implements OnModuleInit {
   }
 
   /** This caller's in-app notifications, newest first. Guests have none. */
-  async myNotifications(
-    user: CurrentUser | null
-  ): Promise<NotificationDto[]> {
+  async myNotifications(user: CurrentUser | null): Promise<NotificationDto[]> {
     if (!user) return []
     const rows = await this.prisma.roadmapNotification.findMany({
       where: { clerkUserId: user.userId },
@@ -1017,7 +1029,10 @@ export class RoadmapService implements OnModuleInit {
    * not just top-level ones. No auth; only published, non-deleted blocks leak.
    * childrenCount is the direct-child count across the whole tree (card "N chủ đề").
    */
-  async publicBlocks(fieldIds?: string[] | null, _user: CurrentUser | null = null): Promise<NodeDto[]> {
+  async publicBlocks(
+    fieldIds?: string[] | null,
+    _user: CurrentUser | null = null
+  ): Promise<NodeDto[]> {
     // Every non-deleted node is fetched even when filtering, because
     // childrenCount counts children across the WHOLE tree — narrowing the
     // query by label would undercount a block whose children carry no labels.
@@ -1044,7 +1059,10 @@ export class RoadmapService implements OnModuleInit {
     // already fetched above rather than a query per card — this list renders
     // every published block at once.
     const started = await this.prisma.userProgress.findMany({
-      where: { status: { in: ["in_progress", "done"] }, node: { isDeleted: false } },
+      where: {
+        status: { in: ["in_progress", "done"] },
+        node: { isDeleted: false },
+      },
       select: { clerkUserId: true, nodeId: true },
     })
     const parentOf = new Map(all.map((n) => [n.id, n.parentId]))
@@ -1106,11 +1124,24 @@ export class RoadmapService implements OnModuleInit {
    * feed the detail panel. Drilling into a member fetches ITS block graph.
    * No auth; the block (or its container roadmap) must be published.
    */
-  async publicBlockGraph(id: string, user: CurrentUser | null): Promise<GraphDto | null> {
-    const node = await this.prisma.node.findUnique({ where: { id } })
+  async publicBlockGraph(
+    id: string,
+    user: CurrentUser | null
+  ): Promise<GraphDto | null> {
+    // Public routes use stable slugs while internal canvas links use node IDs.
+    // Resolve either identifier before loading the block's published canvas.
+    const node = await this.prisma.node.findFirst({
+      where: { OR: [{ id }, { slug: id }] },
+    })
     if (!node || node.isDeleted || node.nodeType === "article") return null
-    if (normalizeVisibility(node.visibility) === "INTERNAL" && !canAccessInternal(user)) {
-      throw new RoadmapError("PERMISSION_DENIED", "Internal block requires AIO access")
+    if (
+      normalizeVisibility(node.visibility) === "INTERNAL" &&
+      !canAccessInternal(user)
+    ) {
+      throw new RoadmapError(
+        "PERMISSION_DENIED",
+        "Internal block requires AIO access"
+      )
     }
     // Direct-link gate. Deliberately NOT `reachesLearners`, which answers
     // "published" and so refused an unlisted block — the one case a direct
@@ -1125,14 +1156,29 @@ export class RoadmapService implements OnModuleInit {
     // Return the WHOLE roadmap's nodes so the web viewer derives the exact same
     // composition (deriveCompositionFromNodes) the admin builder renders — one
     // shared derive keeps viewer ⇄ builder in sync.
-    const roadmapNodes = await this.prisma.node.findMany({
-      where: { roadmapId: node.roadmapId, isDeleted: false },
+    const composition = await this.composition(node.id, "PUBLISHED", user)
+    const memberIds = composition.members.map((member) => member.nodeId)
+    const compositionNodes = await this.prisma.node.findMany({
+      where: { id: { in: [node.id, ...memberIds] }, isDeleted: false },
       orderBy: { order: "asc" },
       include: { keyResults: { orderBy: { position: "asc" } } },
     })
     const visibleNodes = canAccessInternal(user)
-      ? roadmapNodes
-      : roadmapNodes.filter((item) => normalizeVisibility(item.visibility) !== "INTERNAL")
+      ? compositionNodes
+      : compositionNodes.filter(
+          (item) => normalizeVisibility(item.visibility) !== "INTERNAL"
+        )
+    const visibleNodeIds = new Set(visibleNodes.map((item) => item.id))
+    const visibleComposition: CompositionDto = {
+      ownerId: composition.ownerId,
+      members: composition.members.filter((member) =>
+        visibleNodeIds.has(member.nodeId)
+      ),
+      edges: composition.edges.filter(
+        (edge) =>
+          visibleNodeIds.has(edge.sourceId) && visibleNodeIds.has(edge.targetId)
+      ),
+    }
     const visibleLearners = await this.learnersOfNodes(
       visibleNodes.map((item) => item.id)
     )
@@ -1156,7 +1202,7 @@ export class RoadmapService implements OnModuleInit {
       nodeCount: visibleNodes.length,
       learnerCount: visibleLearners,
     }
-    return this.buildGraph(synthetic, visibleNodes, {})
+    return this.buildGraph(synthetic, visibleNodes, {}, visibleComposition)
   }
 
   async myProgress(user: CurrentUser | null): Promise<
@@ -1316,17 +1362,21 @@ export class RoadmapService implements OnModuleInit {
               : undefined,
             fieldMemberships: input.fieldIds?.length
               ? {
-                  create: [...new Set(input.fieldIds)].map((fieldId, position) => ({
-                    fieldId,
-                    position,
-                  })),
+                  create: [...new Set(input.fieldIds)].map(
+                    (fieldId, position) => ({
+                      fieldId,
+                      position,
+                    })
+                  ),
                 }
               : undefined,
             positionX: input.positionX,
             positionY: input.positionY,
             order,
             coverUrl: normalizeHttpUrl(input.coverUrl),
-            tags: input.tags ? [...new Set(input.tags.map((t) => t.trim()).filter(Boolean))] : undefined,
+            tags: input.tags
+              ? [...new Set(input.tags.map((t) => t.trim()).filter(Boolean))]
+              : undefined,
             level: normalizeLevel(input.level),
             visibility: normalizeVisibility(input.visibility),
             // "Người phụ trách" is the creator, not a chosen assignee — stamped
@@ -1415,7 +1465,8 @@ export class RoadmapService implements OnModuleInit {
                   ? (input.linkedRoadmapId ?? null)
                   : undefined,
               publishStatus:
-                input.publishStatus !== undefined && input.publishStatus !== null
+                input.publishStatus !== undefined &&
+                input.publishStatus !== null
                   ? input.publishStatus
                   : undefined,
               coverUrl:
@@ -1424,13 +1475,21 @@ export class RoadmapService implements OnModuleInit {
                   : undefined,
               tags:
                 input.tags !== undefined && input.tags !== null
-                  ? [...new Set(input.tags.map((t) => t.trim()).filter(Boolean))]
+                  ? [
+                      ...new Set(
+                        input.tags.map((t) => t.trim()).filter(Boolean)
+                      ),
+                    ]
                   : undefined,
               // An explicit null clears the level; omitting it leaves it alone.
               level:
-                input.level !== undefined ? normalizeLevel(input.level) : undefined,
+                input.level !== undefined
+                  ? normalizeLevel(input.level)
+                  : undefined,
               visibility:
-                input.visibility !== undefined ? normalizeVisibility(input.visibility) : undefined,
+                input.visibility !== undefined
+                  ? normalizeVisibility(input.visibility)
+                  : undefined,
               // `set` replaces the whole label list, so unchecking a label in
               // the picker actually removes it. Omitted (undefined) input
               // leaves existing labels untouched.
@@ -1462,7 +1521,9 @@ export class RoadmapService implements OnModuleInit {
               existingMemberships.map((membership) => membership.fieldId)
             )
             const nextIds = new Set(nextFieldIds)
-            const removedIds = [...previousIds].filter((fieldId) => !nextIds.has(fieldId))
+            const removedIds = [...previousIds].filter(
+              (fieldId) => !nextIds.has(fieldId)
+            )
             if (removedIds.length) {
               await tx.fieldMembership.deleteMany({
                 where: { nodeId: id, fieldId: { in: removedIds } },
@@ -1475,7 +1536,11 @@ export class RoadmapService implements OnModuleInit {
                 _max: { position: true },
               })
               await tx.fieldMembership.create({
-                data: { fieldId, nodeId: id, position: (latest._max.position ?? -1) + 1 },
+                data: {
+                  fieldId,
+                  nodeId: id,
+                  position: (latest._max.position ?? -1) + 1,
+                },
               })
             }
           }
@@ -1523,14 +1588,13 @@ export class RoadmapService implements OnModuleInit {
         where: { parentId: id },
         data: { parentId: node.parentId ?? null },
       })
-      // Archive only this node's own linked Document, in the same transaction.
+      // Delete this node's own linked Document, in the same transaction.
       if (node.notionPageId) {
-        await tx.document.updateMany({
+        await tx.document.deleteMany({
           where: { id: node.notionPageId },
-          data: { isArchived: true },
         })
       }
-      await tx.node.update({ where: { id }, data: { isDeleted: true } })
+      await tx.node.delete({ where: { id } })
     })
     await this.events.emit(node.roadmapId)
     return true
@@ -2002,7 +2066,10 @@ export class RoadmapService implements OnModuleInit {
 
     const [started, favorited] = await Promise.all([
       tx.userProgress.findMany({
-        where: { nodeId: { in: nodeIds }, status: { in: ["in_progress", "done"] } },
+        where: {
+          nodeId: { in: nodeIds },
+          status: { in: ["in_progress", "done"] },
+        },
         select: { clerkUserId: true },
         distinct: ["clerkUserId"],
       }),
@@ -2076,7 +2143,10 @@ export class RoadmapService implements OnModuleInit {
       referencesDeletedContent,
     })
     if (!verdict.ok) {
-      throw new RoadmapError("VALIDATION", PUBLISH_BLOCKER_MESSAGES[verdict.code])
+      throw new RoadmapError(
+        "VALIDATION",
+        PUBLISH_BLOCKER_MESSAGES[verdict.code]
+      )
     }
   }
 
@@ -2099,7 +2169,9 @@ export class RoadmapService implements OnModuleInit {
         }),
         tx.compositionEdge.findMany({ where: { ownerId, scope: "PUBLISHED" } }),
       ])
-      await tx.compositionEdge.deleteMany({ where: { ownerId, scope: "DRAFT" } })
+      await tx.compositionEdge.deleteMany({
+        where: { ownerId, scope: "DRAFT" },
+      })
       await tx.compositionMembership.deleteMany({
         where: { ownerId, scope: "DRAFT" },
       })
@@ -2342,9 +2414,16 @@ export class RoadmapService implements OnModuleInit {
   ): Promise<FieldDto> {
     assertCanWrite(user)
     const trimmed = input.title.trim()
-    if (!trimmed) throw new RoadmapError("VALIDATION", "Field title is required")
-    if (input.publishStatus === "PUBLISHED" || input.publishStatus === "PRIVATE") {
-      throw new RoadmapError("VALIDATION", "Create the Field as Draft, then add its public block before publishing")
+    if (!trimmed)
+      throw new RoadmapError("VALIDATION", "Field title is required")
+    if (
+      input.publishStatus === "PUBLISHED" ||
+      input.publishStatus === "PRIVATE"
+    ) {
+      throw new RoadmapError(
+        "VALIDATION",
+        "Create the Field as Draft, then add its public block before publishing"
+      )
     }
 
     const existing = await this.prisma.field.findFirst({
@@ -2391,25 +2470,32 @@ export class RoadmapService implements OnModuleInit {
 
     // Retitling onto another label's title would break the unique index with a
     // raw Prisma error; reject it as a domain failure instead.
-    const clash = trimmed ? await this.prisma.field.findFirst({
-      where: {
-        title: { equals: trimmed, mode: "insensitive" },
-        id: { not: id },
-      },
-      select: { id: true },
-    }) : null
+    const clash = trimmed
+      ? await this.prisma.field.findFirst({
+          where: {
+            title: { equals: trimmed, mode: "insensitive" },
+            id: { not: id },
+          },
+          select: { id: true },
+        })
+      : null
     if (clash) {
       throw new RoadmapError("VALIDATION", `Lĩnh vực "${trimmed}" đã tồn tại`)
     }
 
     // Validate at write boundary. UI validation is not an access-control rule.
-    if (input.publishStatus === "PUBLISHED" || input.publishStatus === "PRIVATE") {
-      const description = input.description === undefined
-        ? existing.description
-        : normalizeFieldDescription(input.description)
-      const imageUrl = input.imageUrl === undefined
-        ? existing.imageUrl
-        : input.imageUrl?.trim() || null
+    if (
+      input.publishStatus === "PUBLISHED" ||
+      input.publishStatus === "PRIVATE"
+    ) {
+      const description =
+        input.description === undefined
+          ? existing.description
+          : normalizeFieldDescription(input.description)
+      const imageUrl =
+        input.imageUrl === undefined
+          ? existing.imageUrl
+          : input.imageUrl?.trim() || null
       const publicBlockCount = await this.prisma.node.count({
         where: {
           isDeleted: false,
@@ -2419,13 +2505,22 @@ export class RoadmapService implements OnModuleInit {
         },
       })
       if (!description) {
-        throw new RoadmapError("VALIDATION", "Field needs a description before it can be published")
+        throw new RoadmapError(
+          "VALIDATION",
+          "Field needs a description before it can be published"
+        )
       }
       if (!imageUrl?.startsWith("https://")) {
-        throw new RoadmapError("VALIDATION", "Field needs an HTTPS image before it can be published")
+        throw new RoadmapError(
+          "VALIDATION",
+          "Field needs an HTTPS image before it can be published"
+        )
       }
       if (publicBlockCount === 0) {
-        throw new RoadmapError("VALIDATION", "Field needs one published roadmap block before it can be published")
+        throw new RoadmapError(
+          "VALIDATION",
+          "Field needs one published roadmap block before it can be published"
+        )
       }
     }
 
@@ -2436,9 +2531,15 @@ export class RoadmapService implements OnModuleInit {
       // `input.slug` is only honoured by createField, before the Field exists.
       data: {
         ...(trimmed ? { title: trimmed } : {}),
-        ...(input.description !== undefined ? { description: input.description?.trim() || null } : {}),
-        ...(input.imageUrl !== undefined ? { imageUrl: input.imageUrl?.trim() || null } : {}),
-        ...(input.publishStatus != null ? { publishStatus: input.publishStatus } : {}),
+        ...(input.description !== undefined
+          ? { description: input.description?.trim() || null }
+          : {}),
+        ...(input.imageUrl !== undefined
+          ? { imageUrl: input.imageUrl?.trim() || null }
+          : {}),
+        ...(input.publishStatus != null
+          ? { publishStatus: input.publishStatus }
+          : {}),
         ...(input.order != null ? { order: input.order } : {}),
       },
       select: FIELD_SELECT,
@@ -2455,7 +2556,10 @@ export class RoadmapService implements OnModuleInit {
     })
     if (!field) throw new RoadmapError("NOT_FOUND", "Field not found")
     if (normalizePublishStatus(field.publishStatus) !== "DRAFT") {
-      throw new RoadmapError("VALIDATION", "Only draft Fields can be deleted; take this Field back to Draft first")
+      throw new RoadmapError(
+        "VALIDATION",
+        "Only draft Fields can be deleted; take this Field back to Draft first"
+      )
     }
     // A Field must be empty before it goes. The delete does not touch the
     // roadmaps themselves — FieldMembership cascades, the blocks survive — but
@@ -2475,7 +2579,10 @@ export class RoadmapService implements OnModuleInit {
   }
 
   /** Ordered node ids for a single Field Workspace. CMS-only. */
-  async fieldNodeIds(fieldId: string, user: CurrentUser | null): Promise<string[]> {
+  async fieldNodeIds(
+    fieldId: string,
+    user: CurrentUser | null
+  ): Promise<string[]> {
     assertCanWrite(user)
     const memberships = await this.prisma.fieldMembership.findMany({
       where: { fieldId },
@@ -2502,7 +2609,10 @@ export class RoadmapService implements OnModuleInit {
       uniqueIds.length !== memberships.length ||
       memberships.some((membership) => !uniqueIds.includes(membership.nodeId))
     ) {
-      throw new RoadmapError("VALIDATION", "Membership order does not match this Field")
+      throw new RoadmapError(
+        "VALIDATION",
+        "Membership order does not match this Field"
+      )
     }
     await this.prisma.$transaction(
       uniqueIds.map((nodeId, position) =>
@@ -2562,9 +2672,10 @@ export class RoadmapService implements OnModuleInit {
   private buildGraph(
     roadmap: RoadmapDto,
     nodes: DbNode[],
-    progress: Record<string, NodeStatus>
+    progress: Record<string, NodeStatus>,
+    composition?: CompositionDto
   ): GraphDto {
-    return { roadmap, nodes: this.attachComputed(nodes, progress) }
+    return { roadmap, nodes: this.attachComputed(nodes, progress), composition }
   }
 
   private async activeNodesOf(roadmapId: string): Promise<DbNode[]> {
