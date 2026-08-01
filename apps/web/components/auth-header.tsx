@@ -18,11 +18,11 @@ export function AuthHeader({
     process.env.NEXT_PUBLIC_DEV_AUTH_ROLE,
     process.env.NEXT_PUBLIC_ENABLE_DEV_AUTH_BYPASS
   )
-  if (!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY && dev !== null) {
+  if (!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY) {
     return (
       <div className="flex items-center gap-2">
         {!minimal && <ThemeToggle />}
-        {!minimal && (
+        {!minimal && dev !== null && (
           <span
             className={
               tone === "on-dark"
