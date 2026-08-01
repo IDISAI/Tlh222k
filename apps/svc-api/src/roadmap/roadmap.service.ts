@@ -1,4 +1,5 @@
 import { Injectable, type OnModuleInit } from "@nestjs/common"
+import { createClerkClient } from "@clerk/backend"
 import type { Node as DbNode, Prisma } from "@prisma/client"
 
 import { PrismaService } from "../prisma/prisma.service"
@@ -137,6 +138,8 @@ export interface NodeDto {
   tags: string[]
   /** Clerk id of whoever created this block. Stamped on create, never on update. */
   authorId: string | null
+  /** Human-readable creator name resolved from Clerk for card metadata. */
+  authorName: string | null
   /**
    * Discovery labels. Empty when the caller's query did not `include` them —
    * the GraphQL field is a non-null list, so callers see `[]`, never null.
@@ -406,6 +409,8 @@ export interface ReplaceCompositionEdgeInput {
 
 @Injectable()
 export class RoadmapService implements OnModuleInit {
+  private readonly authorNameCache = new Map<string, string | null>()
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly events: RoadmapEventsService
@@ -917,7 +922,7 @@ export class RoadmapService implements OnModuleInit {
     if (roadmap && (reachesLearners(statusOf(roadmap)) || isAdmin)) {
       const nodes = await this.activeNodesOf(roadmap.id)
       if (nodes.length > 0) {
-        return this.buildGraph(
+        return await this.buildGraph(
           this.toRoadmapDto(roadmap, nodes.length),
           nodes,
           await this.progressMap(user, nodes)
@@ -973,7 +978,7 @@ export class RoadmapService implements OnModuleInit {
       nodeCount: subtree.length,
       learnerCount: subtreeLearners,
     }
-    return this.buildGraph(
+    return await this.buildGraph(
       synthetic,
       subtree,
       await this.progressMap(user, subtree)
@@ -998,7 +1003,7 @@ export class RoadmapService implements OnModuleInit {
       orderBy: { order: "asc" },
       include: { keyResults: { orderBy: { position: "asc" } } },
     })
-    return this.buildGraph(
+    return await this.buildGraph(
       this.toRoadmapDto(roadmap, roadmap._count.nodes),
       nodes,
       {}
@@ -1020,7 +1025,7 @@ export class RoadmapService implements OnModuleInit {
         },
       },
     })
-    return this.attachComputed(nodes, {})
+    return this.withAuthorNames(await this.attachComputed(nodes, {}))
   }
 
   /**
@@ -1095,7 +1100,7 @@ export class RoadmapService implements OnModuleInit {
         )
       : new Map<string, number>()
 
-    return all
+    const listed = all
       .filter(
         (n) =>
           // Listing gate: published AND discoverable. An unlisted block still
@@ -1115,6 +1120,7 @@ export class RoadmapService implements OnModuleInit {
         ...this.toNodeDto(n, "locked", childCount.get(n.id) ?? 0),
         learnerCount: learnersByBlock.get(n.id)?.size ?? 0,
       }))
+    return this.withAuthorNames(listed)
   }
 
   /**
@@ -1202,7 +1208,12 @@ export class RoadmapService implements OnModuleInit {
       nodeCount: visibleNodes.length,
       learnerCount: visibleLearners,
     }
-    return this.buildGraph(synthetic, visibleNodes, {}, visibleComposition)
+    return await this.buildGraph(
+      synthetic,
+      visibleNodes,
+      {},
+      visibleComposition
+    )
   }
 
   async myProgress(user: CurrentUser | null): Promise<
@@ -1323,7 +1334,7 @@ export class RoadmapService implements OnModuleInit {
     assertCanWrite(user)
     const existing = await this.prisma.roadmap.findUnique({ where: { id } })
     if (!existing) throw new RoadmapError("NOT_FOUND")
-    await this.prisma.roadmap.delete({ where: { id } }) // cascade deletes nodes
+    await this.purgeRoadmap(id)
     await this.events.emit(id)
     return true
   }
@@ -1396,7 +1407,9 @@ export class RoadmapService implements OnModuleInit {
       }, TREE_TRANSACTION_OPTIONS)
     )
     await this.events.emit(input.roadmapId)
-    return this.toNodeDto(created, "locked", 0)
+    return (
+      await this.withAuthorNames([this.toNodeDto(created, "locked", 0)])
+    )[0]!
   }
 
   async updateNode(
@@ -1569,7 +1582,11 @@ export class RoadmapService implements OnModuleInit {
     )
     await this.events.emit(updated.roadmapId)
     const childrenCount = await this.childrenCount(id)
-    return this.toNodeDto(updated, "locked", childrenCount)
+    return (
+      await this.withAuthorNames([
+        this.toNodeDto(updated, "locked", childrenCount),
+      ])
+    )[0]!
   }
 
   /**
@@ -1639,7 +1656,7 @@ export class RoadmapService implements OnModuleInit {
       orderBy: { updatedAt: "desc" },
       include: { fields: { orderBy: FIELD_ORDER_BY, select: FIELD_SELECT } },
     })
-    return rows.map((n) => this.toNodeDto(n, "locked", 0))
+    return this.withAuthorNames(rows.map((n) => this.toNodeDto(n, "locked", 0)))
   }
 
   /**
@@ -1676,7 +1693,9 @@ export class RoadmapService implements OnModuleInit {
     }, TREE_TRANSACTION_OPTIONS)
     await this.events.emit(sourceRoadmapId)
     if (sourceRoadmapId !== roadmapId) await this.events.emit(roadmapId)
-    return this.toNodeDto(moved, "locked", 0)
+    return (
+      await this.withAuthorNames([this.toNodeDto(moved, "locked", 0)])
+    )[0]!
   }
 
   /** Batch replace the roadmap's active nodes (positions + parent links). */
@@ -2361,6 +2380,7 @@ export class RoadmapService implements OnModuleInit {
       coverUrl: n.coverUrl ?? null,
       tags: n.tags ?? [],
       authorId: n.authorId ?? null,
+      authorName: null,
       // Narrowed here rather than trusted: the column is a plain string, and an
       // unreadable value means "unjudged", not a level nothing can render.
       level: normalizeLevel(n.level),
@@ -2378,6 +2398,56 @@ export class RoadmapService implements OnModuleInit {
         text: kr.text,
         position: kr.position,
       })),
+    }
+  }
+
+  private async withAuthorNames(nodes: NodeDto[]): Promise<NodeDto[]> {
+    const authorIds = [
+      ...new Set(
+        nodes.flatMap((node) => (node.authorId ? [node.authorId] : []))
+      ),
+    ]
+    const names = await Promise.all(
+      authorIds.map(async (id) => [id, await this.authorNameFor(id)] as const)
+    )
+    const byId = new Map(names)
+    return nodes.map((node) => ({
+      ...node,
+      authorName: node.authorId ? (byId.get(node.authorId) ?? null) : null,
+    }))
+  }
+
+  private async authorNameFor(authorId: string): Promise<string | null> {
+    if (this.authorNameCache.has(authorId))
+      return this.authorNameCache.get(authorId) ?? null
+
+    if (authorId.startsWith("dev-user-")) {
+      const name = authorId
+        .slice("dev-user-".length)
+        .replace(
+          /(^|-)([a-z])/g,
+          (_, prefix, letter) => `${prefix}${letter.toUpperCase()}`
+        )
+      this.authorNameCache.set(authorId, name)
+      return name
+    }
+
+    const secretKey = process.env.CLERK_SECRET_KEY
+    if (!secretKey) return null
+    try {
+      const user = await createClerkClient({ secretKey }).users.getUser(
+        authorId
+      )
+      const name =
+        user.fullName?.trim() ||
+        user.username?.trim() ||
+        user.primaryEmailAddress?.emailAddress?.trim() ||
+        null
+      this.authorNameCache.set(authorId, name)
+      return name
+    } catch {
+      this.authorNameCache.set(authorId, null)
+      return null
     }
   }
 
@@ -2566,7 +2636,7 @@ export class RoadmapService implements OnModuleInit {
     // it would quietly pull them out of the grouping readers browse by, and
     // nothing downstream would report that. Make the admin move them first.
     const memberCount = await this.prisma.fieldMembership.count({
-      where: { fieldId: id },
+      where: { fieldId: id, node: { isDeleted: false } },
     })
     if (memberCount > 0) {
       throw new RoadmapError(
@@ -2654,10 +2724,10 @@ export class RoadmapService implements OnModuleInit {
     return slug
   }
 
-  private attachComputed(
+  private async attachComputed(
     nodes: DbNodeWithFields[],
     progress: Record<string, NodeStatus>
-  ): NodeDto[] {
+  ): Promise<NodeDto[]> {
     const childCount = new Map<string, number>()
     for (const n of nodes) {
       if (n.parentId && !n.isDeleted) {
@@ -2669,13 +2739,19 @@ export class RoadmapService implements OnModuleInit {
     )
   }
 
-  private buildGraph(
+  private async buildGraph(
     roadmap: RoadmapDto,
     nodes: DbNode[],
     progress: Record<string, NodeStatus>,
     composition?: CompositionDto
-  ): GraphDto {
-    return { roadmap, nodes: this.attachComputed(nodes, progress), composition }
+  ): Promise<GraphDto> {
+    return {
+      roadmap,
+      nodes: await this.withAuthorNames(
+        await this.attachComputed(nodes, progress)
+      ),
+      composition,
+    }
   }
 
   private async activeNodesOf(roadmapId: string): Promise<DbNode[]> {
@@ -2763,7 +2839,18 @@ export class RoadmapService implements OnModuleInit {
 
   // Deterministic `-{n}` suffix (n = 2..999) per notion-article-node Req 9.2.
   private async uniqueRoadmapSlug(base: string): Promise<string> {
-    if (!(await this.prisma.roadmap.findUnique({ where: { slug: base } }))) {
+    const existing = await this.prisma.roadmap.findUnique({
+      where: { slug: base },
+    })
+    if (!existing) return base
+
+    // Older deletes soft-deleted only the root node, leaving an empty Roadmap
+    // row behind. Reclaim it now so a deleted roadmap cannot reserve its URL.
+    const activeNodes = await this.prisma.node.count({
+      where: { roadmapId: existing.id, isDeleted: false },
+    })
+    if (activeNodes === 0) {
+      await this.purgeRoadmap(existing.id)
       return base
     }
     for (let n = 2; n <= 999; n++) {
@@ -2775,6 +2862,22 @@ export class RoadmapService implements OnModuleInit {
       }
     }
     throw new RoadmapError("TIMEOUT", "slug exhausted")
+  }
+
+  private async purgeRoadmap(id: string): Promise<void> {
+    await this.prisma.$transaction(async (tx) => {
+      const nodes = await tx.node.findMany({
+        where: { roadmapId: id },
+        select: { notionPageId: true },
+      })
+      const documentIds = nodes.flatMap((node) =>
+        node.notionPageId ? [node.notionPageId] : []
+      )
+      if (documentIds.length) {
+        await tx.document.deleteMany({ where: { id: { in: documentIds } } })
+      }
+      await tx.roadmap.delete({ where: { id } })
+    })
   }
 
   private async uniqueNodeSlug(base: string): Promise<string> {

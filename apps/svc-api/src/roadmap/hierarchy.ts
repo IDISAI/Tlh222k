@@ -44,7 +44,9 @@ export function isNodeType(v: unknown): v is NodeType {
  * like `javascript:` / `data:` that would fire if the value is ever rendered
  * as a link href. Empty/undefined → null (field is optional).
  */
-export function normalizeHttpUrl(raw: string | null | undefined): string | null {
+export function normalizeHttpUrl(
+  raw: string | null | undefined
+): string | null {
   const v = raw?.trim()
   if (!v) return null
   let url: URL
@@ -224,7 +226,10 @@ export type AttachmentDecision =
 const ATTACHMENT_MAX_BYTES = 50 * 1024 * 1024
 
 const ATTACHMENT_ALLOWED_TYPES = new Set([
-  "image/jpeg", "image/png", "image/webp", "image/gif",
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/gif",
   "application/pdf",
   "application/msword",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -235,10 +240,44 @@ const ATTACHMENT_ALLOWED_TYPES = new Set([
 ])
 
 const EXECUTABLE_EXTENSIONS = new Set([
-  "exe", "com", "bat", "cmd", "msi", "scr", "pif", "cpl", "jar",
-  "sh", "bash", "zsh", "ps1", "psm1", "vbs", "vbe", "js", "mjs", "cjs",
-  "jse", "wsf", "wsh", "hta", "reg", "dll", "so", "dylib", "app",
-  "deb", "rpm", "apk", "bin", "run", "command", "py", "rb", "pl", "php",
+  "exe",
+  "com",
+  "bat",
+  "cmd",
+  "msi",
+  "scr",
+  "pif",
+  "cpl",
+  "jar",
+  "sh",
+  "bash",
+  "zsh",
+  "ps1",
+  "psm1",
+  "vbs",
+  "vbe",
+  "js",
+  "mjs",
+  "cjs",
+  "jse",
+  "wsf",
+  "wsh",
+  "hta",
+  "reg",
+  "dll",
+  "so",
+  "dylib",
+  "app",
+  "deb",
+  "rpm",
+  "apk",
+  "bin",
+  "run",
+  "command",
+  "py",
+  "rb",
+  "pl",
+  "php",
 ])
 
 const EXECUTABLE_TYPES = new Set([
@@ -293,7 +332,10 @@ export function inspectAttachment(file: {
   }
 }
 
-export const ATTACHMENT_REJECTION_MESSAGES: Record<AttachmentRejection, string> = {
+export const ATTACHMENT_REJECTION_MESSAGES: Record<
+  AttachmentRejection,
+  string
+> = {
   NO_FILE: "Chưa chọn tệp.",
   FILE_TOO_LARGE: "Tệp vượt quá 50MB.",
   EXECUTABLE_REJECTED: "Không cho phép tệp thực thi.",
@@ -319,7 +361,9 @@ export const LEVELS = ["BASIC", "INTERMEDIATE", "ADVANCED"] as const
 export type Level = (typeof LEVELS)[number]
 
 export function isLevel(value: unknown): value is Level {
-  return typeof value === "string" && (LEVELS as readonly string[]).includes(value)
+  return (
+    typeof value === "string" && (LEVELS as readonly string[]).includes(value)
+  )
 }
 
 /** Null rather than a guess: "unjudged" is a real state for a block. */
@@ -329,18 +373,8 @@ export function normalizeLevel(raw: unknown): Level | null {
   return isLevel(value) ? value : null
 }
 
-/**
- * A Field's description is the subtitle over its full-viewport image, so it is
- * capped to what that scene holds. Mirrors `field-limits.ts` in the shared
- * package, duplicated for the same reason the other domain constants are.
- *
- * The form's maxLength only stops a person typing. An API caller is not
- * typing, so the cap has to hold here too.
- */
-export const FIELD_DESCRIPTION_MAX = 160
-
 export function normalizeFieldDescription(raw: unknown): string | null {
   if (typeof raw !== "string") return null
-  const trimmed = raw.trim().slice(0, FIELD_DESCRIPTION_MAX)
+  const trimmed = raw.trim()
   return trimmed || null
 }

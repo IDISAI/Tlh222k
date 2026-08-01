@@ -10,15 +10,7 @@ import {
 } from "react"
 import Link from "next/link"
 import gsap from "gsap"
-import {
-  ArrowRight,
-  Columns3,
-  Maximize2,
-  Minimize2,
-  Moon,
-  PanelsTopLeft,
-  ScanLine,
-} from "lucide-react"
+import { ArrowRight, ScanLine } from "lucide-react"
 import {
   fieldRoadmapCta,
   RoadmapService,
@@ -49,10 +41,6 @@ export function FieldExplorer() {
   )
   const [transitionOrigin, setTransitionOrigin] = useState("50% 50%")
   const [reducedMotion, setReducedMotion] = useState(false)
-  const [zen, setZen] = useState(false)
-  const [galleryRail, setGalleryRail] = useState(false)
-  const [isFullscreen, setIsFullscreen] = useState(false)
-  const explorerRef = useRef<HTMLElement>(null)
   const backdropRef = useRef<HTMLDivElement>(null)
   const active =
     visible.find((field) => field.slug === activeSlug) ??
@@ -178,25 +166,6 @@ export function FieldExplorer() {
     return () => window.removeEventListener("keydown", onKeyDown)
   }, [active?.id, select, visible])
 
-  useEffect(() => {
-    const syncFullscreen = () =>
-      setIsFullscreen(document.fullscreenElement === explorerRef.current)
-    syncFullscreen()
-    document.addEventListener("fullscreenchange", syncFullscreen)
-    return () =>
-      document.removeEventListener("fullscreenchange", syncFullscreen)
-  }, [])
-
-  const requestFullscreen = async () => {
-    try {
-      if (!document.fullscreenElement)
-        await explorerRef.current?.requestFullscreen?.()
-      else await document.exitFullscreen?.()
-    } catch {
-      // Fullscreen can be denied by browser policy; Explorer remains usable.
-    }
-  }
-
   // CLAUDE.md: the Clerk auth control lives in the page header on every page,
   // no exceptions — including these early-return states, which used to skip
   // straight to a bare <main> and drop the header (and the logo) entirely.
@@ -242,12 +211,6 @@ export function FieldExplorer() {
   // page was unreachable from the Explorer — the contract's primary entry
   // point — and the single-roadmap case pointed at the legacy singular route.
   const cta = fieldRoadmapCta(active, fieldRoadmaps)
-  const rail = zen || galleryRail
-  const selectByIndex = (nextIndex: number) => {
-    const next = visible[nextIndex]
-    if (next) select(next.slug)
-  }
-
   const backgroundStyle = (field: Field) => ({
     backgroundImage: `url(${field.imageUrl || FALLBACK_IMAGE})`,
     backgroundPosition: "center",
@@ -255,14 +218,7 @@ export function FieldExplorer() {
   })
 
   return (
-    <main
-      ref={explorerRef}
-      className={cn(
-        "relative min-h-screen overflow-hidden bg-[#101010] text-white",
-        isFullscreen && "h-screen",
-        zen && "field-explorer-zen"
-      )}
-    >
+    <main className="relative min-h-screen overflow-hidden bg-[#101010] text-white">
       {/* Two fixed layers avoid layout movement while an image changes, like the Lumina gallery reference. */}
       {outgoingBackground && (
         <div
@@ -285,182 +241,95 @@ export function FieldExplorer() {
           aria-hidden="true"
         />
       )}
-      <div className="pointer-events-none fixed inset-0 z-[1] bg-[linear-gradient(180deg,rgba(0,0,0,.46),transparent_22%,transparent_66%,rgba(0,0,0,.5)),linear-gradient(90deg,rgba(4,8,14,.38),rgba(4,8,14,.08)_48%,rgba(4,8,14,.36))]" />
+      <div className="pointer-events-none fixed inset-0 z-[1] bg-[linear-gradient(180deg,rgba(0,0,0,.5),transparent_28%,transparent_62%,rgba(0,0,0,.62)),linear-gradient(90deg,rgba(4,8,14,.82),rgba(4,8,14,.54)_42%,rgba(4,8,14,.14)_72%,rgba(4,8,14,.34))]" />
       <div className="pointer-events-none fixed inset-0 z-[2] bg-[radial-gradient(ellipse_at_50%_48%,rgba(0,0,0,.46),rgba(0,0,0,.12)_45%,transparent_70%)]" />
 
       <header className="relative z-10 flex h-16 items-center justify-between bg-gradient-to-b from-black/45 to-transparent px-5 sm:px-8">
-        <span className="text-xl font-extrabold tracking-[-1px] text-white [text-shadow:0_2px_12px_rgba(0,0,0,.92)]">
+        <Link
+          href="/"
+          className="rounded-md text-xl font-extrabold tracking-[-1px] text-white outline-none [text-shadow:0_2px_12px_rgba(0,0,0,.92)] focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-4 focus-visible:ring-offset-black"
+        >
           lh222k
-        </span>
-        <div className="flex items-center gap-2 text-xs font-semibold text-white [text-shadow:0_1px_8px_rgba(0,0,0,.95)]">
-          <span className="hidden rounded-full border border-white/55 bg-black/70 p-1 shadow-lg backdrop-blur-sm sm:flex">
-            <button
-              type="button"
-              aria-label="Dock ngang"
-              aria-pressed={!galleryRail}
-              onClick={() => {
-                setGalleryRail(false)
-                setZen(false)
-              }}
-              className={cn(
-                "grid size-7 place-items-center rounded-full",
-                !galleryRail && "bg-white/30 text-white"
-              )}
-            >
-              <PanelsTopLeft className="size-4" />
-            </button>
-            <button
-              type="button"
-              aria-label="Rail dọc"
-              aria-pressed={galleryRail}
-              onClick={() => setGalleryRail(true)}
-              className={cn(
-                "grid size-7 place-items-center rounded-full",
-                galleryRail && "bg-white/30 text-white"
-              )}
-            >
-              <Columns3 className="size-4" />
-            </button>
-          </span>
-          <button
-            type="button"
-            onClick={() => void requestFullscreen()}
-            aria-pressed={isFullscreen}
-            className="flex items-center gap-1.5 rounded-full border border-white/55 bg-black/70 px-3 py-2 shadow-lg backdrop-blur-sm transition hover:bg-black/85"
-          >
-            {isFullscreen ? (
-              <Minimize2 className="size-3.5" />
-            ) : (
-              <Maximize2 className="size-3.5" />
-            )}
-            {isFullscreen ? "Thoát toàn màn hình" : "Toàn màn hình"}
-          </button>
-          <button
-            type="button"
-            onClick={() =>
-              setZen((value) => {
-                const next = !value
-                setGalleryRail(next)
-                return next
-              })
-            }
-            aria-pressed={zen}
-            className={cn(
-              "hidden items-center gap-1.5 rounded-full border border-white/55 bg-black/70 px-3 py-2 shadow-lg backdrop-blur-sm transition hover:bg-black/85 sm:flex",
-              zen && "bg-white/30 text-white"
-            )}
-          >
-            <Moon className="size-3.5" />
-            Zen
-          </button>
-          <AuthHeader tone="on-dark" />
-        </div>
+        </Link>
+        <AuthHeader tone="on-dark" minimal />
       </header>
 
-      <section className="relative z-10 mx-auto flex min-h-[calc(100vh-64px)] max-w-6xl flex-col items-center justify-center px-5 pb-40 text-center">
-        <p className="rounded-full border border-white/20 bg-black/55 px-3 py-1 text-[11px] font-bold tracking-[.12em] text-white shadow-lg backdrop-blur-sm [text-shadow:0_2px_8px_rgba(0,0,0,.95)]">
-          LĨNH VỰC {index + 1} / {visible.length}{" "}
-          <span className="mx-2 text-white/80">—</span> {roadmapCount} ROADMAP
-        </p>
-        <h1 className="mt-5 max-w-5xl text-5xl leading-none font-black tracking-[-.055em] text-white [text-shadow:0_4px_18px_rgba(0,0,0,.98),0_0_2px_rgba(0,0,0,1)] sm:text-7xl lg:text-[72px]">
-          {active.title}
-        </h1>
-        <p className="mt-5 max-w-xl rounded-2xl bg-black/58 px-4 py-2 text-base leading-7 font-medium text-white shadow-lg backdrop-blur-sm [text-shadow:0_2px_10px_rgba(0,0,0,.98)]">
-          {active.description ||
-            "Khám phá các roadmap được tuyển chọn trong lĩnh vực này."}
-        </p>
-        {cta.href ? (
-          <Link
-            href={cta.href}
-            className="mt-8 inline-flex items-center gap-2 rounded-full bg-[#ff385c] px-6 py-4 text-sm font-bold shadow-[0_10px_30px_rgba(255,56,92,.22)] transition hover:bg-[#e31c5f]"
-          >
-            {cta.label} <ArrowRight className="size-4" />
-          </Link>
-        ) : (
-          <span
-            aria-disabled="true"
-            title={cta.reason ?? undefined}
-            className="mt-8 inline-flex cursor-not-allowed items-center gap-2 rounded-full bg-[#ffd1da] px-6 py-4 text-sm font-bold text-white"
-          >
-            {cta.label} <ArrowRight className="size-4" />
-          </span>
-        )}
-        {cta.reason && (
-          <p className="mt-2 text-sm text-white/80">{cta.reason}</p>
-        )}
-      </section>
-
-      <nav
-        aria-label="Lĩnh vực"
+      <section
         className={cn(
-          "absolute inset-x-0 bottom-7 z-10 mx-auto flex w-[calc(100%-32px)] max-w-[760px] gap-2 overflow-x-auto rounded-[22px] border border-white/45 bg-[#101318]/95 p-2 shadow-2xl backdrop-blur transition-all [scrollbar-width:none] sm:bottom-8 [&::-webkit-scrollbar]:hidden",
-          rail &&
-            "fixed inset-x-auto top-1/2 bottom-auto left-5 max-h-[calc(100vh-150px)] w-[98px] max-w-none -translate-y-1/2 flex-col overflow-x-hidden overflow-y-auto rounded-[26px]"
+          "relative z-10 mx-auto flex min-h-[calc(100svh-64px)] w-full max-w-7xl items-center justify-center px-5 py-16 text-center sm:px-8 lg:px-12",
+          visible.length > 1 && "pb-36"
         )}
       >
-        {visible.map((field) => (
-          <button
-            key={field.id}
-            type="button"
-            onClick={(event) =>
-              select(field.slug, `${event.clientX}px ${event.clientY}px`)
-            }
-            aria-label={`Chuyển sang lĩnh vực ${field.title}`}
-            aria-pressed={field.id === active.id}
-            className={cn(
-              "group w-[76px] shrink-0 overflow-hidden rounded-xl border border-white/35 bg-black/20 text-left transition hover:border-white/70 sm:w-[82px]",
-              rail && "h-[70px] w-[78px]",
-              field.id === active.id && "border-[#ff385c] ring-1 ring-[#ff385c]"
-            )}
-          >
-            <span
-              className={cn(
-                "block truncate px-2 pt-1.5 text-center text-[10px] font-bold text-white [text-shadow:0_1px_5px_rgba(0,0,0,.95)]",
-                rail && "sr-only"
-              )}
+        <div className="max-w-2xl">
+          <p className="inline-flex rounded-full border border-white/20 bg-black/55 px-3 py-1 text-[11px] font-bold tracking-[.12em] text-white shadow-lg backdrop-blur-sm [text-shadow:0_2px_8px_rgba(0,0,0,.95)]">
+            LĨNH VỰC {index + 1} / {visible.length}{" "}
+            <span className="mx-2 text-white/80">—</span> {roadmapCount} ROADMAP
+          </p>
+          <h1 className="mt-5 max-w-2xl text-5xl leading-[.94] font-black tracking-[-.055em] text-white [text-shadow:0_4px_18px_rgba(0,0,0,.98),0_0_2px_rgba(0,0,0,1)] sm:text-7xl lg:text-[clamp(4.5rem,7vw,6.5rem)]">
+            {active.title}
+          </h1>
+          <p className="mx-auto mt-6 line-clamp-4 max-w-xl rounded-2xl border border-white/10 bg-black/60 px-5 py-4 text-base leading-7 font-medium [overflow-wrap:anywhere] text-white shadow-xl backdrop-blur-sm [text-shadow:0_2px_10px_rgba(0,0,0,.98)] sm:text-lg">
+            {active.description ||
+              "Khám phá các roadmap được tuyển chọn trong lĩnh vực này."}
+          </p>
+          {cta.href ? (
+            <Link
+              href={cta.href}
+              className="mt-8 inline-flex min-h-12 items-center gap-2 rounded-full bg-[#ff385c] px-6 py-4 text-sm font-bold shadow-[0_10px_30px_rgba(255,56,92,.22)] transition outline-none hover:-translate-y-0.5 hover:bg-[#e31c5f] focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-4 focus-visible:ring-offset-black"
             >
-              {field.title}
-            </span>
+              {cta.label} <ArrowRight className="size-4" />
+            </Link>
+          ) : (
             <span
-              className={cn(
-                "m-1 mt-1.5 flex h-11 items-center justify-center rounded-lg bg-white/20 text-white/90",
-                rail &&
-                  "m-1 h-[60px] bg-white/10 text-[10px] font-bold text-white"
-              )}
-              style={
-                field.imageUrl
-                  ? {
-                      backgroundImage: `linear-gradient(#0003,#0003),url(${field.imageUrl})`,
-                      backgroundPosition: "center",
-                      backgroundSize: "cover",
-                    }
-                  : undefined
-              }
+              aria-disabled="true"
+              className="mt-8 inline-flex items-center rounded-full border border-white/25 bg-black/45 px-5 py-3 text-sm font-semibold text-white/85 backdrop-blur-sm"
             >
-              {rail ? (
-                field.title.slice(0, 2).toUpperCase()
-              ) : (
-                <ScanLine className="size-4" />
-              )}
+              Roadmap đang được cập nhật
             </span>
-          </button>
-        ))}
-      </nav>
-      {rail && (
-        <div className="fixed bottom-5 left-1/2 z-10 flex w-[min(58vw,620px)] -translate-x-1/2 items-center gap-2 rounded-full bg-black/45 px-3 py-2 shadow-lg backdrop-blur-sm">
-          <input
-            aria-label="Chọn lĩnh vực trong gallery"
-            type="range"
-            min={0}
-            max={Math.max(visible.length - 1, 0)}
-            value={index}
-            onChange={(event) => selectByIndex(Number(event.target.value))}
-            className="h-1 flex-1 cursor-pointer accent-[#ff385c]"
-          />
-          <span className="text-[10px] font-bold text-white">
-            {index + 1}/{visible.length}
-          </span>
+          )}
         </div>
+      </section>
+
+      {visible.length > 1 && (
+        <nav
+          aria-label="Lĩnh vực"
+          className="absolute inset-x-0 bottom-7 z-10 mx-auto flex w-fit max-w-[calc(100%-32px)] gap-2 overflow-x-auto rounded-[22px] border border-white/45 bg-[#101318]/95 p-2 shadow-2xl backdrop-blur [scrollbar-width:none] sm:bottom-8 [&::-webkit-scrollbar]:hidden"
+        >
+          {visible.map((field) => (
+            <button
+              key={field.id}
+              type="button"
+              onClick={(event) =>
+                select(field.slug, `${event.clientX}px ${event.clientY}px`)
+              }
+              aria-label={`Chuyển sang lĩnh vực ${field.title}`}
+              aria-pressed={field.id === active.id}
+              className={cn(
+                "group w-[76px] shrink-0 overflow-hidden rounded-xl border border-white/35 bg-black/20 text-left transition outline-none hover:border-white/70 focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-[#101318] sm:w-[82px]",
+                field.id === active.id &&
+                  "border-[#ff385c] ring-1 ring-[#ff385c]"
+              )}
+            >
+              <span className="block truncate px-2 pt-1.5 text-center text-[10px] font-bold text-white [text-shadow:0_1px_5px_rgba(0,0,0,.95)]">
+                {field.title}
+              </span>
+              <span
+                className="m-1 mt-1.5 flex h-11 items-center justify-center rounded-lg bg-white/20 text-white/90"
+                style={
+                  field.imageUrl
+                    ? {
+                        backgroundImage: `linear-gradient(#0003,#0003),url(${field.imageUrl})`,
+                        backgroundPosition: "center",
+                        backgroundSize: "cover",
+                      }
+                    : undefined
+                }
+              >
+                {!field.imageUrl && <ScanLine className="size-4" />}
+              </span>
+            </button>
+          ))}
+        </nav>
       )}
       <p className="sr-only" aria-live="polite">
         Đang xem lĩnh vực {active.title}
@@ -516,17 +385,18 @@ export function FieldExplorer() {
 }
 
 /**
- * Header for the loading / no-published-field states — just the logo and
- * auth control, none of the gallery controls (zen, rail, fullscreen) since
- * there's no gallery to control yet.
+ * Header for loading / empty states: home link and Clerk only.
  */
 function EmptyStateHeader() {
   return (
     <header className="flex h-16 items-center justify-between bg-gradient-to-b from-black/45 to-transparent px-5 sm:px-8">
-      <span className="text-xl font-extrabold tracking-[-1px] text-white [text-shadow:0_2px_12px_rgba(0,0,0,.92)]">
+      <Link
+        href="/"
+        className="rounded-md text-xl font-extrabold tracking-[-1px] text-white outline-none [text-shadow:0_2px_12px_rgba(0,0,0,.92)] focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-4 focus-visible:ring-offset-black"
+      >
         lh222k
-      </span>
-      <AuthHeader tone="on-dark" />
+      </Link>
+      <AuthHeader tone="on-dark" minimal />
     </header>
   )
 }

@@ -150,14 +150,19 @@ function ViewerCanvasInner({
       // them in the viewer makes public and admin canvases disagree. Auto-layout
       // remains only for legacy graphs that have no persisted composition.
       const at = usesPersistedComposition
-        ? new Map(rawPositions.map((node) => [node.id, { x: node.x, y: node.y }]))
+        ? new Map(
+            rawPositions.map((node) => [node.id, { x: node.x, y: node.y }])
+          )
         : place(rawPositions)
 
       const next: BuilderFlowNode[] = [
         {
           id: owner.id,
           type: "builderNode" as const,
-          position: at.get(owner.id) ?? { x: owner.positionX, y: owner.positionY },
+          position: at.get(owner.id) ?? {
+            x: owner.positionX,
+            y: owner.positionY,
+          },
           data: {
             node: owner,
             viewerMode: true,
@@ -220,7 +225,7 @@ function ViewerCanvasInner({
           source: e.sourceId,
           target: e.targetId,
           type: "default",
-          animated: e.kind === "solid",
+          animated: false,
           style: e.kind === "dashed" ? { strokeDasharray: "6 4" } : undefined,
           data: { kind: e.kind },
         }))
@@ -232,7 +237,9 @@ function ViewerCanvasInner({
   // `nodes` prop) so React Flow can apply its internal dimension measurements —
   // the MiniMap needs measured node sizes to draw its rects, and a controlled
   // `nodes` prop without `onNodesChange` never gets them (empty minimap).
-  const [rfNodes, setRfNodes, onNodesChange] = useNodesState<BuilderFlowNode>([])
+  const [rfNodes, setRfNodes, onNodesChange] = useNodesState<BuilderFlowNode>(
+    []
+  )
   const [rfEdges, setRfEdges, onEdgesChange] = useEdgesState<Edge>([])
   useEffect(() => setRfNodes(computedNodes), [computedNodes, setRfNodes])
   useEffect(() => setRfEdges(computedEdges), [computedEdges, setRfEdges])

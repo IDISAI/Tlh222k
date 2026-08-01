@@ -10,6 +10,13 @@ import {
 } from "react"
 import { ArrowLeft, Search } from "lucide-react"
 import { Button } from "@workspace/ui/components/button"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@workspace/ui/components/select"
 import { Skeleton } from "@workspace/ui/components/skeleton"
 import { cn } from "@workspace/ui/lib/utils"
 
@@ -130,7 +137,7 @@ export function RoadmapViewer({
       Array.from(
         new Set(
           nodes
-            .map((node) => node.authorName || node.authorId)
+            .map((node) => node.authorName || "Người tạo")
             .filter((value): value is string => Boolean(value))
         )
       ),
@@ -143,10 +150,7 @@ export function RoadmapViewer({
       if (needle && !node.title.toLocaleLowerCase("vi").includes(needle))
         return false
       if (nodeType !== "all" && node.nodeType !== nodeType) return false
-      if (
-        author !== "all" &&
-        (node.authorName || node.authorId || "") !== author
-      )
+      if (author !== "all" && (node.authorName || "Người tạo") !== author)
         return false
       return true
     })
@@ -184,7 +188,8 @@ export function RoadmapViewer({
     restoredRef.current = true
     if (typeof window === "undefined") return
     const wanted = new URLSearchParams(window.location.search).get(NODE_PARAM)
-    if (wanted && nodes.some((node) => node.id === wanted)) setSelectedId(wanted)
+    if (wanted && nodes.some((node) => node.id === wanted))
+      setSelectedId(wanted)
   }, [nodes])
 
   // Read the camera once, on mount. Re-reading it would fight the learner:
@@ -246,33 +251,40 @@ export function RoadmapViewer({
             className="h-full w-36 bg-transparent px-4 text-sm outline-none lg:w-48"
           />
           <span className="h-6 w-px bg-border" />
-          <select
+          <Select
             value={nodeType}
-            onChange={(event) =>
-              setNodeType(event.target.value as "all" | NodeType)
-            }
-            aria-label="Lọc theo loại node"
-            className="h-full bg-transparent px-3 text-sm font-medium outline-none"
+            onValueChange={(value) => setNodeType(value as "all" | NodeType)}
           >
-            <option value="all">Loại</option>
-            <option value="role">Role</option>
-            <option value="skill">Skill</option>
-            <option value="chapter">Chapter</option>
-          </select>
+            <SelectTrigger
+              aria-label="Lọc theo loại node"
+              className="h-full w-28 border-0 bg-transparent px-3 text-sm font-medium shadow-none focus:ring-0"
+            >
+              <SelectValue placeholder="Loại" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Loại</SelectItem>
+              <SelectItem value="role">Role</SelectItem>
+              <SelectItem value="skill">Skill</SelectItem>
+              <SelectItem value="chapter">Chapter</SelectItem>
+            </SelectContent>
+          </Select>
           <span className="h-6 w-px bg-border" />
-          <select
-            value={author}
-            onChange={(event) => setAuthor(event.target.value)}
-            aria-label="Lọc theo tác giả"
-            className="h-full bg-transparent px-3 text-sm font-medium outline-none"
-          >
-            <option value="all">Tác giả</option>
-            {authorOptions.map((value) => (
-              <option key={value} value={value}>
-                {value}
-              </option>
-            ))}
-          </select>
+          <Select value={author} onValueChange={setAuthor}>
+            <SelectTrigger
+              aria-label="Lọc theo tác giả"
+              className="h-full w-32 border-0 bg-transparent px-3 text-sm font-medium shadow-none focus:ring-0"
+            >
+              <SelectValue placeholder="Tác giả" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Tác giả</SelectItem>
+              {authorOptions.map((value) => (
+                <SelectItem key={value} value={value}>
+                  {value}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <span className="grid size-12 place-items-center rounded-full bg-primary text-primary-foreground">
             <Search className="size-4" />
           </span>

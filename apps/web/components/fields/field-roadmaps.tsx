@@ -99,7 +99,10 @@ export function FieldRoadmaps({ slug }: { slug: string }) {
         <div className="h-[420px] animate-pulse bg-muted" />
         <div className="mx-auto grid max-w-[1080px] gap-6 px-4 py-8 sm:grid-cols-2 lg:grid-cols-3">
           {Array.from({ length: 6 }).map((_, index) => (
-            <div key={index} className="aspect-[16/10] rounded-[14px] bg-muted" />
+            <div
+              key={index}
+              className="aspect-[16/10] rounded-[14px] bg-muted"
+            />
           ))}
         </div>
       </main>
@@ -144,40 +147,39 @@ export function FieldRoadmaps({ slug }: { slug: string }) {
   return (
     <main className="min-h-screen bg-background text-foreground">
       <section
-        className="relative min-h-[420px] overflow-hidden bg-foreground text-white"
-        style={
-          field.imageUrl
-            ? {
-                backgroundImage: `linear-gradient(to bottom,rgba(0,0,0,.6) 0%,rgba(0,0,0,.3) 45%,rgba(0,0,0,.78) 100%),url(${field.imageUrl})`,
-                backgroundPosition: "center",
-                backgroundSize: "cover",
-              }
-            : undefined
-        }
+        className="relative isolate min-h-[460px] overflow-hidden bg-[#0b1020] text-white"
+        style={{
+          backgroundImage: field.imageUrl
+            ? `linear-gradient(102deg,rgba(5,8,18,.94) 0%,rgba(5,8,18,.68) 48%,rgba(5,8,18,.88) 100%),url(${field.imageUrl})`
+            : "radial-gradient(circle at 74% 18%, rgba(255,56,92,.28), transparent 30%), radial-gradient(circle at 18% 95%, rgba(91,86,255,.24), transparent 36%), linear-gradient(135deg,#11182e,#070a12 66%)",
+          backgroundPosition: "center",
+          backgroundSize: "cover",
+        }}
       >
-        <header className="mx-auto flex h-[76px] max-w-[1280px] items-center justify-between px-4 sm:px-6 lg:px-10">
+        <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(rgba(255,255,255,.045)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,.045)_1px,transparent_1px)] bg-[size:38px_38px] opacity-35" />
+        <header className="relative mx-auto flex h-20 max-w-[1280px] items-center justify-between px-4 sm:px-6 lg:px-10">
           <Link
             href="/"
-            className="text-[22px] font-bold tracking-[-.5px] text-white"
+            className="rounded-md text-[22px] font-bold tracking-[-.5px] text-white outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-4 focus-visible:ring-offset-[#0b1020]"
           >
             lh222k
           </Link>
           <AuthHeader tone="on-dark" />
         </header>
 
-        <div className="mx-auto max-w-[1280px] px-4 pb-12 pt-10 sm:px-6 lg:px-10">
+        <div className="relative mx-auto max-w-[1280px] px-4 pt-12 pb-16 sm:px-6 lg:px-10">
           <Link
             href="/"
-            className="inline-flex min-h-11 items-center gap-2 text-sm font-semibold text-white/90 transition hover:text-white"
+            className="inline-flex min-h-11 items-center gap-2 rounded-lg px-1 text-sm font-semibold text-white/90 transition outline-none hover:text-white focus-visible:ring-2 focus-visible:ring-white"
           >
             <ArrowLeft className="size-4" />
             Tất cả lĩnh vực
           </Link>
-          <h1 className="mt-5 max-w-3xl text-[42px] leading-[1.05] font-bold tracking-[-1px] text-balance sm:text-[46px]">
+          <h1 className="mt-5 max-w-3xl text-[42px] leading-[1.02] font-bold tracking-[-1.4px] text-balance sm:text-6xl">
             {field.title}
           </h1>
           {field.description && (
-            <p className="mt-4 max-w-[560px] text-[17px] leading-[1.55] text-white/86 text-pretty">
+            <p className="mt-5 line-clamp-4 max-w-[610px] text-[17px] leading-[1.65] text-pretty [overflow-wrap:anywhere] text-white/86">
               {field.description}
             </p>
           )}
@@ -191,9 +193,9 @@ export function FieldRoadmaps({ slug }: { slug: string }) {
         </div>
       </section>
 
-      <section className="mx-auto max-w-[1280px] px-4 py-8 sm:px-6 lg:px-10">
+      <section className="mx-auto max-w-[1280px] px-4 py-10 sm:px-6 lg:px-10">
         <div className="flex flex-wrap items-center justify-between gap-4">
-          <div className="flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <div className="flex max-w-full gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             <FilterChip
               active={tag === ALL_TAGS}
               count={roadmaps.length}
@@ -213,7 +215,7 @@ export function FieldRoadmaps({ slug }: { slug: string }) {
             ))}
           </div>
 
-          <label className="flex h-[38px] shrink-0 items-center gap-2 rounded-lg border border-border bg-background px-3.5 text-[13px] font-semibold">
+          <label className="flex h-11 shrink-0 items-center gap-2 rounded-xl border border-border bg-card px-3.5 text-[13px] font-semibold shadow-sm">
             <ArrowUpDown className="size-[15px]" />
             <span className="sr-only">Sắp xếp</span>
             <select
@@ -231,7 +233,7 @@ export function FieldRoadmaps({ slug }: { slug: string }) {
         </div>
 
         {visible.length > 0 ? (
-          <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,272px),1fr))] gap-x-5 gap-y-7 pt-6">
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,272px),1fr))] gap-5 pt-7 sm:gap-6">
             {visible.map((roadmap) => (
               <FieldRoadmapCard
                 key={roadmap.id}
@@ -265,7 +267,7 @@ export function FieldRoadmaps({ slug }: { slug: string }) {
                 <Link
                   key={item.id}
                   href={`/fields/${item.slug}`}
-                  className="flex items-center gap-3 rounded-full border border-border py-2.5 pl-2.5 pr-4 transition hover:bg-secondary"
+                  className="flex items-center gap-3 rounded-full border border-border py-2.5 pr-4 pl-2.5 transition hover:bg-secondary"
                 >
                   <span className="h-[34px] w-11 shrink-0 overflow-hidden rounded-lg bg-muted">
                     {item.imageUrl && (
@@ -288,7 +290,13 @@ export function FieldRoadmaps({ slug }: { slug: string }) {
   )
 }
 
-function HeroStat({ icon: Icon, label }: { icon: typeof MapIcon; label: string }) {
+function HeroStat({
+  icon: Icon,
+  label,
+}: {
+  icon: typeof MapIcon
+  label: string
+}) {
   return (
     <span className="inline-flex min-h-9 items-center gap-[7px] rounded-full border border-white/30 bg-black/28 px-3.5 text-sm font-medium text-white backdrop-blur-xl">
       <Icon className="size-[15px]" />
@@ -340,16 +348,17 @@ function FieldRoadmapCard({
   // Normalize once. Reading the raw value for the style while the label goes
   // through the normalizer lets a stray "internal" print the AIO wording on
   // the free-coloured pill.
-  const isInternal = normalizeRoadmapVisibility(roadmap.visibility) === "INTERNAL"
+  const isInternal =
+    normalizeRoadmapVisibility(roadmap.visibility) === "INTERNAL"
   const learners = roadmap.learnerCount ?? 0
 
   return (
-    <article className="group">
+    <article className="group h-full">
       <Link
         href={`/roadmaps/${roadmap.id}`}
-        className="block rounded-[14px] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-foreground"
+        className="block h-full rounded-2xl transition duration-200 outline-none hover:-translate-y-1 focus-visible:ring-2 focus-visible:ring-foreground focus-visible:ring-offset-4"
       >
-        <div className="relative aspect-[16/10] overflow-hidden rounded-[14px] bg-muted">
+        <div className="relative aspect-[16/10] overflow-hidden rounded-2xl border border-border/80 bg-muted shadow-sm transition duration-200 group-hover:shadow-xl">
           {image ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
@@ -358,13 +367,13 @@ function FieldRoadmapCard({
               className="size-full object-cover transition duration-200 group-hover:scale-[1.025]"
             />
           ) : (
-            <div className="grid size-full place-items-center text-sm font-medium text-muted-foreground">
+            <div className="grid size-full place-items-center bg-[radial-gradient(circle_at_78%_16%,hsl(var(--foreground)/.12),transparent_32%),linear-gradient(145deg,hsl(var(--muted)),hsl(var(--background)))] p-6 text-center text-sm font-medium text-muted-foreground">
               Chưa có ảnh bìa
             </div>
           )}
           <span
             className={cn(
-              "absolute left-3 top-3 rounded-full px-2.5 py-1 text-[11px] font-semibold",
+              "absolute top-3 left-3 rounded-full border border-black/5 px-2.5 py-1 text-[11px] font-semibold shadow-sm backdrop-blur",
               isInternal
                 ? "bg-foreground text-background"
                 : "bg-background text-foreground"
@@ -372,15 +381,15 @@ function FieldRoadmapCard({
           >
             {entitlementLabel(roadmap.visibility)}
           </span>
-          <div className="absolute inset-0 grid place-items-center bg-black/42 opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-focus-within:opacity-100">
+          <div className="absolute inset-0 grid place-items-center bg-black/42 opacity-0 transition-opacity duration-200 group-focus-within:opacity-100 group-hover:opacity-100">
             <span className="rounded-full bg-background px-4 py-2 text-[13px] font-semibold text-foreground shadow-float">
               Mở roadmap
             </span>
           </div>
         </div>
 
-        <div className="pt-3">
-          <h2 className="text-base font-semibold tracking-[-.1px] group-hover:underline">
+        <div className="px-1 pt-3">
+          <h2 className="text-[17px] font-semibold tracking-[-.2px] group-hover:underline">
             {roadmap.title}
           </h2>
           {roadmap.description && (

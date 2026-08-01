@@ -24,15 +24,15 @@ export default clerkMiddleware(async (auth, req) => {
   // The sign-in page itself is public (Req 12.4 exception).
   if (isSignIn(req)) return
 
-  if (devRole === "super-admin") return
-  if (devRole) {
+  const { userId, sessionClaims } = await auth()
+
+  if (!userId && devRole === "super-admin") return
+  if (!userId && devRole) {
     const url = req.nextUrl.clone()
     url.pathname = `${PUBLIC_PREFIX}/sign-in`
     url.search = ""
     return NextResponse.redirect(url)
   }
-
-  const { userId, sessionClaims } = await auth()
 
   // Unauthenticated → Clerk sign-in, preserving the return path.
   if (!userId) {

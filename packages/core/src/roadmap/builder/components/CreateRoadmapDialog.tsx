@@ -22,10 +22,7 @@ import { RoadmapService } from "../../api"
 import { ENTITLEMENT_LABELS } from "../../access-labels"
 import { ROADMAP_VISIBILITIES } from "../../access-policy"
 import { nextFreeSlot } from "../utils/spread-overlaps"
-import {
-  SLUG_FAILURE_MESSAGES,
-  validateRoadmapSlug,
-} from "../../slug-policy"
+import { SLUG_FAILURE_MESSAGES, validateRoadmapSlug } from "../../slug-policy"
 import {
   MAX_DESCRIPTION_LENGTH,
   MAX_TITLE_LENGTH,
@@ -103,7 +100,9 @@ export function CreateRoadmapDialog({
       .listNodes()
       .then((nodes) => {
         if (cancelled) return
-        setTakenSlugs(nodes.map((node) => node.slug))
+        setTakenSlugs(
+          nodes.filter((node) => !node.isDeleted).map((node) => node.slug)
+        )
         setPlacedBlocks(
           nodes
             .filter((node) => !node.isDeleted)
@@ -126,9 +125,7 @@ export function CreateRoadmapDialog({
   // preview would fail the pattern no matter what the editor typed.
   const slugCheck = validateRoadmapSlug(slugFromTitle(title), takenSlugs)
   const slugError =
-    title.trim() && !slugCheck.ok
-      ? SLUG_FAILURE_MESSAGES[slugCheck.code]
-      : ""
+    title.trim() && !slugCheck.ok ? SLUG_FAILURE_MESSAGES[slugCheck.code] : ""
 
   const handleTitle = (value: string) => {
     setTitle(value)
@@ -194,9 +191,9 @@ export function CreateRoadmapDialog({
         if (!open) onClose()
       }}
     >
-      <DialogContent className="max-h-[92vh] overflow-y-auto border-border/80 bg-background p-0 sm:max-w-[540px]">
+      <DialogContent className="max-h-[92vh] min-w-0 overflow-x-hidden overflow-y-auto border-border/80 bg-background p-0 sm:max-w-[540px] [&>*]:min-w-0">
         <DialogHeader>
-          <div className="border-b px-6 pb-4 pt-6">
+          <div className="border-b px-6 pt-6 pb-4">
             <DialogTitle className="text-2xl">Tạo roadmap</DialogTitle>
             <DialogDescription className="mt-1.5 text-sm">
               Bản nháp được lưu tự động, xuất bản khi bạn sẵn sàng.
@@ -204,9 +201,12 @@ export function CreateRoadmapDialog({
           </div>
         </DialogHeader>
 
-        <div className="space-y-5 px-6 pb-2">
+        <div className="min-w-0 space-y-5 px-6 pb-2">
           <div className="space-y-1.5">
-            <Label htmlFor="rm-title">Tiêu đề<RequiredMark /></Label>
+            <Label htmlFor="rm-title">
+              Tiêu đề
+              <RequiredMark />
+            </Label>
             <Input
               id="rm-title"
               autoFocus
@@ -275,8 +275,37 @@ export function CreateRoadmapDialog({
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2">
-            <label className="space-y-1.5"><Label htmlFor="rm-level">Cấp độ</Label><select id="rm-level" value={level} onChange={(event) => setLevel(event.target.value as Level | "")} className="h-10 w-full rounded-md border bg-background px-3 text-sm"><option value="">Chưa chọn</option><option value="BASIC">Cơ bản</option><option value="INTERMEDIATE">Trung cấp</option><option value="ADVANCED">Nâng cao</option></select></label>
-            <label className="space-y-1.5"><Label htmlFor="rm-visibility">Quyền xem</Label><select id="rm-visibility" value={visibility} onChange={(event) => setVisibility(event.target.value as Visibility)} className="h-10 w-full rounded-md border bg-background px-3 text-sm">{ROADMAP_VISIBILITIES.map((value) => (<option key={value} value={value}>{ENTITLEMENT_LABELS[value]}</option>))}</select></label>
+            <label className="space-y-1.5">
+              <Label htmlFor="rm-level">Cấp độ</Label>
+              <select
+                id="rm-level"
+                value={level}
+                onChange={(event) => setLevel(event.target.value as Level | "")}
+                className="h-10 w-full rounded-md border bg-background px-3 text-sm"
+              >
+                <option value="">Chưa chọn</option>
+                <option value="BASIC">Cơ bản</option>
+                <option value="INTERMEDIATE">Trung cấp</option>
+                <option value="ADVANCED">Nâng cao</option>
+              </select>
+            </label>
+            <label className="space-y-1.5">
+              <Label htmlFor="rm-visibility">Quyền xem</Label>
+              <select
+                id="rm-visibility"
+                value={visibility}
+                onChange={(event) =>
+                  setVisibility(event.target.value as Visibility)
+                }
+                className="h-10 w-full rounded-md border bg-background px-3 text-sm"
+              >
+                {ROADMAP_VISIBILITIES.map((value) => (
+                  <option key={value} value={value}>
+                    {ENTITLEMENT_LABELS[value]}
+                  </option>
+                ))}
+              </select>
+            </label>
           </div>
 
           <div className="space-y-1.5">
@@ -309,12 +338,14 @@ export function CreateRoadmapDialog({
               onChange={(event) => setTagsInput(event.target.value)}
               placeholder="frontend, web, scripting"
             />
-            <p className="text-xs text-muted-foreground">Cách nhau bằng dấu phẩy.</p>
+            <p className="text-xs text-muted-foreground">
+              Cách nhau bằng dấu phẩy.
+            </p>
           </div>
 
           <p className="text-xs text-muted-foreground">
-            Roadmap được tạo ở trạng thái bản nháp. Bạn có thể chỉnh sửa node
-            và xuất bản từ workspace.
+            Roadmap được tạo ở trạng thái bản nháp. Bạn có thể chỉnh sửa node và
+            xuất bản từ workspace.
           </p>
         </div>
 
@@ -322,7 +353,11 @@ export function CreateRoadmapDialog({
           <Button type="button" variant="outline" onClick={onClose}>
             Hủy
           </Button>
-          <Button type="button" disabled={busy || !title.trim()} onClick={() => void handleCreate()}>
+          <Button
+            type="button"
+            disabled={busy || !title.trim()}
+            onClick={() => void handleCreate()}
+          >
             {busy ? "Đang tạo..." : "Tạo bản nháp"}
           </Button>
         </DialogFooter>

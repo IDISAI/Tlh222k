@@ -21,15 +21,15 @@ const clerkProxy = clerkMiddleware(async (auth, req) => {
   // The sign-in and forbidden pages are public (Req 1.2/1.3 exceptions).
   if (isSignIn(req) || isForbidden(req)) return
 
-  if (devRole === "admin" || devRole === "super-admin") return
-  if (devRole === "viewer") {
+  const { userId, sessionClaims } = await auth()
+
+  if (!userId && (devRole === "admin" || devRole === "super-admin")) return
+  if (!userId && devRole === "viewer") {
     const url = req.nextUrl.clone()
     url.pathname = `${PUBLIC_PREFIX}/403`
     url.search = ""
     return NextResponse.redirect(url)
   }
-
-  const { userId, sessionClaims } = await auth()
 
   // Req 1.3: unauthenticated → Clerk sign-in, then back to the original URL.
   if (!userId) {
@@ -58,7 +58,7 @@ const clerkProxy = clerkMiddleware(async (auth, req) => {
 // causes a direct :3002 request to fail with `dev-browser-missing` before this
 // app can apply its configured super-admin role. Keep this bypass outside the
 // Clerk wrapper; devAuthRole always returns null in production.
-export default devRole
+export default devRole && !process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
   ? () => NextResponse.next()
   : clerkProxy
 

@@ -126,7 +126,9 @@ type NodeAttachment {
   createdAt: String!
 }
 
-"""One in-app card telling a learner a roadmap they follow was republished."""
+"""
+One in-app card telling a learner a roadmap they follow was republished.
+"""
 type RoadmapNotification {
   id: ID!
   ownerNodeId: ID!
@@ -151,7 +153,9 @@ type Roadmap {
   firstPublishedAt: String
   archivedAt: String
   nodeCount: Int!
-  """Distinct learners who started content inside this roadmap. Never page views."""
+  """
+  Distinct learners who started content inside this roadmap. Never page views.
+  """
   learnerCount: Int!
   createdAt: String
   updatedAt: String
@@ -176,19 +180,29 @@ type RoadmapNode {
   childrenCount: Int!
   linkedRoadmapId: ID
   publishStatus: PublishStatus!
-  """The image standing in for this block wherever it is shown as a card."""
+  """
+  The image standing in for this block wherever it is shown as a card.
+  """
   coverUrl: String
   level: Level
   visibility: Visibility!
-  """Editorial free-text tags, narrower than a Field — used by the roadmap picker's tag filter."""
+  """
+  Editorial free-text tags, narrower than a Field — used by the roadmap picker's tag filter.
+  """
   tags: [String!]!
   """
   Distinct learners who started anything in this block's subtree. Never page
   views. Only `publicBlocks` computes it; other queries report 0.
   """
   learnerCount: Int!
-  """Clerk id of whoever created this block. Stamped server-side on create; never a mutation input."""
+  """
+  Clerk id of whoever created this block. Stamped server-side on create; never a mutation input.
+  """
   authorId: ID
+  """
+  Human-readable name of the creator.
+  """
+  authorName: String
   """
   Discovery labels this block carries. Many-to-many: a "Data Engineer" role
   can sit under both AI and Data, so it surfaces under either tab.
@@ -199,9 +213,13 @@ type RoadmapNode {
   publish timestamp yet, so discovery sorts on this and says "Mới nhất".
   """
   createdAt: String
-  """Last edit time. The public card selects it, so it must resolve."""
+  """
+  Last edit time. The public card selects it, so it must resolve.
+  """
   updatedAt: String
-  """Ordered learner outcomes. Empty when the node declares none."""
+  """
+  Ordered learner outcomes. Empty when the node declares none.
+  """
   keyResults: [NodeKeyResult!]!
 }
 
@@ -253,7 +271,9 @@ type Query {
   roadmapGraph(slug: String!): RoadmapGraph
   roadmapGraphById(id: ID!): RoadmapGraph
   allNodes: [RoadmapNode!]!
-  """CMS-only ordered memberships for one Field Workspace."""
+  """
+  CMS-only ordered memberships for one Field Workspace.
+  """
   fieldNodeIds(fieldId: ID!): [ID!]!
   """
   Public LEGO inventory. `fieldIds` narrows to blocks carrying ANY of the given
@@ -266,11 +286,17 @@ type Query {
   no account to hold a list.
   """
   myFavoriteRoadmapIds: [ID!]!
-  """Archived blocks, so the CMS can offer them back. Admin only."""
+  """
+  Archived blocks, so the CMS can offer them back. Admin only.
+  """
   archivedNodes: [RoadmapNode!]!
-  """This caller's in-app notifications, newest first. Empty for guests."""
+  """
+  This caller's in-app notifications, newest first. Empty for guests.
+  """
   myNotifications: [RoadmapNotification!]!
-  """Whether this caller opted in to email. False when no preference is stored."""
+  """
+  Whether this caller opted in to email. False when no preference is stored.
+  """
   myEmailOptIn: Boolean!
   """
   A node's attachments. Refuses rather than returning [] when the node is
@@ -278,9 +304,13 @@ type Query {
   "no attachments", which is a different fact from "not for you".
   """
   nodeAttachments(nodeId: ID!): [NodeAttachment!]!
-  """One learner's activity. Admin and Super-admin only."""
+  """
+  One learner's activity. Admin and Super-admin only.
+  """
   learnerActivity(clerkUserId: ID!): LearnerActivity!
-  """Published discovery labels are public; CMS may request every status."""
+  """
+  Published discovery labels are public; CMS may request every status.
+  """
   fields(includeUnpublished: Boolean = false): [Field!]!
   field(slug: String!): Field
   publicBlockGraph(id: ID!): RoadmapGraph
@@ -303,15 +333,24 @@ type Mutation {
   a duplicate "AI" / "ai" pair.
   """
   createField(input: CreateFieldInput!): Field!
-  """Retitle in place — every node carrying the label follows automatically."""
+  """
+  Retitle in place — every node carrying the label follows automatically.
+  """
   updateField(id: ID!, input: UpdateFieldInput!): Field!
   deleteField(id: ID!): Boolean!
-  """Reorders all memberships of one Field without affecting other Fields."""
+  """
+  Reorders all memberships of one Field without affecting other Fields.
+  """
   reorderFieldMembership(fieldId: ID!, nodeIds: [ID!]!): Boolean!
   createNode(input: CreateNodeInput!): RoadmapNode!
   updateNode(id: ID!, input: UpdateNodeInput!): RoadmapNode!
   deleteNode(id: ID!): Boolean!
-  moveNode(nodeId: ID!, roadmapId: ID!, positionX: Float!, positionY: Float!): RoadmapNode!
+  moveNode(
+    nodeId: ID!
+    roadmapId: ID!
+    positionX: Float!
+    positionY: Float!
+  ): RoadmapNode!
   saveRoadmap(roadmapId: ID!, nodes: [NodeInput!]!): Boolean!
   addCompositionMember(
     ownerId: ID!
@@ -349,7 +388,9 @@ type Mutation {
   first publish that is missing anything the access contract requires.
   """
   publishComposition(ownerId: ID!): Composition!
-  """Throw the working draft away and start again from what is public."""
+  """
+  Throw the working draft away and start again from what is public.
+  """
   discardCompositionDraft(ownerId: ID!): Composition!
   """
   Bring an archived block back, as a DRAFT — it has been off the public side
@@ -362,11 +403,17 @@ type Mutation {
   and completion still needs the learner's explicit action.
   """
   markNodeOpened(nodeId: ID!): Boolean!
-  """Add or remove a roadmap from the caller's favourites. Returns the new state."""
+  """
+  Add or remove a roadmap from the caller's favourites. Returns the new state.
+  """
   setRoadmapFavorite(ownerNodeId: ID!, favorite: Boolean!): Boolean!
-  """Mark one of the caller's own notifications read. Returns false if already read."""
+  """
+  Mark one of the caller's own notifications read. Returns false if already read.
+  """
   markNotificationRead(id: ID!): Boolean!
-  """Turn update emails on or off. Off by default — email is strictly opt-in."""
+  """
+  Turn update emails on or off. Off by default — email is strictly opt-in.
+  """
   setEmailOptIn(optedIn: Boolean!): Boolean!
   """
   Replace a node's Key Results with this ordered list. Sending an empty list
@@ -485,9 +532,13 @@ input UpdateNodeInput {
   coverUrl: String
   level: Level
   visibility: Visibility
-  """Replaces the whole tag list when present; omit to leave tags alone."""
+  """
+  Replaces the whole tag list when present; omit to leave tags alone.
+  """
   tags: [String!]
-  """Replaces the whole label set when present; omit to leave labels alone."""
+  """
+  Replaces the whole label set when present; omit to leave labels alone.
+  """
   fieldIds: [ID!]
 }
 

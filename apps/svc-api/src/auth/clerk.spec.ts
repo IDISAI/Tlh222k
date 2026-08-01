@@ -1,7 +1,15 @@
 import { describe, expect, it } from "vitest"
-import { assertCanWrite, canAccessInternal, type CurrentUser } from "./clerk"
+import {
+  assertCanWrite,
+  canAccessInternal,
+  displayNameFromClaims,
+  type CurrentUser,
+} from "./clerk"
 
-const user = (role: CurrentUser["role"]): CurrentUser => ({ userId: "u1", role })
+const user = (role: CurrentUser["role"]): CurrentUser => ({
+  userId: "u1",
+  role,
+})
 
 describe("assertCanWrite", () => {
   it("throws for guests (null)", () => {
@@ -15,6 +23,18 @@ describe("assertCanWrite", () => {
   it("passes for admin and super-admin", () => {
     expect(assertCanWrite(user("admin")).role).toBe("admin")
     expect(assertCanWrite(user("super-admin")).role).toBe("super-admin")
+  })
+})
+
+describe("displayNameFromClaims", () => {
+  it("prefers a human profile value over an opaque Clerk id", () => {
+    expect(
+      displayNameFromClaims({
+        sub: "user_3GGvZvMkxX2iK3SKzCb5K6MCepq",
+        first_name: "Linh",
+        last_name: "Hoang",
+      })
+    ).toBe("Linh Hoang")
   })
 })
 

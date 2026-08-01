@@ -156,7 +156,7 @@ export const BuilderNodeComponent = memo(function BuilderNodeComponent({
                 Owner
               </span>
             ) : (
-              <span className="text-[11px] font-semibold uppercase tracking-[.06em] text-muted-foreground">
+              <span className="text-[11px] font-semibold tracking-[.06em] text-muted-foreground uppercase">
                 {node.nodeType}
               </span>
             )}
@@ -166,12 +166,8 @@ export const BuilderNodeComponent = memo(function BuilderNodeComponent({
                   not only the optional ones — otherwise "bắt buộc" points at
                   nothing a reader can see. */}
               <span
-                title={
-                  isRequired ? "Bắt buộc — tính tiến độ" : "Tuỳ chọn"
-                }
-                aria-label={
-                  isRequired ? "Bắt buộc — tính tiến độ" : "Tuỳ chọn"
-                }
+                title={isRequired ? "Bắt buộc — tính tiến độ" : "Tuỳ chọn"}
+                aria-label={isRequired ? "Bắt buộc — tính tiến độ" : "Tuỳ chọn"}
                 className={cn(
                   "size-2.5 rounded-full",
                   isRequired
@@ -205,7 +201,7 @@ export const BuilderNodeComponent = memo(function BuilderNodeComponent({
           </div>
           <div className="mt-3 flex items-center justify-between gap-2 text-xs text-muted-foreground">
             <span className="max-w-[116px] truncate">
-              {node.authorName || node.authorId || "lh222k"}
+              {node.authorName || "Người tạo"}
             </span>
             <span>
               {node.level ? LEVEL_LABELS[node.level] : "Chưa xếp cấp"}

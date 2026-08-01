@@ -27,7 +27,7 @@ export function fieldRoadmapCta(
   if (roadmaps.length === 1) {
     return {
       disabled: false,
-      href: `/roadmaps/${roadmaps[0]!.id}`,
+      href: `/fields/${encodeURIComponent(field.slug)}`,
       label: "Khám phá roadmap",
       reason: null,
     }

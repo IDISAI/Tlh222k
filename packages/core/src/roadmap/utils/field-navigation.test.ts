@@ -36,10 +36,10 @@ describe("fieldRoadmapCta", () => {
     })
   })
 
-  it("opens the only roadmap directly", () => {
+  it("opens Field Explorer when one roadmap is available", () => {
     expect(fieldRoadmapCta(field, [roadmap("rm-ai")])).toEqual({
       disabled: false,
-      href: "/roadmaps/rm-ai",
+      href: "/fields/ai",
       label: "Khám phá roadmap",
       reason: null,
     })

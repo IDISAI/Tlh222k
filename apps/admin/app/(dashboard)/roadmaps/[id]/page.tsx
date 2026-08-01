@@ -9,6 +9,7 @@ import {
   syncPublishByNotionPageId,
   syncTitleBySlug,
 } from "@/app/(dashboard)/notion/actions"
+import { uploadBlockCover } from "@/app/(dashboard)/roadmaps/actions"
 
 export const metadata = { title: "Roadmap Builder" }
 
@@ -32,6 +33,7 @@ export default async function BuilderCanvasPage({
       onCreateNotionDoc={createDocumentForNode}
       onSyncPublish={syncPublishByNotionPageId}
       onArchiveDocument={archiveByNotionPageId}
+      onUploadBlockCover={uploadBlockCover}
       publicOrigin={process.env.NEXT_PUBLIC_HOST_URL}
     />
   )
