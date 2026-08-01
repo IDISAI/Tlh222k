@@ -162,7 +162,7 @@ export function FieldRoadmaps({ slug }: { slug: string }) {
             href="/"
             className="rounded-md text-[22px] font-bold tracking-[-.5px] text-white outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-4 focus-visible:ring-offset-[#0b1020]"
           >
-            lh222k
+            Tlh222k
           </Link>
           <AuthHeader tone="on-dark" />
         </header>

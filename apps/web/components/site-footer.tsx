@@ -16,15 +16,10 @@ const COLUMNS: { heading: string; links: string[] }[] = [
   },
   {
     heading: "Community",
-    links: [
-      "About",
-      "Discussion forums",
-      "Become a mentor",
-      "Study groups",
-    ],
+    links: ["About", "Discussion forums", "Become a mentor", "Study groups"],
   },
   {
-    heading: "lh222k",
+    heading: "Tlh222k",
     links: ["About", "Newsroom", "New features", "Careers"],
   },
 ]
@@ -71,7 +66,7 @@ export function SiteFooter() {
       <div className="border-t border-border">
         <div className="mx-auto flex max-w-[1280px] flex-wrap items-center justify-between gap-4 px-5 py-6 md:px-10">
           <div className="flex flex-wrap items-center gap-2.5 text-[13px] text-muted-foreground">
-            <span>© 2026 lh222k, Inc.</span>
+            <span>© 2026 Tlh222k, Inc.</span>
             <Link href="#">Privacy</Link>
             <span>·</span>
             <Link href="#">Terms</Link>

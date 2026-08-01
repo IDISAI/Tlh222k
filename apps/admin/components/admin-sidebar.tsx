@@ -26,10 +26,10 @@ export function AdminSidebar({ role }: { role: string | null }) {
       >
         <a
           href={BASE_PATH || "/"}
-          aria-label="lh222k CMS"
+          aria-label="Tlh222k CMS"
           className="flex items-center gap-2 text-xl font-extrabold tracking-[-1px]"
         >
-          <span>{collapsed ? "lh" : "lh222k"}</span>
+          <span>{collapsed ? "TL" : "Tlh222k"}</span>
           {!collapsed && (
             <span className="rounded-full border px-2 py-0.5 text-[10px] font-bold text-muted-foreground">
               CMS

@@ -249,7 +249,7 @@ export function FieldExplorer() {
           href="/"
           className="rounded-md text-xl font-extrabold tracking-[-1px] text-white outline-none [text-shadow:0_2px_12px_rgba(0,0,0,.92)] focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-4 focus-visible:ring-offset-black"
         >
-          lh222k
+          Tlh222k
         </Link>
         <AuthHeader tone="on-dark" minimal />
       </header>
@@ -394,7 +394,7 @@ function EmptyStateHeader() {
         href="/"
         className="rounded-md text-xl font-extrabold tracking-[-1px] text-white outline-none [text-shadow:0_2px_12px_rgba(0,0,0,.92)] focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-4 focus-visible:ring-offset-black"
       >
-        lh222k
+        Tlh222k
       </Link>
       <AuthHeader tone="on-dark" minimal />
     </header>

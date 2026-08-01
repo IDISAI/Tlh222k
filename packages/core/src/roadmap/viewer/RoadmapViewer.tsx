@@ -222,7 +222,7 @@ export function RoadmapViewer({
             href={homeHref}
             className="shrink-0 text-[22px] font-bold tracking-[-.5px]"
           >
-            lh222k
+            Tlh222k
           </a>
           {backHref && (
             <Button
@@ -269,7 +269,10 @@ export function RoadmapViewer({
             </SelectContent>
           </Select>
           <span className="h-6 w-px bg-border" />
-          <Select value={author} onValueChange={setAuthor}>
+          <Select
+            value={author}
+            onValueChange={(value) => setAuthor(value ?? "all")}
+          >
             <SelectTrigger
               aria-label="Lọc theo tác giả"
               className="h-full w-32 border-0 bg-transparent px-3 text-sm font-medium shadow-none focus:ring-0"
