@@ -53,7 +53,10 @@ const contentItems: ContentItem[] = [
   { href: NOTION_BASE_PATH, label: "Thư viện", icon: Image, active: false },
 ]
 
-const adminItems: ContentItem[] = [
+const adminItems: ContentItem[] = []
+
+/*
+const retiredAdminItems: ContentItem[] = [
   // User management lives in the super-admin app, mounted at /super-admin by
   // the web host's Multi-Zone rewrite in both dev and prod — never duplicated
   // here. NEXT_PUBLIC_HOST_URL is already the app's convention for reaching
@@ -65,6 +68,7 @@ const adminItems: ContentItem[] = [
     external: true,
   },
 ]
+*/
 
 function isCurrentPath(pathname: string, href: string) {
   return pathname === href || pathname.startsWith(`${href}/`)
@@ -109,11 +113,24 @@ function useContentCounts() {
 
 export function AdminNavigation({
   collapsed = false,
+  role,
 }: {
   collapsed?: boolean
+  role: string | null
 }) {
   const pathname = usePathname()
   const counts = useContentCounts()
+  const adminItems: ContentItem[] =
+    role === "super-admin"
+      ? [
+          {
+            href: `${process.env.NEXT_PUBLIC_HOST_URL ?? ""}/super-admin/users`,
+            label: "Người dùng & vai trò",
+            icon: ShieldCheck,
+            external: true,
+          },
+        ]
+      : []
 
   const renderItem = ({
     href,
@@ -168,14 +185,16 @@ export function AdminNavigation({
         )}
         {contentItems.map(renderItem)}
       </div>
-      <div className="space-y-1">
-        {!collapsed && (
-          <p className="px-2 pb-1 text-[10px] font-bold tracking-wide text-muted-foreground uppercase">
-            Quản trị
-          </p>
-        )}
-        {adminItems.map(renderItem)}
-      </div>
+      {adminItems.length > 0 && (
+        <div className="space-y-1">
+          {!collapsed && (
+            <p className="px-2 pb-1 text-[10px] font-bold tracking-wide text-muted-foreground uppercase">
+              Quản trị
+            </p>
+          )}
+          {adminItems.map(renderItem)}
+        </div>
+      )}
     </nav>
   )
 }
@@ -192,8 +211,6 @@ export function AdminBreadcrumb() {
 
   return (
     <div className="text-sm text-muted-foreground">
-      <span className="font-semibold text-foreground">lh222k</span>
-      <span className="mx-2">›</span>
       CMS
       <span className="mx-2">›</span>
       <span className="text-foreground">{section}</span>

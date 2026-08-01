@@ -20,7 +20,7 @@ export function CanvasLegend({ className }: { className?: string }) {
   return (
     <div
       className={cn(
-        "pointer-events-auto absolute bottom-4 left-4 z-10 w-[264px] max-w-[calc(100%-2rem)] overflow-hidden rounded-[14px] border border-border bg-background/95 shadow-float backdrop-blur",
+        "pointer-events-auto absolute top-4 left-4 z-10 w-[264px] max-w-[calc(100%-2rem)] overflow-hidden rounded-[14px] border border-border bg-background/95 shadow-float backdrop-blur",
         className
       )}
     >

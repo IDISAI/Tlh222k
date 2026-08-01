@@ -35,7 +35,7 @@ function ProductTabLink({
       href={href}
       aria-current={active ? "page" : undefined}
       className={cn(
-        "flex shrink-0 items-center gap-2 whitespace-nowrap border-b-2 font-semibold transition-colors",
+        "flex shrink-0 items-center gap-2 border-b-2 font-semibold whitespace-nowrap transition-colors",
         active
           ? "border-foreground text-foreground"
           : "border-transparent text-muted-foreground hover:text-foreground",
@@ -45,7 +45,7 @@ function ProductTabLink({
       <Icon className="size-5" />
       {label}
       {isNew ? (
-        <span className="rounded-full bg-foreground px-1.5 py-[3px] text-[8px] font-bold uppercase leading-tight tracking-[0.32px] text-background">
+        <span className="rounded-full bg-foreground px-1.5 py-[3px] text-[8px] leading-tight font-bold tracking-[0.32px] text-background uppercase">
           New
         </span>
       ) : null}
@@ -82,7 +82,7 @@ export function SiteHeader() {
           href="/"
           className="text-[22px] font-bold tracking-[-0.5px] transition-opacity hover:opacity-75"
         >
-          lh222k
+          Tlh222k
         </Link>
 
         <nav className="hidden justify-self-center md:flex md:items-center md:gap-10">

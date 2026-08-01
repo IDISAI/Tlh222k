@@ -14,6 +14,8 @@ declare global {
 
 /** True when a Clerk session is present. */
 export async function getIsAuthenticated(): Promise<boolean> {
+  const { userId } = await auth()
+  if (userId) return true
   if (
     devAuthRole(
       process.env.NODE_ENV,
@@ -23,8 +25,7 @@ export async function getIsAuthenticated(): Promise<boolean> {
   ) {
     return true
   }
-  const { userId } = await auth()
-  return Boolean(userId)
+  return false
 }
 
 /**
@@ -32,14 +33,15 @@ export async function getIsAuthenticated(): Promise<boolean> {
  * Absent / unknown metadata → "viewer".
  */
 export async function getRole(): Promise<UserRole> {
+  const { userId, sessionClaims } = await auth()
+  if (userId) return roleFromClaims(sessionClaims)
   const devRole = devAuthRole(
     process.env.NODE_ENV,
     process.env.NEXT_PUBLIC_DEV_AUTH_ROLE,
     process.env.NEXT_PUBLIC_ENABLE_DEV_AUTH_BYPASS
   )
   if (devRole) return devRole
-  const { sessionClaims } = await auth()
-  return roleFromClaims(sessionClaims)
+  return "viewer"
 }
 
 /** The two roles that may reach any page in this zone. */
@@ -62,6 +64,8 @@ export async function requireCmsRole(): Promise<CmsRole> {
  * only need an author id should fall back to a placeholder.
  */
 export async function getUserId(): Promise<string | null> {
+  const { userId } = await auth()
+  if (userId) return userId
   if (
     devAuthRole(
       process.env.NODE_ENV,
@@ -71,8 +75,7 @@ export async function getUserId(): Promise<string | null> {
   ) {
     return null
   }
-  const { userId } = await auth()
-  return userId
+  return null
 }
 
 /**
@@ -81,12 +84,14 @@ export async function getUserId(): Promise<string | null> {
  * the real short-lived Clerk session token.
  */
 export async function getAuthToken(): Promise<string | null> {
+  const { getToken } = await auth()
+  const token = await getToken()
+  if (token) return token
   const devRole = devAuthRole(
     process.env.NODE_ENV,
     process.env.NEXT_PUBLIC_DEV_AUTH_ROLE,
     process.env.NEXT_PUBLIC_ENABLE_DEV_AUTH_BYPASS
   )
   if (devRole) return `dev:${devRole}`
-  const { getToken } = await auth()
-  return getToken()
+  return null
 }

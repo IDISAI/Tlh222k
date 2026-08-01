@@ -5,6 +5,7 @@ import { Button } from "@workspace/ui/components/button"
 import { Input } from "@workspace/ui/components/input"
 import { Label } from "@workspace/ui/components/label"
 import { RequiredMark } from "@workspace/ui/components/required-mark"
+import { Textarea } from "@workspace/ui/components/textarea"
 import { cn } from "@workspace/ui/lib/utils"
 
 import {
@@ -15,10 +16,16 @@ import {
   type RoadmapNode,
 } from "../../types"
 import { allowedChildTypes } from "../../utils/validate-hierarchy"
-import { NODE_TYPE_ACCENT, NODE_TYPE_ICONS, nodeTypeLabel } from "../utils/node-type-styles"
+import {
+  NODE_TYPE_ACCENT,
+  NODE_TYPE_ICONS,
+  nodeTypeLabel,
+} from "../utils/node-type-styles"
 import type { CanvasMenuPosition } from "../types"
+import { CoverUploadField } from "./CoverUploadField"
 
-const PANEL_WIDTH = 340
+const PANEL_WIDTH = 360
+const PANEL_HEIGHT = 620
 
 interface NodeSelectorModalProps {
   /** Cursor position that opened the modal; null = closed (Req 3.1). */
@@ -37,10 +44,14 @@ interface NodeSelectorModalProps {
     /** Set only when nodeType = "article" (notion-article-node Req 2.1). */
     articleType?: ArticleType
     title: string
+    description?: string
+    coverUrl?: string
     parentId: string | null
     x: number
     y: number
   }) => Promise<boolean>
+  /** Optional because only the CMS provides a trusted Blob upload action. */
+  uploadCover?: (form: FormData) => Promise<{ url: string }>
 }
 
 /**
@@ -53,6 +64,7 @@ export function NodeSelectorModal({
   allowedTypes,
   onClose,
   onCreate,
+  uploadCover,
 }: NodeSelectorModalProps) {
   const allowed =
     allowedTypes ??
@@ -61,12 +73,16 @@ export function NodeSelectorModal({
   const [nodeType, setNodeType] = useState<NodeType>(allowed[0] ?? "role")
   const [articleType, setArticleType] = useState<ArticleType>("notion")
   const [title, setTitle] = useState("")
+  const [description, setDescription] = useState("")
+  const [coverUrl, setCoverUrl] = useState("")
   const [error, setError] = useState("")
   const [submitting, setSubmitting] = useState(false)
 
   // Fresh form every time the modal (re)opens somewhere else.
   useEffect(() => {
     setTitle("")
+    setDescription("")
+    setCoverUrl("")
     setError("")
     setNodeType(allowed[0] ?? "role")
     setArticleType("notion")
@@ -79,7 +95,10 @@ export function NodeSelectorModal({
     8,
     Math.min(position.screenX, window.innerWidth - PANEL_WIDTH - 8)
   )
-  const top = Math.max(8, Math.min(position.screenY, window.innerHeight - 320))
+  const top = Math.max(
+    8,
+    Math.min(position.screenY, window.innerHeight - PANEL_HEIGHT - 8)
+  )
 
   const handleSubmit = async () => {
     const trimmed = title.trim()
@@ -96,6 +115,8 @@ export function NodeSelectorModal({
       nodeType,
       articleType: nodeType === "article" ? articleType : undefined,
       title: trimmed,
+      description: description.trim() || undefined,
+      coverUrl: coverUrl || undefined,
       parentId: parent?.id ?? null,
       x: position.flowX,
       y: position.flowY,
@@ -110,7 +131,7 @@ export function NodeSelectorModal({
       <div
         role="dialog"
         aria-label="Tạo node mới"
-        className="fixed z-50 rounded-xl border bg-popover p-4 text-popover-foreground shadow-xl"
+        className="fixed z-50 max-h-[calc(100svh-1rem)] overflow-y-auto rounded-2xl border bg-popover p-5 text-popover-foreground shadow-2xl"
         style={{ left, top, width: PANEL_WIDTH }}
         onKeyDown={(e) => {
           if (e.key === "Escape") onClose()
@@ -118,8 +139,8 @@ export function NodeSelectorModal({
         }}
       >
         <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-semibold">Tạo node mới</h3>
+          <div className="flex items-center justify-between border-b pb-3">
+            <h3 className="text-base font-semibold">Tạo node mới</h3>
             {parent && (
               <span className="text-xs text-muted-foreground">
                 con của “{parent.title}”
@@ -128,7 +149,10 @@ export function NodeSelectorModal({
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="node-title">Tiêu đề<RequiredMark /></Label>
+            <Label htmlFor="node-title">
+              Tiêu đề
+              <RequiredMark />
+            </Label>
             <Input
               id="node-title"
               autoFocus
@@ -153,23 +177,14 @@ export function NodeSelectorModal({
           <div className="space-y-1.5">
             <Label>Chọn loại node</Label>
             <div className="grid grid-cols-2 gap-2">
-              {NODE_TYPES.map((type) => {
+              {allowed.map((type) => {
                 const Icon = NODE_TYPE_ICONS[type]
-                const isAllowed = allowed.includes(type)
                 return (
                   <Button
                     key={type}
                     type="button"
                     size="sm"
                     variant={nodeType === type ? "default" : "outline"}
-                    disabled={!isAllowed}
-                    title={
-                      isAllowed
-                        ? undefined
-                        : parent
-                          ? `Node cha là \`${parent.nodeType}\` — chỉ tạo được node cấp ${allowed.map(nodeTypeLabel).join(", ")}`
-                          : undefined
-                    }
                     onClick={() => setNodeType(type)}
                   >
                     <Icon
@@ -183,6 +198,39 @@ export function NodeSelectorModal({
                 )
               })}
             </div>
+          </div>
+
+          {uploadCover && nodeType !== "article" && (
+            <CoverUploadField
+              id="new-node-cover"
+              label="Ảnh bìa"
+              imageUrl={coverUrl || null}
+              placeholderHint="Tải ảnh bìa"
+              helpText="JPG hoặc WebP, tối đa 2 MB. Có thể dán URL ảnh."
+              aspectClassName="aspect-[16/7]"
+              upload={async (file) => {
+                const form = new FormData()
+                form.set("file", file)
+                return (await uploadCover(form)).url
+              }}
+              onUploaded={setCoverUrl}
+            />
+          )}
+
+          <div className="space-y-1.5">
+            <Label htmlFor="node-description">
+              Mô tả{" "}
+              <span className="font-normal text-muted-foreground">
+                (tuỳ chọn)
+              </span>
+            </Label>
+            <Textarea
+              id="node-description"
+              rows={3}
+              value={description}
+              placeholder="Mô tả ngắn để người học hiểu nội dung này"
+              onChange={(event) => setDescription(event.target.value)}
+            />
           </div>
 
           {nodeType === "article" && (
@@ -209,7 +257,7 @@ export function NodeSelectorModal({
             </div>
           )}
 
-          <div className="flex justify-end gap-2">
+          <div className="flex justify-end gap-2 border-t pt-3">
             <Button type="button" variant="ghost" size="sm" onClick={onClose}>
               Hủy
             </Button>

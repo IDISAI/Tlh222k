@@ -4,7 +4,13 @@ import { ClerkLoaded, SignInButton, UserButton, useAuth } from "@clerk/nextjs"
 import { usePathname, useSearchParams } from "next/navigation"
 import { authReturnUrl, devAuthRole, ThemeToggle } from "@workspace/core"
 
-export function AuthHeader({ tone = "default" }: { tone?: "default" | "on-dark" }) {
+export function AuthHeader({
+  tone = "default",
+  minimal = false,
+}: {
+  tone?: "default" | "on-dark"
+  minimal?: boolean
+}) {
   // Dev bypass: no <ClerkProvider>, so Clerk hooks/components would throw.
   // Show the impersonated role instead.
   const dev = devAuthRole(
@@ -12,24 +18,28 @@ export function AuthHeader({ tone = "default" }: { tone?: "default" | "on-dark" 
     process.env.NEXT_PUBLIC_DEV_AUTH_ROLE,
     process.env.NEXT_PUBLIC_ENABLE_DEV_AUTH_BYPASS
   )
-  if (dev !== null) {
+  if (!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY) {
     return (
       <div className="flex items-center gap-2">
-        <ThemeToggle />
-        <span className={
-          tone === "on-dark"
-            ? "rounded-full border border-white/45 bg-black/65 px-3 py-2 text-xs font-semibold text-white shadow-lg backdrop-blur-sm"
-            : "rounded-md border px-3 py-1 text-sm font-medium text-muted-foreground"
-        }>
-          dev: {dev}
-        </span>
+        {!minimal && <ThemeToggle />}
+        {!minimal && dev !== null && (
+          <span
+            className={
+              tone === "on-dark"
+                ? "rounded-full border border-white/45 bg-black/65 px-3 py-2 text-xs font-semibold text-white shadow-lg backdrop-blur-sm"
+                : "rounded-md border px-3 py-1 text-sm font-medium text-muted-foreground"
+            }
+          >
+            dev: {dev}
+          </span>
+        )}
       </div>
     )
   }
 
   return (
     <div className="flex items-center gap-2">
-      <ThemeToggle />
+      {!minimal && <ThemeToggle />}
       <ClerkAuthHeader tone={tone} />
     </div>
   )
@@ -73,4 +83,3 @@ function ClerkAuthHeader({ tone }: { tone: "default" | "on-dark" }) {
     </ClerkLoaded>
   )
 }
-

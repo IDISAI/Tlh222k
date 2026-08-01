@@ -1,6 +1,10 @@
 import { Lock } from "lucide-react"
 import { notFound } from "next/navigation"
-import { RoadmapService, RoadmapServiceError, RoadmapViewer } from "@workspace/core"
+import {
+  RoadmapService,
+  RoadmapServiceError,
+  RoadmapViewer,
+} from "@workspace/core"
 
 import { getIsAuthenticated } from "@/lib/auth"
 import { AuthHeader } from "@/components/auth-header"
@@ -48,7 +52,6 @@ export default async function RoadmapDetailPage({
       slug={slug}
       isAuthenticated={isAuthenticated}
       initialGraph={graph}
-      backHref="/roadmaps"
       headerActions={<AuthHeader />}
     />
   )

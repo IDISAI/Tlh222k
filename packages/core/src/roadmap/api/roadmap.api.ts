@@ -35,7 +35,7 @@ const FIELD_FIELDS = `id title slug order description imageUrl publishStatus`
 const NODE_FIELDS = `
   id roadmapId parentId title slug description nodeType notionPageId
   articleType jupyterUrl positionX positionY order status isDeleted
-  linkedRoadmapId publishStatus coverUrl level visibility tags authorId
+  linkedRoadmapId publishStatus coverUrl level visibility tags authorId authorName
   keyResults { id text position }
   fields { ${FIELD_FIELDS} }
 `
@@ -82,7 +82,7 @@ export class RoadmapApi {
       `query {
         publicBlocks {
           id slug title description childrenCount publishStatus
-          nodeType coverUrl level visibility updatedAt createdAt authorId
+          nodeType coverUrl level visibility updatedAt createdAt authorId authorName
           tags learnerCount
           fields { ${FIELD_FIELDS} }
         }
@@ -238,7 +238,10 @@ export class RoadmapApi {
   }
 
   /** Ordered roadmap-block memberships for one Field Workspace. */
-  async listFieldNodeIds(fieldId: string, _callerRole: CallerRole): Promise<string[]> {
+  async listFieldNodeIds(
+    fieldId: string,
+    _callerRole: CallerRole
+  ): Promise<string[]> {
     const data = await gql<{ fieldNodeIds: string[] }>(
       `query ($fieldId: ID!) { fieldNodeIds(fieldId: $fieldId) }`,
       { fieldId }
@@ -605,6 +608,10 @@ export class RoadmapApi {
     nodeId: string,
     role: CallerRole
   ): Promise<boolean> {
+    const node = (await this.listNodes()).find(
+      (candidate) => candidate.id === nodeId
+    )
+    if (node?.parentId === null) return this.deleteRoadmap(node.roadmapId, role)
     return this.deleteNode(nodeId, role)
   }
 

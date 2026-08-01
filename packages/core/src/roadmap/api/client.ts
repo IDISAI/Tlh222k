@@ -62,7 +62,6 @@ function endpoint(): string {
   return `${svcApiUrl().replace(/\/$/, "")}/graphql`
 }
 
-
 interface ClerkGlobal {
   loaded?: boolean
   load?: () => Promise<unknown>
@@ -106,7 +105,10 @@ async function getClerkToken(): Promise<string | null> {
     if (clerk.loaded === false && typeof clerk.load === "function") {
       // Race clerk.load() against the remaining budget so a degraded Clerk
       // connection can't freeze queries indefinitely.
-      await Promise.race([clerk.load(), sleep(Math.max(0, deadline - Date.now()))])
+      await Promise.race([
+        clerk.load(),
+        sleep(Math.max(0, deadline - Date.now())),
+      ])
     }
     const token = await Promise.race([
       Promise.resolve(clerk.session?.getToken?.() ?? null),
@@ -135,7 +137,7 @@ function makeClient(): ApolloClient<NormalizedCacheObject> {
       process.env.NEXT_PUBLIC_DEV_AUTH_ROLE,
       process.env.NEXT_PUBLIC_ENABLE_DEV_AUTH_BYPASS
     )
-    const token = devRole ? `dev:${devRole}` : await getClerkToken()
+    const token = (await getClerkToken()) ?? (devRole ? `dev:${devRole}` : null)
     // The branch-specific svc-api preview picked by previewSvcApiUrl() sits
     // behind Vercel Deployment Protection. A browser tab clears that via the
     // visitor's own Vercel SSO session, but this server-to-server call (SSR /
@@ -148,7 +150,9 @@ function makeClient(): ApolloClient<NormalizedCacheObject> {
       }
     }
     return {
-      headers: token ? { ...headers, authorization: `Bearer ${token}` } : headers,
+      headers: token
+        ? { ...headers, authorization: `Bearer ${token}` }
+        : headers,
     }
   })
 

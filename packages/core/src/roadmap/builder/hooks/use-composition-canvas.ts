@@ -43,7 +43,10 @@ export function useCompositionCanvas(
       title: string,
       parentChapterSlug?: string
     ) => Promise<{ id: string } | null>
-    onSyncPublish?: (notionPageId: string, isPublished: boolean) => Promise<void>
+    onSyncPublish?: (
+      notionPageId: string,
+      isPublished: boolean
+    ) => Promise<void>
   }
 ) {
   const onCreateNotionDoc = opts?.onCreateNotionDoc
@@ -199,7 +202,9 @@ export function useCompositionCanvas(
             : {
                 ...prev,
                 members: prev.members.map((m) =>
-                  m.nodeId === nodeId ? { ...m, x: position.x, y: position.y } : m
+                  m.nodeId === nodeId
+                    ? { ...m, x: position.x, y: position.y }
+                    : m
                 ),
               }
           : prev
@@ -216,6 +221,7 @@ export function useCompositionCanvas(
       nodeType: NodeType
       title: string
       description?: string
+      coverUrl?: string | null
       positionX: number
       positionY: number
     }): Promise<RoadmapNode | null> => {

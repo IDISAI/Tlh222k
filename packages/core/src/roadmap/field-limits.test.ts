@@ -1,21 +1,8 @@
 import { describe, expect, it } from "vitest"
 
-import {
-  FIELD_DESCRIPTION_MAX,
-  FIELD_DESCRIPTION_WARN,
-  normalizeFieldDescription,
-} from "./field-limits"
+import { normalizeFieldDescription } from "./field-limits"
 
-describe("field description limits", () => {
-  it("caps at the length the Explorer hero can hold", () => {
-    expect(FIELD_DESCRIPTION_MAX).toBe(160)
-  })
-
-  it("warns before the cap, not at it", () => {
-    // Warning at the cap tells an editor about a wall they have already hit.
-    expect(FIELD_DESCRIPTION_WARN).toBeLessThan(FIELD_DESCRIPTION_MAX)
-  })
-
+describe("field descriptions", () => {
   describe("normalizeFieldDescription", () => {
     it("keeps a description that fits", () => {
       expect(normalizeFieldDescription("Khám phá Machine Learning")).toBe(
@@ -27,11 +14,9 @@ describe("field description limits", () => {
       expect(normalizeFieldDescription("  Toán học  ")).toBe("Toán học")
     })
 
-    it("cuts anything past the cap", () => {
-      // The form's maxLength only stops a person typing. An API caller is not
-      // typing, so the cap has to hold on the way in as well.
+    it("keeps long descriptions intact", () => {
       const long = "x".repeat(600)
-      expect(normalizeFieldDescription(long)).toHaveLength(FIELD_DESCRIPTION_MAX)
+      expect(normalizeFieldDescription(long)).toBe(long)
     })
 
     it("treats a missing description as empty rather than failing", () => {

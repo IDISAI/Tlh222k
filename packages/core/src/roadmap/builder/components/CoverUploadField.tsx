@@ -57,7 +57,9 @@ export function CoverUploadField({
       const url = await upload(file)
       onUploaded(url)
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Không thể tải ảnh lên.")
+      setError(
+        cause instanceof Error ? cause.message : "Không thể tải ảnh lên."
+      )
     } finally {
       setBusy(false)
     }
@@ -97,7 +99,7 @@ export function CoverUploadField({
         }
       >
         <span>
-          <ImageIcon className="mx-auto mb-1 size-5" />
+          {!imageUrl && <ImageIcon className="mx-auto mb-1 size-5" />}
           {busy ? "Đang tải…" : imageUrl ? "Bấm để đổi ảnh" : placeholderHint}
         </span>
         <input
