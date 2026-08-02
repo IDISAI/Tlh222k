@@ -1,4 +1,9 @@
-export type ManagedRole = "viewer" | "admin" | "super-admin"
+/**
+ * Every role a Super-admin can assign. `aio` belongs here because it is the
+ * only way a learner is granted INTERNAL content — leaving it out made the
+ * entitlement axis unreachable no matter what the roadmap was marked.
+ */
+export type ManagedRole = "viewer" | "aio" | "admin" | "super-admin"
 
 export type RoleChangeDecision =
   | { ok: true }

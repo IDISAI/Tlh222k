@@ -1,4 +1,6 @@
 export * from "./progress.service"
+export * from "./progress.api"
+export * from "./progress-selector"
 export * from "./components"
 export * from "./hooks"
 export * from "./utils"

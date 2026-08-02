@@ -8,17 +8,23 @@ import type { UserRole } from "./types"
 export function normalizeRole(raw: unknown): UserRole {
   if (typeof raw !== "string") return "viewer"
   const v = raw.trim().toLowerCase().replace(/_/g, "-")
-  return v === "admin" || v === "super-admin" ? v : "viewer"
+  return v === "aio" || v === "admin" || v === "super-admin" ? v : "viewer"
 }
 
-/** Resolve the explicit local-development auth bypass. Never active in production. */
+/**
+ * Resolve the explicit local-development auth bypass. Never active in
+ * production, and now gated by `bypassEnabled` (the app's
+ * `NEXT_PUBLIC_ENABLE_DEV_AUTH_BYPASS` env var) — set it to `"false"` to force
+ * real Clerk sign-in/sign-out even in development.
+ */
 export function devAuthRole(
   nodeEnv: string | undefined,
-  raw: string | undefined
+  raw: string | undefined,
+  bypassEnabled: string | undefined
 ): UserRole | null {
-  if (nodeEnv === "production" || typeof raw !== "string") return null
+  if (nodeEnv === "production" || bypassEnabled !== "true" || typeof raw !== "string") return null
   const value = raw.trim().toLowerCase().replace(/_/g, "-")
-  return value === "viewer" || value === "admin" || value === "super-admin"
+  return value === "viewer" || value === "aio" || value === "admin" || value === "super-admin"
     ? value
     : null
 }

@@ -1,6 +1,6 @@
 /**
  * Role resolved from the Clerk JWT `publicMetadata.role` claim.
  * Absent / unrecognized metadata is treated as `"viewer"` (Req 5.5).
- * Monotonicity (A1): super-admin ⊇ admin ⊇ viewer.
+ * `aio` is a learner audience for Internal content; it is not a CMS writer.
  */
-export type UserRole = "viewer" | "admin" | "super-admin"
+export type UserRole = "viewer" | "aio" | "admin" | "super-admin"

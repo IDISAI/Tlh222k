@@ -131,7 +131,8 @@ export class LocalNotebookStore implements NotebookStore {
 export class HttpNotebookStore implements NotebookStore {
   constructor(
     private baseUrl: string,
-    private getToken?: () => Promise<string | null>
+    private getToken?: () => Promise<string | null>,
+    private requestTimeoutMs = 0
   ) {}
 
   private async headers(): Promise<Record<string, string>> {
@@ -141,9 +142,27 @@ export class HttpNotebookStore implements NotebookStore {
     return h
   }
 
+  private async request(path: string, init?: RequestInit): Promise<Response> {
+    if (this.requestTimeoutMs <= 0) {
+      return fetch(`${this.baseUrl}${path}`, init)
+    }
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), this.requestTimeoutMs)
+    try {
+      return await fetch(`${this.baseUrl}${path}`, { ...init, signal: controller.signal })
+    } catch (error) {
+      if (controller.signal.aborted) {
+        throw new TypeError("Notebook backend request timed out")
+      }
+      throw error
+    } finally {
+      clearTimeout(timeout)
+    }
+  }
+
   async load(slug: string): Promise<NotebookRecord | null> {
     if (!SLUG_PATTERN.test(slug)) return null
-    const res = await fetch(`${this.baseUrl}/api/notebooks/${slug}`, {
+    const res = await this.request(`/api/notebooks/${slug}`, {
       headers: await this.headers(),
     })
     if (res.status === 404) return null
@@ -161,7 +180,7 @@ export class HttpNotebookStore implements NotebookStore {
   async save(slug: string, record: NotebookRecord): Promise<void> {
     if (!SLUG_PATTERN.test(slug)) return
     const { notebook, meta } = record
-    const res = await fetch(`${this.baseUrl}/api/notebooks/${slug}`, {
+    const res = await this.request(`/api/notebooks/${slug}`, {
       method: "PUT",
       headers: await this.headers(),
       body: JSON.stringify({
@@ -175,7 +194,7 @@ export class HttpNotebookStore implements NotebookStore {
   }
 
   async list(): Promise<NotebookSummary[]> {
-    const res = await fetch(`${this.baseUrl}/api/notebooks`, {
+    const res = await this.request(`/api/notebooks`, {
       headers: await this.headers(),
     })
     if (!res.ok) throw new Error(`list: ${res.status}`)
@@ -191,10 +210,58 @@ export class HttpNotebookStore implements NotebookStore {
 
   async remove(slug: string): Promise<void> {
     if (!SLUG_PATTERN.test(slug)) return
-    const res = await fetch(`${this.baseUrl}/api/notebooks/${slug}`, {
+    const res = await this.request(`/api/notebooks/${slug}`, {
       method: "DELETE",
       headers: await this.headers(),
     })
     if (!res.ok) throw new Error(`remove ${slug}: ${res.status}`)
   }
+}
+
+/**
+ * Falls back only after the preferred backend cannot be reached. HTTP response
+ * errors still surface to the author: switching stores after a 401/403/500
+ * could create divergent notebook data.
+ */
+export class FallbackNotebookStore implements NotebookStore {
+  private primaryUnavailable = false
+
+  constructor(
+    private readonly primary: NotebookStore,
+    private readonly fallback: NotebookStore
+  ) {}
+
+  private async use<T>(operation: (store: NotebookStore) => Promise<T>): Promise<T> {
+    if (this.primaryUnavailable) return operation(this.fallback)
+    try {
+      return await operation(this.primary)
+    } catch (error) {
+      if (!isNetworkFailure(error)) throw error
+      this.primaryUnavailable = true
+      return operation(this.fallback)
+    }
+  }
+
+  load(slug: string) {
+    return this.use((store) => store.load(slug))
+  }
+
+  save(slug: string, record: NotebookRecord) {
+    return this.use((store) => store.save(slug, record))
+  }
+
+  list() {
+    return this.use((store) => store.list())
+  }
+
+  remove(slug: string) {
+    return this.use((store) => store.remove(slug))
+  }
+}
+
+function isNetworkFailure(error: unknown) {
+  return (
+    error instanceof TypeError &&
+    /(?:fetch|network|connection|failed)/i.test(error.message)
+  )
 }

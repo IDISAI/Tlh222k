@@ -1,4 +1,16 @@
 export * from "./types"
+export * from "./publish-status"
+export * from "./access-policy"
+export * from "./access-labels"
+export * from "./block-access"
+export * from "./key-results"
+export * from "./attachment-policy"
+export * from "./publish-eligibility"
+export * from "./favorites"
+export * from "./slug-policy"
+export * from "./field-policy"
+export * from "./level"
+export * from "./field-limits"
 // `RoadmapService` is exported from ./api (swaps mock ↔ svc-roadmap by env).
 // The mock class itself still lives in ./roadmap.service for the fallback.
 export * from "./api"

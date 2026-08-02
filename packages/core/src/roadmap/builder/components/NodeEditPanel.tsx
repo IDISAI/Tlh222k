@@ -5,6 +5,7 @@ import { Badge } from "@workspace/ui/components/badge"
 import { Button } from "@workspace/ui/components/button"
 import { Input } from "@workspace/ui/components/input"
 import { Label } from "@workspace/ui/components/label"
+import { RequiredMark } from "@workspace/ui/components/required-mark"
 import {
   Sheet,
   SheetContent,
@@ -14,6 +15,10 @@ import {
 } from "@workspace/ui/components/sheet"
 import { toast } from "@workspace/ui/components/sonner"
 import { Textarea } from "@workspace/ui/components/textarea"
+import { LEVELS, LEVEL_LABELS, type Level } from "../../level"
+import { ENTITLEMENT_LABELS } from "../../access-labels"
+import { MAX_KEY_RESULTS, parseKeyResults } from "../../key-results"
+import { ROADMAP_VISIBILITIES } from "../../access-policy"
 
 import {
   MAX_DESCRIPTION_LENGTH,
@@ -21,7 +26,9 @@ import {
   type ArticleType,
   type RoadmapNode,
   type UpdateNodeInput,
+  type Visibility,
 } from "../../types"
+import { FieldPicker } from "./FieldPicker"
 
 interface NodeEditPanelProps {
   node: RoadmapNode
@@ -52,6 +59,28 @@ export function NodeEditPanel({ node, onClose, onSave }: NodeEditPanelProps) {
   const [articleType, setArticleType] = useState<ArticleType | null>(
     node.articleType
   )
+  const [fieldIds, setFieldIds] = useState<string[]>(
+    () => node.fields?.map((f) => f.id) ?? []
+  )
+  const [coverUrl, setCoverUrl] = useState(node.coverUrl ?? "")
+  // "" is the unjudged state — a block nobody has rated yet, which is real and
+  // must survive a round trip rather than defaulting to Cơ bản.
+  const [level, setLevel] = useState<Level | "">(node.level ?? "")
+  const [visibility, setVisibility] = useState<Visibility>(
+    node.visibility ?? "FREE"
+  )
+  // Held as the raw comma-separated text the editor typed, not as an array, so
+  // a half-finished "ML Engineer, " does not lose its trailing separator on
+  // every keystroke.
+  const [tagsText, setTagsText] = useState((node.tags ?? []).join(", "))
+  // One per line rather than comma-separated: a learner outcome is a sentence
+  // and sentences contain commas.
+  const [keyResultsText, setKeyResultsText] = useState(() =>
+    [...(node.keyResults ?? [])]
+      .sort((left, right) => left.position - right.position)
+      .map((result) => result.text)
+      .join("\n")
+  )
   const [titleError, setTitleError] = useState("")
   const [saving, setSaving] = useState(false)
 
@@ -72,6 +101,26 @@ export function NodeEditPanel({ node, onClose, onSave }: NodeEditPanelProps) {
     const input: UpdateNodeInput = {
       title: title.trim(),
       description: description.trim(),
+    }
+    // Articles never carry discovery labels (they don't reach the public card
+    // grid), so only send the key for block nodes. Omitting it entirely leaves
+    // whatever the server has untouched.
+    if (!isArticle) {
+      input.fieldIds = fieldIds
+      input.coverUrl = coverUrl.trim() || null
+      input.level = level || null
+      input.visibility = visibility
+      // Split, trim, drop blanks, de-duplicate. "a, , a" is one tag, not three,
+      // and a duplicate would show the same chip twice on the Field page.
+      input.tags = [
+        ...new Set(
+          tagsText
+            .split(",")
+            .map((tag) => tag.trim())
+            .filter(Boolean)
+        ),
+      ]
+      input.keyResults = parseKeyResults(keyResultsText)
     }
     if (isArticle && articleType) {
       input.articleType = articleType
@@ -106,11 +155,12 @@ export function NodeEditPanel({ node, onClose, onSave }: NodeEditPanelProps) {
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="edit-title">Tiêu đề *</Label>
+            <Label htmlFor="edit-title">Tiêu đề<RequiredMark /></Label>
             <Input
               id="edit-title"
               value={title}
               maxLength={MAX_TITLE_LENGTH}
+              aria-required="true"
               onChange={(e) => {
                 setTitle(e.target.value)
                 if (titleError) setTitleError("")
@@ -138,10 +188,86 @@ export function NodeEditPanel({ node, onClose, onSave }: NodeEditPanelProps) {
             </p>
           </div>
 
+          {!isArticle && (
+            <div className="space-y-1.5">
+              <Label htmlFor="edit-cover">Ảnh bìa (tùy chọn)</Label>
+              <Input
+                id="edit-cover"
+                value={coverUrl}
+                placeholder="https://..."
+                onChange={(e) => setCoverUrl(e.target.value)}
+              />
+              <Label htmlFor="edit-level">Cấp độ (tùy chọn)</Label>
+              <select
+                id="edit-level"
+                value={level}
+                onChange={(e) => setLevel(e.target.value as Level | "")}
+                className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm"
+              >
+                <option value="">Chưa xếp cấp độ</option>
+                {LEVELS.map((l) => (
+                  <option key={l} value={l}>
+                    {LEVEL_LABELS[l]}
+                  </option>
+                ))}
+              </select>
+              <Label>Lĩnh vực (tùy chọn)</Label>
+              <FieldPicker
+                value={fieldIds}
+                onChange={setFieldIds}
+                disabled={saving}
+              />
+
+              <Label htmlFor="edit-visibility">Quyền xem</Label>
+              <select
+                id="edit-visibility"
+                value={visibility}
+                onChange={(e) => setVisibility(e.target.value as Visibility)}
+                className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm"
+              >
+                {ROADMAP_VISIBILITIES.map((value) => (
+                  <option key={value} value={value}>
+                    {ENTITLEMENT_LABELS[value]}
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-muted-foreground">
+                {visibility === "INTERNAL"
+                  ? "Chỉ học viên AIO, Admin và Super-admin mở được."
+                  : "Mọi người đều mở được, kể cả khách chưa đăng nhập."}
+              </p>
+
+              <Label htmlFor="edit-tags">Vai trò / kỹ năng (tùy chọn)</Label>
+              <Input
+                id="edit-tags"
+                value={tagsText}
+                placeholder="ML Engineer, Data Analyst"
+                onChange={(e) => setTagsText(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                Ngăn cách bằng dấu phẩy. Đây chính là các chip lọc trên trang
+                lĩnh vực — không đặt thì roadmap chỉ hiện ở chip “Tất cả”.
+              </p>
+
+              <Label htmlFor="edit-key-results">Kết quả đạt được</Label>
+              <Textarea
+                id="edit-key-results"
+                rows={4}
+                value={keyResultsText}
+                placeholder={"Đọc hiểu ký hiệu ma trận\nTự cài đặt phép nhân ma trận"}
+                onChange={(e) => setKeyResultsText(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                Mỗi dòng một kết quả, tối đa {MAX_KEY_RESULTS}. Viết điều người
+                học sẽ <em>làm được</em>, không phải việc họ phải tick xong.
+              </p>
+            </div>
+          )}
+
           {isArticle && (
             <div className="space-y-4 border-t pt-4">
               <div className="space-y-1.5">
-                <Label>Loại tài liệu *</Label>
+                <Label>Loại tài liệu<RequiredMark /></Label>
                 <div className="flex gap-2">
                   {(["notion", "jupyter"] as const).map((type) => (
                     <Button

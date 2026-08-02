@@ -1,6 +1,6 @@
-# tlh222k
+# Tlh222k
 
-Turborepo + pnpm monorepo for the tlh222k roadmap platform. The repo contains
+Turborepo + pnpm monorepo for the Tlh222k roadmap platform. The repo contains
 three Next.js frontends, one NestJS roadmap service, and shared packages for UI,
 domain logic, database, lint, and TypeScript config.
 
@@ -34,19 +34,19 @@ See [docs/onboarding/env.md](docs/onboarding/env.md) for key-by-key setup.
 
 ## Common Commands
 
-| Command                         | Purpose                                      |
-| ------------------------------- | -------------------------------------------- |
-| `pnpm dev`                      | Turbo JS apps + Go kernel-server             |
-| `pnpm dev:js`                   | Turbo JS apps only (no Go)                   |
-| `pnpm dev:go`                   | Go kernel-server only                        |
-| `pnpm build`                    | Build the monorepo                           |
-| `pnpm lint`                     | Run ESLint                                   |
-| `pnpm typecheck`                | Run `tsc --noEmit`                           |
-| `pnpm format`                   | Run Prettier                                 |
-| `pnpm --filter web dev`         | Public web app only (port 3000)              |
-| `pnpm --filter admin dev`       | Admin app only (port 3002)                   |
-| `pnpm --filter super-admin dev` | Super-admin app only (port 3003)             |
-| `pnpm --filter svc-api dev` | NestJS backend only (port 3005)              |
+| Command                         | Purpose                          |
+| ------------------------------- | -------------------------------- |
+| `pnpm dev`                      | Turbo JS apps + Go kernel-server |
+| `pnpm dev:js`                   | Turbo JS apps only (no Go)       |
+| `pnpm dev:go`                   | Go kernel-server only            |
+| `pnpm build`                    | Build the monorepo               |
+| `pnpm lint`                     | Run ESLint                       |
+| `pnpm typecheck`                | Run `tsc --noEmit`               |
+| `pnpm format`                   | Run Prettier                     |
+| `pnpm --filter web dev`         | Public web app only (port 3000)  |
+| `pnpm --filter admin dev`       | Admin app only (port 3002)       |
+| `pnpm --filter super-admin dev` | Super-admin app only (port 3003) |
+| `pnpm --filter svc-api dev`     | NestJS backend only (port 3005)  |
 
 There is no test runner configured yet. CI is:
 `install --frozen-lockfile -> lint -> typecheck -> build`.

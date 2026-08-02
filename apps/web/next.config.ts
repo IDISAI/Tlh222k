@@ -28,6 +28,14 @@ const SUPER_ADMIN_DEST = SUPER_ADMIN_URL
 
 const nextConfig: NextConfig = {
   transpilePackages: ["@workspace/ui", "@workspace/core", "@workspace/db"],
+  // Vercel's System Environment Variables (VERCEL_ENV, VERCEL_GIT_COMMIT_REF)
+  // aren't NEXT_PUBLIC_-prefixed, so Next won't inline them into the browser
+  // bundle on its own. @workspace/core's svcApiUrl() needs both, browser-side,
+  // to route a Preview deployment to its own branch's svc-api instead of prod.
+  env: {
+    NEXT_PUBLIC_VERCEL_ENV: process.env.VERCEL_ENV ?? "",
+    NEXT_PUBLIC_VERCEL_GIT_COMMIT_REF: process.env.VERCEL_GIT_COMMIT_REF ?? "",
+  },
   // /notebooks reads .ipynb fixtures with fs at request time; without this the
   // Vercel serverless bundle would omit them (dynamic path = not traced).
   outputFileTracingIncludes: {

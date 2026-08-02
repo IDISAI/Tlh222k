@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import {
   Background,
   Controls,
@@ -63,7 +63,7 @@ function toFlowEdges(edges: RoadmapEdge[], nodeIds: Set<string>): Edge[] {
       source: e.sourceId,
       target: e.targetId,
       type: "default",
-      animated: e.kind === "solid",
+      animated: false,
       style: e.kind === "dashed" ? { strokeDasharray: "6 4" } : undefined,
       data: { kind: e.kind },
     }))
@@ -75,6 +75,7 @@ interface CompositionCanvasProps {
   /** Base path for the detail-panel "Điều hướng" drill (admin builder root). */
   builderBasePath: string
   onSyncPublish?: (notionPageId: string, isPublished: boolean) => Promise<void>
+  uploadCover?: (form: FormData) => Promise<{ url: string }>
 }
 
 function CompositionCanvasInner({
@@ -82,12 +83,15 @@ function CompositionCanvasInner({
   className,
   builderBasePath,
   onSyncPublish,
+  uploadCover,
 }: CompositionCanvasProps) {
   const { resolvedTheme } = useTheme()
   const colorMode: ColorMode = resolvedTheme === "dark" ? "dark" : "light"
   const { screenToFlowPosition } = useReactFlow()
 
-  const [rfNodes, setRfNodes, onNodesChange] = useNodesState<BuilderFlowNode>([])
+  const [rfNodes, setRfNodes, onNodesChange] = useNodesState<BuilderFlowNode>(
+    []
+  )
   const [rfEdges, setRfEdges, onEdgesChange] = useEdgesState<Edge>([])
 
   const [detailNode, setDetailNode] = useState<RoadmapNode | null>(null)
@@ -123,12 +127,11 @@ function CompositionCanvasInner({
         type: "builderNode",
         // Owner's own-canvas position lives in the composition (LEGO), falling
         // back to the node coords only until the derive seeds ownerX/ownerY.
-        position:
-          prevById.get(owner.id)?.position ?? {
-            x: canvas.composition?.ownerX ?? owner.positionX,
-            y: canvas.composition?.ownerY ?? owner.positionY,
-          },
-        data: { node: owner },
+        position: prevById.get(owner.id)?.position ?? {
+          x: canvas.composition?.ownerX ?? owner.positionX,
+          y: canvas.composition?.ownerY ?? owner.positionY,
+        },
+        data: { node: owner, isOwner: true },
         draggable: true,
         selectable: true,
       })
@@ -138,14 +141,17 @@ function CompositionCanvasInner({
           id: m.node.id,
           type: "builderNode",
           position: existing ? existing.position : { x: m.x, y: m.y },
-          data: { node: m.node },
+          data: { node: m.node, isOwner: false },
           draggable: true,
           selected: existing?.selected ?? false,
         })
       }
       return next
     })
-    const ids = new Set<string>([owner.id, ...canvas.memberNodes.map((m) => m.node.id)])
+    const ids = new Set<string>([
+      owner.id,
+      ...canvas.memberNodes.map((m) => m.node.id),
+    ])
     setRfEdges(toFlowEdges(canvas.edges, ids))
   }, [
     canvas.ownerNode,
@@ -180,7 +186,7 @@ function CompositionCanvasInner({
         canvas.moveMember(n.id, n.position)
       }
     },
-    [canvas, ownerId]
+    [canvas]
   )
 
   /** Cutting an edge on the canvas removes that link (other edges stay). */
@@ -191,7 +197,7 @@ function CompositionCanvasInner({
     [canvas]
   )
 
-  const onNodeDoubleClick = useCallback(
+  const onNodeOpen = useCallback(
     (_event: React.MouseEvent, rfNode: Node) => {
       const domain =
         canvas.ownerNode?.id === rfNode.id
@@ -284,10 +290,19 @@ function CompositionCanvasInner({
   )
 
   const handleCreate = useCallback(
-    async (input: { nodeType: NodeType; title: string; x: number; y: number }) => {
+    async (input: {
+      nodeType: NodeType
+      title: string
+      description?: string
+      coverUrl?: string
+      x: number
+      y: number
+    }) => {
       const created = await canvas.createBlock({
         nodeType: input.nodeType,
         title: input.title,
+        description: input.description,
+        coverUrl: input.coverUrl,
         positionX: input.x,
         positionY: input.y,
       })
@@ -320,14 +335,15 @@ function CompositionCanvasInner({
           onNodeDragStart={onNodeDragStart}
           onNodeDragStop={onNodeDragStop}
           onEdgesDelete={onEdgesDelete}
-          onNodeDoubleClick={onNodeDoubleClick}
+          onNodeClick={onNodeOpen}
+          onNodeDoubleClick={onNodeOpen}
           onPaneContextMenu={onPaneContextMenu}
           onNodeContextMenu={onNodeContextMenu}
           onEdgeContextMenu={onEdgeContextMenu}
           onDragOver={onDragOver}
           onDrop={onDrop}
         >
-          <Background />
+          <Background color="var(--border)" gap={20} size={1} />
           <Controls />
           <MiniMap
             pannable
@@ -348,10 +364,13 @@ function CompositionCanvasInner({
           handleCreate({
             nodeType: input.nodeType,
             title: input.title,
+            description: input.description,
+            coverUrl: input.coverUrl,
             x: input.x,
             y: input.y,
           })
         }
+        uploadCover={uploadCover}
       />
 
       {blockMenu && (

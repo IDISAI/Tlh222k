@@ -4,6 +4,8 @@ import { useMemo, useState } from "react"
 import { useAuth, useClerk } from "@clerk/nextjs"
 
 import {
+  canRunNotebook,
+  chooseRuntime,
   InteractiveNotebook,
   JupyterSandboxAdapter,
   PyodideKernelAdapter,
@@ -43,15 +45,22 @@ function createNotebookAdapter(
 ): KernelAdapter | null {
   const profile = profileForNotebook(notebook.language)
   if (!profile) return null
-  if (kernelUrl) {
+
+  const runtime = chooseRuntime(kernelUrl, process.env.NODE_ENV)
+  if (runtime.kind === "kernel-server") {
     return new JupyterSandboxAdapter(
-      new SandboxSessionClient(kernelUrl, getToken),
+      new SandboxSessionClient(runtime.url, getToken),
       profile
     )
   }
-  // No kernel server (the deployed default): Python runs on Pyodide and
-  // JavaScript on the bundled interpreter, so both stay usable — and their
-  // "Visualize execution" gate, which needs a successful run, still opens.
+  // A deployed environment with no kernel server gets no runtime at all.
+  // Falling back would run a different engine, with different versions and no
+  // installed packages, and show learners results the author never saw —
+  // silently. The empty adapter surfaces as a disabled Run with a reason.
+  if (runtime.kind === "unavailable") return null
+
+  // Local development only: Python on Pyodide, JavaScript on the bundled
+  // interpreter, so both stay usable without running the Go kernel-server.
   if (notebook.language === "python") {
     return new PyodideKernelAdapter(
       () => new Worker(new URL("./pyodide.worker.ts", import.meta.url))
@@ -86,7 +95,11 @@ interface LearnClientProps {
 /** /learn/[slug]: Kaggle-Learn-style Tutorial | Exercise tab pair. */
 export function LearnClient(props: LearnClientProps) {
   const isDev =
-    devAuthRole(process.env.NODE_ENV, process.env.NEXT_PUBLIC_DEV_AUTH_ROLE) !==
+    devAuthRole(
+    process.env.NODE_ENV,
+    process.env.NEXT_PUBLIC_DEV_AUTH_ROLE,
+    process.env.NEXT_PUBLIC_ENABLE_DEV_AUTH_BYPASS
+  ) !==
     null
 
   if (isDev) {
@@ -99,10 +112,13 @@ export function LearnClient(props: LearnClientProps) {
 function DevLearnClient({ slug, tutorial, exercise }: LearnClientProps) {
   const [tab, setTab] = useState<LearnTab>("tutorial")
   const kernelUrl = process.env.NEXT_PUBLIC_KERNEL_SERVER_URL
-  const isSignedIn = true
-
-  const usePyodide = !kernelUrl
-  const canRun = usePyodide || isSignedIn
+  // The dev bypass impersonates a signed-in learner, so the same rule applies
+  // here as in the Clerk path — one policy, not two.
+  const runVerdict = canRunNotebook({
+    runtime: chooseRuntime(kernelUrl, process.env.NODE_ENV),
+    authenticated: true,
+  })
+  const canRun = runVerdict.ok
 
   const getDevToken = async () => "dev-token"
 
@@ -183,8 +199,16 @@ function ClerkLearnClient({ slug, tutorial, exercise }: LearnClientProps) {
   const kernelUrl = process.env.NEXT_PUBLIC_KERNEL_SERVER_URL
   const isSignedIn = clerkSignedIn
 
-  const usePyodide = !kernelUrl
-  const canRun = usePyodide || isSignedIn
+  // Running costs someone's compute, so it needs an account — a guest reads
+  // the committed code and its saved output, which is the content itself.
+  // Previously a missing kernel URL made Run available to everyone, which is
+  // how the deployed default came to be an unauthenticated Pyodide session.
+  const runtime = chooseRuntime(kernelUrl, process.env.NODE_ENV)
+  const runVerdict = canRunNotebook({
+    runtime,
+    authenticated: Boolean(isSignedIn),
+  })
+  const canRun = runVerdict.ok
 
   const makeAdapter = useMemo(
     () =>

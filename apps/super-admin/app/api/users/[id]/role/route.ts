@@ -4,7 +4,7 @@ import { roleFromClaims } from "@workspace/core/navigation/role"
 
 import { type ManagedRole, validateRoleChange } from "./policy"
 
-const ROLES: readonly ManagedRole[] = ["viewer", "admin", "super-admin"]
+const ROLES: readonly ManagedRole[] = ["viewer", "aio", "admin", "super-admin"]
 const PAGE_SIZE = 100
 
 function managedRole(value: unknown): ManagedRole {

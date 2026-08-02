@@ -19,6 +19,7 @@ export default async function SuperAdminRoadmapPage({
       isAuthenticated
       backHref={USERS_PATH}
       readOnlyBadge
+      embedded
       notebookBasePath="/notebooks"
     />
   )

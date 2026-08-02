@@ -21,7 +21,7 @@ function node(id: string, roadmapId: string, parentId: string | null = null) {
     order: 0,
     isDeleted: false,
     linkedRoadmapId: null,
-    isPublished: false,
+    publishStatus: "DRAFT",
   }
 }
 
@@ -61,6 +61,62 @@ function harness() {
 }
 
 describe("RoadmapService tree integrity", () => {
+  it("reclaims a slug from a roadmap with no active nodes", async () => {
+    const tx = {
+      node: { findMany: vi.fn(async () => []) },
+      document: { deleteMany: vi.fn(async () => ({})) },
+      roadmap: { delete: vi.fn(async () => ({})) },
+    }
+    const prisma = {
+      roadmap: {
+        findUnique: vi.fn(async () => ({ id: "legacy-roadmap" })),
+      },
+      node: { count: vi.fn(async () => 0) },
+      $transaction: vi.fn(async (work: (client: typeof tx) => unknown) =>
+        work(tx)
+      ),
+    }
+    const service = new RoadmapService(
+      prisma as never,
+      { emit: vi.fn() } as never
+    )
+
+    await expect(
+      (
+        service as never as { uniqueRoadmapSlug(base: string): Promise<string> }
+      ).uniqueRoadmapSlug("test")
+    ).resolves.toBe("test")
+
+    expect(tx.roadmap.delete).toHaveBeenCalledWith({
+      where: { id: "legacy-roadmap" },
+    })
+  })
+
+  it("ignores deleted Field members when deleting a draft Field", async () => {
+    const prisma = {
+      field: {
+        findUnique: vi.fn(async () => ({ publishStatus: "DRAFT" })),
+        delete: vi.fn(async () => ({})),
+      },
+      fieldMembership: {
+        count: vi.fn(async () => 0),
+      },
+    }
+    const service = new RoadmapService(
+      prisma as never,
+      { emit: vi.fn() } as never
+    )
+
+    await expect(service.deleteField(admin, "field-a")).resolves.toBe(true)
+
+    expect(prisma.fieldMembership.count).toHaveBeenCalledWith({
+      where: { fieldId: "field-a", node: { isDeleted: false } },
+    })
+    expect(prisma.field.delete).toHaveBeenCalledWith({
+      where: { id: "field-a" },
+    })
+  })
+
   it("rejects a parent from another roadmap before update", async () => {
     const { service, tx } = harness()
     const child = node("child", "roadmap-a")
@@ -134,11 +190,7 @@ describe("RoadmapService tree integrity", () => {
     })
     tx.node.count = vi.fn(async () => 0)
 
-    await service.updateNode(
-      article.id,
-      { notionPageId: "doc-1" },
-      admin
-    )
+    await service.updateNode(article.id, { notionPageId: "doc-1" }, admin)
 
     expect(prisma.$transaction).toHaveBeenCalledWith(expect.any(Function), {
       timeout: 10_000,

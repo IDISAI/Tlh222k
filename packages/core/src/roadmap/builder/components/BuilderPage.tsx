@@ -1,13 +1,27 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { ArrowLeft, Check, Copy, Globe, PanelLeftOpen, Redo2, Trash2, Undo2 } from "lucide-react"
+import {
+  ArrowLeft,
+  Check,
+  Copy,
+  Globe,
+  PanelLeftOpen,
+  Redo2,
+  Trash2,
+  Undo2,
+} from "lucide-react"
 import { Button } from "@workspace/ui/components/button"
 import { Skeleton } from "@workspace/ui/components/skeleton"
-import { Popover, PopoverContent, PopoverTrigger } from "@workspace/ui/components/popover"
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@workspace/ui/components/popover"
 import { cn } from "@workspace/ui/lib/utils"
 
 import type { CallerRole } from "../../types"
+import { reachesLearners, statusOf } from "../../publish-status"
 import { useCompositionCanvas } from "../hooks/use-composition-canvas"
 import { CompositionCanvas } from "./CompositionCanvas"
 import { DeleteNodeDialog } from "./DeleteNodeDialog"
@@ -30,6 +44,7 @@ interface BuilderPageProps {
   ) => Promise<{ id: string } | null>
   onSyncPublish?: (notionPageId: string, isPublished: boolean) => Promise<void>
   onArchiveDocument?: (notionPageId: string) => Promise<void>
+  onUploadBlockCover?: (form: FormData) => Promise<{ url: string }>
 }
 
 /**
@@ -45,8 +60,12 @@ export function BuilderPage({
   publicOrigin,
   onCreateNotionDoc,
   onSyncPublish,
+  onUploadBlockCover,
 }: BuilderPageProps) {
-  const canvas = useCompositionCanvas(nodeId, role, { onCreateNotionDoc, onSyncPublish })
+  const canvas = useCompositionCanvas(nodeId, role, {
+    onCreateNotionDoc,
+    onSyncPublish,
+  })
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [copied, setCopied] = useState(false)
@@ -54,7 +73,8 @@ export function BuilderPage({
   // Blocks already on this canvas (owner + members) get an active border in the
   // sidebar instead of being hidden.
   const canvasNodeIds = useMemo(
-    () => new Set<string>([nodeId, ...canvas.memberNodes.map((m) => m.node.id)]),
+    () =>
+      new Set<string>([nodeId, ...canvas.memberNodes.map((m) => m.node.id)]),
     [nodeId, canvas.memberNodes]
   )
 
@@ -96,7 +116,11 @@ export function BuilderPage({
   }
 
   const owner = canvas.ownerNode
-  const publicUrl = publicOrigin && owner ? `${publicOrigin}/roadmap/${owner.slug}` : null
+  // One question, asked through one helper, so this badge cannot disagree with
+  // the gate that decides whether learners actually see the block.
+  const ownerIsPublic = owner ? reachesLearners(statusOf(owner)) : false
+  const publicUrl =
+    publicOrigin && owner ? `${publicOrigin}/roadmap/${owner.slug}` : null
 
   const copyPublicUrl = () => {
     if (!publicUrl) return
@@ -152,9 +176,9 @@ export function BuilderPage({
                 <Button
                   type="button"
                   size="sm"
-                  variant={owner.isPublished ? "secondary" : "outline"}
+                  variant={ownerIsPublic ? "secondary" : "outline"}
                 >
-                  {owner.isPublished ? (
+                  {ownerIsPublic ? (
                     <>
                       <Globe className="size-4 text-sky-500" />
                       <span className="text-sky-500">Đã xuất bản</span>
@@ -169,7 +193,7 @@ export function BuilderPage({
               }
             />
             <PopoverContent className="w-80" align="end">
-              {owner.isPublished ? (
+              {ownerIsPublic ? (
                 <div className="space-y-3">
                   <p className="flex items-center gap-1.5 text-xs font-medium text-sky-500">
                     <Globe className="size-3.5" />
@@ -188,7 +212,11 @@ export function BuilderPage({
                         className="rounded-l-none"
                         onClick={copyPublicUrl}
                       >
-                        {copied ? <Check className="size-4" /> : <Copy className="size-4" />}
+                        {copied ? (
+                          <Check className="size-4" />
+                        ) : (
+                          <Copy className="size-4" />
+                        )}
                       </Button>
                     </div>
                   )}
@@ -198,7 +226,7 @@ export function BuilderPage({
                     className="w-full"
                     onClick={() =>
                       void canvas.updateNodeMeta(owner.id, {
-                        isPublished: false,
+                        publishStatus: "DRAFT",
                       })
                     }
                   >
@@ -217,7 +245,7 @@ export function BuilderPage({
                     className="w-full"
                     onClick={() =>
                       void canvas.updateNodeMeta(owner.id, {
-                        isPublished: true,
+                        publishStatus: "PUBLISHED",
                       })
                     }
                   >
@@ -266,6 +294,7 @@ export function BuilderPage({
           builderBasePath={builderBasePath}
           className={cn("h-full min-w-0 flex-1")}
           onSyncPublish={onSyncPublish}
+          uploadCover={onUploadBlockCover}
         />
       </div>
 

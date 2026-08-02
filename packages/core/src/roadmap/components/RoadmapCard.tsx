@@ -1,44 +1,108 @@
-import type { FC } from "react"
+"use client"
 
+import type { FC } from "react"
+import { Heart } from "lucide-react"
+
+import { cn } from "@workspace/ui/lib/utils"
+
+import { roadmapStateSummary } from "../access-labels"
+import { useFavorite } from "../favorites"
 import type { Roadmap } from "../types"
 import { truncateDescription } from "../utils/truncate-description"
 
 /**
- * Bento card for a roadmap block. LEGO: a card IS a block, so it links by the
- * block's NODE id (`roadmap.id`) to the per-block viewer — not the slug, which
- * an orphaned container roadmap can shadow. Root-absolute <a> works from any zone.
+ * Airbnb-style property card for a roadmap block. Photo-first: a 16:10 cover
+ * with `radius-md` clipping and a heart save toggle floating top-right, then
+ * the meta stack beneath. LEGO: a card IS a block, so it links by the block's
+ * NODE id (`roadmap.id`) — not the slug, which an orphaned container roadmap
+ * can shadow. Root-absolute <a> works from any zone.
+ *
+ * The heart is account-backed once a backend URL is configured, so a roadmap
+ * saved on one device is there on the next; without one it falls back to the
+ * per-browser store for local development.
  */
 export const RoadmapCard: FC<{ roadmap: Roadmap }> = ({ roadmap }) => {
+  const { favorite: saved, toggle: toggleSaved } = useFavorite(roadmap.id)
+
+  const description = truncateDescription(roadmap.description, 90)
+  // All three axes, read through the shared summary so this card cannot drift
+  // from the CMS or the Field list. A card is never the place a learner should
+  // be surprised by a locked door, so anything narrowing access says so here
+  // rather than at the click.
+  const state = roadmapStateSummary({
+    lifecycleStatus: roadmap.publishStatus,
+    discoverability: roadmap.discoverability ?? null,
+    visibility: roadmap.visibility ?? null,
+  })
+
   return (
-    <a
-      href={`/roadmap/${roadmap.id}`}
-      className="block overflow-hidden rounded-xl border-4 border-black bg-white shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] transition-all duration-300 hover:-translate-y-1 dark:border-zinc-800 dark:bg-zinc-900 dark:shadow-[6px_6px_0px_0px_rgba(255,255,255,0.1)]"
-    >
-      <div className="flex aspect-video w-full items-center justify-center overflow-hidden border-b-4 border-black bg-muted dark:border-zinc-800">
+    <article className="group relative">
+      <div className="relative aspect-[16/10] overflow-hidden rounded-[14px] bg-accent">
         {roadmap.thumbnailUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={roadmap.thumbnailUrl}
             alt={roadmap.title}
-            className="h-full w-full object-cover"
+            className="size-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
           />
         ) : (
-          <span className="text-4xl text-muted-foreground" aria-hidden>
+          <span
+            className="flex size-full items-center justify-center text-4xl"
+            aria-hidden
+          >
             🗺️
           </span>
         )}
+
+        <span
+          className={cn(
+            "absolute left-3 top-3 z-10 rounded-full px-2.5 py-1 text-[11px] font-semibold",
+            state.badge === "Miễn phí"
+              ? "bg-background text-foreground"
+              : "bg-foreground text-background"
+          )}
+        >
+          {state.badge}
+        </span>
+
+        <button
+          type="button"
+          onClick={toggleSaved}
+          aria-pressed={saved}
+          aria-label={saved ? `Unsave ${roadmap.title}` : `Save ${roadmap.title}`}
+          className="absolute right-3 top-3 z-20 flex size-8 items-center justify-center rounded-full"
+        >
+          <Heart
+            className="size-6 stroke-2 text-white"
+            fill={saved ? "var(--primary)" : "rgba(0,0,0,.5)"}
+          />
+        </button>
       </div>
-      <div className="p-5">
-        <h3 className="text-xl font-extrabold uppercase italic">
-          {roadmap.title}
+
+      <div className="pt-3">
+        <h3 className="mb-[3px] text-base font-semibold">
+          <a
+            href={`/roadmaps/${roadmap.id}`}
+            className="after:absolute after:inset-0 after:content-['']"
+          >
+            {roadmap.title}
+          </a>
         </h3>
-        <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-          {truncateDescription(roadmap.description)}
+        <p className="text-sm text-muted-foreground">
+          {roadmap.nodeCount} {roadmap.nodeCount === 1 ? "node" : "nodes"}
         </p>
-        <p className="mt-3 text-xs font-medium text-muted-foreground">
-          {roadmap.nodeCount} chủ đề
-        </p>
+        {description ? (
+          <p className="mt-1.5 text-sm text-muted-foreground">{description}</p>
+        ) : null}
+        {/* Draft and unlisted are the two states a card can be handed that the
+            public grid does not otherwise reveal. Saying nothing would present
+            them as ordinary published content. */}
+        {state.notes.length > 0 && (
+          <p className="mt-1.5 text-xs text-muted-foreground">
+            {state.notes.join(" · ")}
+          </p>
+        )}
       </div>
-    </a>
+    </article>
   )
 }

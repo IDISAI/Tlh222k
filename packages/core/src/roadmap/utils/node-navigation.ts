@@ -16,7 +16,7 @@ export interface NodeNavigationOptions {
    * Admin-builder base ("/roadmaps"). When set, chapter navigates to its
    * Roadmap_Detail_Page (`{base}/{roadmapId}/chapter/{slug}`, Req 10.1) and
    * role/skill navigates to its LINKED roadmap's builder (`{base}/{id}`,
-   * Req 11.5). Omitted in viewer zones → `/roadmap/{slug}` as before.
+   * Req 11.5). Omitted in viewer zones → `/roadmaps/{slug}`.
    */
   builderBasePath?: string
 }
@@ -25,7 +25,7 @@ export interface NodeNavigationOptions {
  * Resolve the destination the "Điều hướng" action opens.
  *
  * Viewer zones (no `builderBasePath`): role/skill/chapter → a same-origin
- * `/roadmap/[slug]` viewer. Admin builder (`builderBasePath` set): chapter →
+ * `/roadmaps/[slug]` viewer. Admin builder (`builderBasePath` set): chapter →
  * its Roadmap_Detail_Page (Req 10.1); role/skill → the linked roadmap's
  * builder, or null when `linkedRoadmapId` is unset (Req 11.5/11.6).
  *
@@ -52,7 +52,7 @@ export function nodeNavigationUrl(
     // composition canvas at `{base}/{id}` (LEGO model — no container roadmap,
     // no `?node=` rooting). Viewer zones keep the slug-based public route.
     if (builderBasePath) return `${builderBasePath}/${node.id}`
-    return node.slug ? `/roadmap/${node.slug}` : null
+    return node.slug ? `/roadmaps/${node.slug}` : null
   }
   if (node.nodeType === "article") {
     const target = resolveArticleTarget(node)

@@ -7,22 +7,40 @@ import {
   type ArticleType,
   type CallerRole,
   type Composition,
+  type CreateFieldInput,
   type CreateNodeInput,
   type CreateRoadmapInput,
   type EdgeKind,
+  type Field,
+  type Level,
+  type NodeKeyResult,
   type NodeStatus,
   type NodeType,
+  type PublishStatus,
   type Roadmap,
   type RoadmapEdge,
   type RoadmapGraph,
   type RoadmapNode,
+  type UpdateFieldInput,
   type UpdateNodeInput,
+  type Visibility,
 } from "./types"
+import { fieldDeleteEligibility } from "./field-policy"
+import { MAX_KEY_RESULTS } from "./key-results"
 import { getStore, persistStore } from "./mock/builder-store"
+import { reachesLearners, statusOf } from "./publish-status"
 import { deriveCompositionFromNodes } from "./utils/derive-composition"
 import { emitRoadmapUpdate } from "./utils/update-signal"
 import { slugify, uniqueSlug } from "./utils/slugify"
 import { validateHierarchy } from "./utils/validate-hierarchy"
+
+/**
+ * Labels live only on the real backend — the mock has no store for them, so a
+ * write here would hand back an id the backend never heard of.
+ */
+const MOCK_FIELDS_UNAVAILABLE = "Lĩnh vực chỉ khả dụng khi kết nối backend"
+
+void MOCK_FIELDS_UNAVAILABLE
 
 const LATENCY_MS = 150
 const delay = (ms = LATENCY_MS) => new Promise((r) => setTimeout(r, ms))
@@ -33,10 +51,7 @@ const SAVE_TIMEOUT_MS = 10_000
 async function withTimeout<T>(work: Promise<T>, ms: number): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined
   const timeout = new Promise<never>((_, reject) => {
-    timer = setTimeout(
-      () => reject(new RoadmapServiceError("TIMEOUT")),
-      ms
-    )
+    timer = setTimeout(() => reject(new RoadmapServiceError("TIMEOUT")), ms)
   })
   try {
     return await Promise.race([work, timeout])
@@ -87,7 +102,7 @@ export class RoadmapService {
       .filter(
         (n) =>
           !n.isDeleted &&
-          n.isPublished === true &&
+          reachesLearners(statusOf(n)) &&
           (n.nodeType === "role" || n.nodeType === "skill")
       )
       .map((n) => ({
@@ -95,10 +110,189 @@ export class RoadmapService {
         slug: n.slug,
         title: n.title,
         description: n.description,
-        thumbnailUrl: null,
-        isPublished: true,
+        thumbnailUrl: n.coverUrl ?? null,
+        publishStatus: "PUBLISHED",
         nodeCount: childCount.get(n.id) ?? 0,
+        fields: n.fields ?? [],
+        blockType: n.nodeType as "role" | "skill",
+        level: n.level ?? null,
+        visibility: n.visibility ?? "FREE",
+        updatedAt: n.updatedAt,
+        authorId: n.authorId,
       }))
+  }
+
+  /**
+   * Discovery labels for the /roadmaps tab strip.
+   *
+   * The mock has no label store: labels only exist on the real backend, and the
+   * mock is local-only by rule (see CLAUDE.md "the mock roadmap service is
+   * LOCAL-ONLY"). Returning `[]` hides the strip rather than showing tabs that
+   * could never match anything.
+   */
+  // ponytail: → `fields` query
+  async listFields(): Promise<Field[]> {
+    await delay()
+    return clone(getStore().fields).sort(
+      (a, b) => a.order - b.order || a.title.localeCompare(b.title)
+    )
+  }
+
+  async listAdminFields(_callerRole: CallerRole): Promise<Field[]> {
+    return this.listFields()
+  }
+
+  async fieldBySlug(slug: string): Promise<Field | null> {
+    await delay()
+    const field = getStore().fields.find((item) => item.slug === slug)
+    return !field || field.publishStatus === "DRAFT" ? null : clone(field)
+  }
+
+  /**
+   * Signature parity with `RoadmapApi.createField` so the env selector can swap
+   * the two. Labels have no mock store — creating one here would produce an id
+   * the backend never heard of, so this refuses rather than lying.
+   */
+  // ponytail: → `createField` mutation
+  async createField(
+    input: CreateFieldInput | string,
+    callerRole: CallerRole
+  ): Promise<Field> {
+    assertCanWrite(callerRole)
+    await delay()
+    const data = typeof input === "string" ? { title: input } : input
+    const title = data.title.trim()
+    if (!title)
+      throw new RoadmapServiceError("VALIDATION", "Field title is required")
+    const store = getStore()
+    const existing = store.fields.find(
+      (field) =>
+        field.title.localeCompare(title, undefined, {
+          sensitivity: "accent",
+        }) === 0
+    )
+    if (existing) return clone(existing)
+    const field: Field = {
+      id: newId("field"),
+      title,
+      slug: uniqueSlug(data.slug?.trim() || slugify(title), (value) =>
+        store.fields.some((item) => item.slug === value)
+      ),
+      order: store.fields.length,
+      description: data.description?.trim() || null,
+      imageUrl: data.imageUrl?.trim() || null,
+      publishStatus: data.publishStatus ?? "DRAFT",
+    }
+    store.fields.push(field)
+    persistStore()
+    return clone(field)
+  }
+
+  // ponytail: → `updateField` mutation
+  async updateField(
+    id: string,
+    input: UpdateFieldInput | string,
+    callerRole: CallerRole
+  ): Promise<Field> {
+    assertCanWrite(callerRole)
+    await delay()
+    const store = getStore()
+    const field = store.fields.find((item) => item.id === id)
+    if (!field) throw new RoadmapServiceError("NOT_FOUND")
+    const data = typeof input === "string" ? { title: input } : input
+    if (data.title !== undefined) {
+      const title = data.title.trim()
+      if (!title)
+        throw new RoadmapServiceError("VALIDATION", "Field title is required")
+      field.title = title
+    }
+    if (data.slug !== undefined && data.slug !== field.slug) {
+      throw new RoadmapServiceError(
+        "VALIDATION",
+        "Field slug cannot change after first save"
+      )
+    }
+    if (data.description !== undefined)
+      field.description = data.description?.trim() || null
+    if (data.imageUrl !== undefined)
+      field.imageUrl = data.imageUrl?.trim() || null
+    if (data.publishStatus !== undefined) {
+      const hasPublishedBlock = store.nodes.some(
+        (node) =>
+          !node.isDeleted &&
+          node.publishStatus === "PUBLISHED" &&
+          node.fields?.some((item) => item.id === id)
+      )
+      if (
+        data.publishStatus !== "DRAFT" &&
+        (!field.description ||
+          !field.imageUrl?.startsWith("https://") ||
+          !hasPublishedBlock)
+      ) {
+        throw new RoadmapServiceError(
+          "VALIDATION",
+          "Published or private Field needs description, HTTPS image, and one published block"
+        )
+      }
+      field.publishStatus = data.publishStatus
+    }
+    if (data.order !== undefined) field.order = data.order
+    persistStore()
+    return clone(field)
+  }
+
+  /** Ordered roadmap-block memberships for one Field Workspace. */
+  async listFieldNodeIds(
+    fieldId: string,
+    _callerRole: CallerRole
+  ): Promise<string[]> {
+    await delay()
+    const store = getStore()
+    return store.nodes
+      .filter(
+        (node) =>
+          !node.isDeleted && node.fields?.some((item) => item.id === fieldId)
+      )
+      .map((node) => node.id)
+  }
+
+  async reorderFieldMembership(
+    _fieldId: string,
+    _nodeIds: string[],
+    _callerRole: CallerRole
+  ): Promise<boolean> {
+    await delay()
+    // The mock store does not persist membership order; accept the call silently.
+    return true
+  }
+
+  // ponytail: → `deleteField` mutation
+  async deleteField(id: string, callerRole: CallerRole): Promise<boolean> {
+    assertCanWrite(callerRole)
+    await delay()
+    const store = getStore()
+    const field = store.fields.find((item) => item.id === id)
+    if (!field) throw new RoadmapServiceError("NOT_FOUND")
+    // Same two rules the backend enforces, so a mock-backed dev session cannot
+    // reach a state the real one refuses.
+    const memberCount = store.nodes.filter((node) =>
+      (node.fields ?? []).some((item) => item.id === id)
+    ).length
+    const eligibility = fieldDeleteEligibility(field.publishStatus, memberCount)
+    if (!eligibility.ok) {
+      throw new RoadmapServiceError(
+        "VALIDATION",
+        eligibility.code === "FIELD_STILL_HAS_ROADMAPS"
+          ? "This Field still holds roadmaps; move them to another Field before deleting it"
+          : "Only draft Fields can be deleted"
+      )
+    }
+    store.fields = store.fields.filter((item) => item.id !== id)
+    store.nodes.forEach((node) => {
+      node.fields = (node.fields ?? []).filter((item) => item.id !== id)
+    })
+    persistStore()
+    return true
   }
 
   // ponytail: → `roadmaps(includeUnpublished: true)` query — admin list (Req 1.1)
@@ -162,8 +356,9 @@ export class RoadmapService {
             title: node.title,
             description: node.description,
             thumbnailUrl: null,
-            isPublished: true,
+            publishStatus: "PUBLISHED",
             nodeCount: subtree.length,
+            fields: [],
           },
           nodes: subtree,
         }
@@ -173,7 +368,9 @@ export class RoadmapService {
 
     const nodes: RoadmapNode[] = base.nodes.map((n) => ({
       ...n,
-      status: opts.authenticated ? (opts.progress?.[n.id] ?? "locked") : "locked",
+      status: opts.authenticated
+        ? (opts.progress?.[n.id] ?? "locked")
+        : "locked",
     }))
     return { roadmap: base.roadmap, nodes }
   }
@@ -188,7 +385,12 @@ export class RoadmapService {
     await delay()
     const store = getStore()
     const node = store.nodes.find((n) => n.id === id && !n.isDeleted)
-    if (!node || node.nodeType === "article" || !node.isPublished) return null
+    if (
+      !node ||
+      node.nodeType === "article" ||
+      !reachesLearners(statusOf(node))
+    )
+      return null
     // Whole roadmap's nodes so the web viewer derives the same composition the
     // admin builder renders (shared deriveCompositionFromNodes).
     const roadmapNodes = store.nodes.filter(
@@ -201,8 +403,9 @@ export class RoadmapService {
         title: node.title,
         description: node.description,
         thumbnailUrl: null,
-        isPublished: true,
+        publishStatus: "PUBLISHED",
         nodeCount: roadmapNodes.length,
+        fields: [],
       },
       nodes: roadmapNodes.map((n) => ({ ...n, status: "locked" as const })),
     }
@@ -252,8 +455,9 @@ export class RoadmapService {
       title: input.title.trim().slice(0, MAX_TITLE_LENGTH),
       description: input.description?.trim() || null,
       thumbnailUrl: input.thumbnailUrl ?? null,
-      isPublished: false,
+      publishStatus: "DRAFT",
       nodeCount: 0,
+      fields: [],
       createdAt: now,
       updatedAt: now,
       authorId: input.authorId,
@@ -267,7 +471,7 @@ export class RoadmapService {
   // ponytail: → `updateRoadmap` mutation
   async updateRoadmap(
     id: string,
-    input: Partial<CreateRoadmapInput> & { isPublished?: boolean },
+    input: Partial<CreateRoadmapInput> & { publishStatus?: PublishStatus },
     callerRole: CallerRole
   ): Promise<Roadmap> {
     assertCanWrite(callerRole)
@@ -283,7 +487,9 @@ export class RoadmapService {
     if (input.thumbnailUrl !== undefined) {
       roadmap.thumbnailUrl = input.thumbnailUrl || null
     }
-    if (input.isPublished !== undefined) roadmap.isPublished = input.isPublished
+    if (input.publishStatus !== undefined) {
+      roadmap.publishStatus = input.publishStatus
+    }
     roadmap.updatedAt = new Date().toISOString() // bump on every write
     persistStore()
     emitRoadmapUpdate(id)
@@ -333,7 +539,9 @@ export class RoadmapService {
       jupyterUrl: input.jupyterUrl ?? null,
       positionX: input.positionX,
       positionY: input.positionY,
-      order: input.order ?? store.nodes.filter((n) => n.roadmapId === input.roadmapId).length,
+      order:
+        input.order ??
+        store.nodes.filter((n) => n.roadmapId === input.roadmapId).length,
       status: "locked",
     }
     store.nodes.push(node)
@@ -363,7 +571,8 @@ export class RoadmapService {
     if (input.description !== undefined) {
       node.description = input.description.trim() || null
     }
-    if (input.articleType !== undefined) node.articleType = input.articleType ?? null
+    if (input.articleType !== undefined)
+      node.articleType = input.articleType ?? null
     if (input.notionPageId !== undefined) {
       node.notionPageId = input.notionPageId?.trim() || null
     }
@@ -376,7 +585,14 @@ export class RoadmapService {
     if (input.linkedRoadmapId !== undefined) {
       node.linkedRoadmapId = input.linkedRoadmapId ?? null
     }
-    if (input.isPublished !== undefined) node.isPublished = input.isPublished
+    if (input.publishStatus !== undefined) {
+      node.publishStatus = input.publishStatus
+    }
+    if (input.fieldIds !== undefined) {
+      const ids = new Set(input.fieldIds)
+      node.fields = getStore().fields.filter((field) => ids.has(field.id))
+    }
+    node.updatedAt = new Date().toISOString()
 
     persistStore()
     emitRoadmapUpdate(node.roadmapId)
@@ -422,6 +638,32 @@ export class RoadmapService {
    * up to the deleted node's parent so a sub-roadmap is never lost when its
    * parent roadmap is deleted.
    */
+  // ponytail: → `setNodeKeyResults` mutation
+  async setNodeKeyResults(
+    nodeId: string,
+    texts: string[],
+    callerRole: CallerRole
+  ): Promise<NodeKeyResult[]> {
+    assertCanWrite(callerRole)
+    await delay()
+    const store = getStore()
+    const node = store.nodes.find((item) => item.id === nodeId)
+    if (!node) throw new RoadmapServiceError("NOT_FOUND")
+    // Same replace-not-patch shape and same cap as the backend, so a
+    // mock-backed session cannot produce a node the real one would reject.
+    node.keyResults = texts
+      .map((text) => text.trim())
+      .filter(Boolean)
+      .slice(0, MAX_KEY_RESULTS)
+      .map((text, position) => ({
+        id: `kr-${nodeId}-${position}`,
+        text,
+        position,
+      }))
+    persistStore()
+    return node.keyResults
+  }
+
   // ponytail: → `deleteNode` mutation (reparent children up)
   async deleteNode(id: string, callerRole: CallerRole): Promise<boolean> {
     assertCanWrite(callerRole)
@@ -433,7 +675,18 @@ export class RoadmapService {
     for (const n of store.nodes) {
       if (n.parentId === id) n.parentId = newParent
     }
-    node.isDeleted = true
+    store.nodes = store.nodes.filter((item) => item.id !== id)
+    for (const composition of store.compositions) {
+      composition.members = composition.members.filter(
+        (member) => member.nodeId !== id
+      )
+      composition.edges = composition.edges.filter(
+        (edge) => edge.sourceId !== id && edge.targetId !== id
+      )
+    }
+    store.compositions = store.compositions.filter(
+      (composition) => composition.ownerId !== id
+    )
     persistStore()
     emitRoadmapUpdate(node.roadmapId)
     return true
@@ -462,7 +715,7 @@ export class RoadmapService {
           .filter((n) => !n.isDeleted)
           .map((n) => ({ ...n, roadmapId }))
         const incomingIds = new Set(incoming.map((n) => n.id))
-        // Keep other roadmaps' nodes and this roadmap's soft-deleted ghosts
+        // Keep only nodes belonging to other roadmaps.
         // that the admin has not explicitly removed from the canvas.
         store.nodes = [
           ...store.nodes.filter(
@@ -590,6 +843,15 @@ export class RoadmapService {
       ownerId?: string
       positionX: number
       positionY: number
+      /** Accepted for signature parity; the mock has no label store. */
+      fieldIds?: string[]
+      /** Editorial difficulty; null means "nobody has judged this yet". */
+      level?: Level | null
+      /** FREE/INTERNAL; defaults to FREE when omitted. */
+      visibility?: Visibility
+      /** Cover image URL; may be null. */
+      coverUrl?: string | null
+      tags?: string[]
     },
     callerRole: CallerRole
   ): Promise<RoadmapNode> {
@@ -601,6 +863,7 @@ export class RoadmapService {
     const store = getStore()
     const id = newId("nd")
     const title = input.title.trim().slice(0, MAX_TITLE_LENGTH)
+    const now = new Date().toISOString()
     const node: RoadmapNode = {
       id,
       roadmapId: id, // self-owned: the block IS its own roadmap
@@ -618,6 +881,12 @@ export class RoadmapService {
       positionY: input.positionY,
       order: store.nodes.length,
       status: "locked",
+      coverUrl: input.coverUrl ?? null,
+      level: input.level ?? null,
+      visibility: input.visibility ?? "FREE",
+      tags: input.tags ?? [],
+      createdAt: now,
+      updatedAt: now,
     }
     store.nodes.push(node)
     if (input.ownerId) {
@@ -634,7 +903,7 @@ export class RoadmapService {
   }
 
   /**
-   * Permanent system delete (sidebar / table "Xóa"). The block is soft-deleted
+   * Permanent system delete (sidebar / table "Xóa"). The block is removed
    * and purged from EVERY composition (as owner, member, and edge endpoint).
    * Other independent blocks are never deleted — only their link to this one.
    */
@@ -643,22 +912,7 @@ export class RoadmapService {
     nodeId: string,
     callerRole: CallerRole
   ): Promise<boolean> {
-    assertCanWrite(callerRole)
-    await delay()
-    const store = getStore()
-    const node = store.nodes.find((n) => n.id === nodeId)
-    if (!node) throw new RoadmapServiceError("NOT_FOUND")
-    node.isDeleted = true
-    for (const comp of store.compositions) {
-      comp.members = comp.members.filter((m) => m.nodeId !== nodeId)
-      comp.edges = comp.edges.filter(
-        (e) => e.sourceId !== nodeId && e.targetId !== nodeId
-      )
-    }
-    store.compositions = store.compositions.filter((c) => c.ownerId !== nodeId)
-    persistStore()
-    emitRoadmapUpdate(node.roadmapId)
-    return true
+    return this.deleteNode(nodeId, callerRole)
   }
 
   /** Draw a wire between two blocks on an owner's canvas (upserts by pair). */

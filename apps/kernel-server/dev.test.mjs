@@ -4,10 +4,24 @@ import { readFile } from "node:fs/promises"
 import { resolve } from "node:path"
 import test from "node:test"
 
+import { turboDevArgs } from "./dev-support.mjs"
+
+test("dev launcher reuses a healthy svc-api without selecting it twice", () => {
+  assert.deepEqual(
+    turboDevArgs(["--filter=admin", "--filter=svc-api"], true),
+    ["turbo", "dev", "--filter=admin", "--filter=!svc-api"]
+  )
+})
+
 test("dev launcher starts Turbo apps and kernel-server", () => {
   const result = spawnSync(process.execPath, ["dev.mjs", "--dry-run"], {
     cwd: import.meta.dirname,
     encoding: "utf8",
+    env: {
+      ...process.env,
+      ENABLE_DEV_AUTH_BYPASS: "false",
+      NEXT_PUBLIC_DEV_AUTH_ROLE: "",
+    },
   })
 
   assert.equal(result.status, 0, result.stderr)
@@ -17,6 +31,7 @@ test("dev launcher starts Turbo apps and kernel-server", () => {
       args: ["turbo", "dev"],
       env: {
         NEXT_PUBLIC_KERNEL_SERVER_URL: "http://localhost:3006",
+        NEXT_PUBLIC_SVC_API_URL: "http://localhost:3005",
         NEXT_PUBLIC_DEV_AUTH_ROLE: "",
       },
     },

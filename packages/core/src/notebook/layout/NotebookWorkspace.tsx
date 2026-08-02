@@ -36,7 +36,7 @@ export function NotebookWorkspace({
     <div
       className={cn(
         "mx-auto flex w-full gap-8 px-4 py-6",
-        panel ? "max-w-7xl" : "max-w-6xl"
+        panel ? "max-w-[120rem]" : "max-w-6xl"
       )}
     >
       {/* TOC sidebar — left column, scroll-spy, sticky, hidden on small screens */}
@@ -51,7 +51,7 @@ export function NotebookWorkspace({
         </aside>
       )}
 
-      <div className="min-w-0 flex-1">{children}</div>
+      <div className="min-w-0 flex-1 lg:min-w-[42rem]">{children}</div>
 
       {/* Visualization panel — right column at lg, full-screen overlay below */}
       {panel && (

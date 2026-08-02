@@ -15,7 +15,7 @@ const roadmap = {
   description:
     "Lộ trình AI từ con số 0: Python, toán nền tảng, machine learning và mạng nơ-ron — mỗi bài là một Jupyter notebook chạy trực tiếp trên trình duyệt.",
   thumbnailUrl: "https://placehold.co/600x338/8b5cf6/ffffff?text=AI+t%E1%BB%AB+Zero",
-  isPublished: true,
+  publishStatus: "PUBLISHED",
 }
 
 interface SeedNode {

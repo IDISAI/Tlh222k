@@ -6,6 +6,7 @@ import {
   ChevronRight,
   ExternalLink,
   FileText,
+  ImageIcon,
   PencilLine,
   Plus,
 } from "lucide-react"
@@ -19,6 +20,7 @@ import {
 } from "@workspace/ui/components/card"
 import { Input } from "@workspace/ui/components/input"
 import { Label } from "@workspace/ui/components/label"
+import { RequiredMark } from "@workspace/ui/components/required-mark"
 import {
   Select,
   SelectContent,
@@ -43,6 +45,7 @@ import {
   nodeNavigationUrl,
 } from "../../utils/node-navigation"
 import { NODE_TYPE_ACCENT, NODE_TYPE_ICONS } from "../utils/node-type-styles"
+import { reachesLearners, statusOf } from "../../publish-status"
 import { childrenOf } from "./builder-context"
 
 interface ArticleCreateFormProps {
@@ -87,12 +90,13 @@ function ArticleCreateForm({
     >
       <p className="text-xs font-medium">Bài viết mới</p>
       <div className="space-y-1">
-        <Label className="text-xs">Tiêu đề *</Label>
+        <Label className="text-xs">Tiêu đề<RequiredMark /></Label>
         <Input
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           placeholder="Tên bài viết"
           className="h-7 text-xs"
+          aria-required="true"
           autoFocus
         />
       </div>
@@ -167,7 +171,7 @@ interface NodeDetailDialogProps {
   /**
    * Admin-builder base ("/roadmaps"). When set, a role/skill/chapter block
    * navigates to its OWN composition canvas (`{base}/{id}`); omitted in viewer
-   * zones → `/roadmap/{slug}` as before.
+   * zones → `/roadmaps/{slug}`.
    */
   builderBasePath?: string
   /**
@@ -255,7 +259,7 @@ export function NodeDetailDialog({
       <SheetContent
         side="right"
         showOverlay={false}
-        className="flex w-full flex-col gap-0 p-0 sm:max-w-[420px]"
+        className="flex w-full flex-col gap-0 border-l border-border bg-background p-0 sm:max-w-[380px]"
       >
         <SheetHeader className="border-b dark:border-zinc-800">
           <SheetTitle className="flex items-center gap-2">
@@ -269,10 +273,61 @@ export function NodeDetailDialog({
         </SheetHeader>
 
         <div className="flex-1 space-y-4 overflow-y-auto p-6 text-sm">
+          <div className="aspect-[16/9] overflow-hidden rounded-[14px] border border-border bg-muted">
+            {node.coverUrl ? (
+              <img
+                src={node.coverUrl}
+                alt=""
+                className="size-full object-cover"
+              />
+            ) : (
+              <div className="grid size-full place-items-center text-muted-foreground">
+                <span className="flex flex-col items-center gap-2 text-xs">
+                  <ImageIcon className="size-6" />
+                  Chưa có ảnh bìa
+                </span>
+              </div>
+            )}
+          </div>
           {node.description && (
             <div className="space-y-1">
               <Label>Mô tả</Label>
               <p className="text-muted-foreground">{node.description}</p>
+            </div>
+          )}
+
+          {(node.keyResults?.length ?? 0) > 0 && (
+            <div className="space-y-1.5">
+              <Label>Kết quả đạt được</Label>
+              {/* Numbered and read-only: a Key Result states what a learner
+                  will be able to do, not a task they tick off. Progress is
+                  tracked per node, never per outcome. */}
+              <ol className="list-decimal space-y-1 pl-5 text-muted-foreground">
+                {[...(node.keyResults ?? [])]
+                  .sort((left, right) => left.position - right.position)
+                  .map((result) => (
+                    <li key={result.id}>{result.text}</li>
+                  ))}
+              </ol>
+            </div>
+          )}
+
+          {!isArticle && (node.fields?.length ?? 0) > 0 && (
+            <div className="space-y-1.5">
+              <Label>Lĩnh vực</Label>
+              {/* Read-only on purpose: this panel describes a node, it does not
+                  navigate. Making the chips clickable would need a destination
+                  decided first (filter the canvas? jump to /roadmaps?). */}
+              <div className="flex flex-wrap gap-1.5">
+                {node.fields?.map((field) => (
+                  <span
+                    key={field.id}
+                    className="rounded-full bg-secondary px-2.5 py-1 text-xs font-medium"
+                  >
+                    {field.title}
+                  </span>
+                ))}
+              </div>
             </div>
           )}
 
@@ -344,7 +399,7 @@ export function NodeDetailDialog({
                               {a.title}
                             </CardTitle>
                           </div>
-                          {a.isPublished ? (
+                          {reachesLearners(statusOf(a)) ? (
                             <Badge
                               variant="secondary"
                               className="h-5 border-transparent bg-emerald-100 px-1.5 py-0 text-[10px] text-emerald-700 hover:bg-emerald-100"
@@ -476,7 +531,8 @@ export function NodeDetailDialog({
               title={!navUrl ? navigationBlockedMessage(node) : undefined}
               onClick={handleNavigate}
             >
-              <ExternalLink className="size-4" /> Điều hướng
+              <ExternalLink className="size-4" />{" "}
+              {isArticle ? "Mở nội dung" : "Mở canvas"}
             </Button>
           )}
           {!readOnly && (

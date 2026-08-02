@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { toast } from "@workspace/ui/components/sonner"
 
 import { RoadmapService } from "../../api"
+import { reachesLearners } from "../../publish-status"
 import type {
   ArticleType,
   CallerRole,
@@ -42,7 +43,10 @@ export function useCompositionCanvas(
       title: string,
       parentChapterSlug?: string
     ) => Promise<{ id: string } | null>
-    onSyncPublish?: (notionPageId: string, isPublished: boolean) => Promise<void>
+    onSyncPublish?: (
+      notionPageId: string,
+      isPublished: boolean
+    ) => Promise<void>
   }
 ) {
   const onCreateNotionDoc = opts?.onCreateNotionDoc
@@ -198,7 +202,9 @@ export function useCompositionCanvas(
             : {
                 ...prev,
                 members: prev.members.map((m) =>
-                  m.nodeId === nodeId ? { ...m, x: position.x, y: position.y } : m
+                  m.nodeId === nodeId
+                    ? { ...m, x: position.x, y: position.y }
+                    : m
                 ),
               }
           : prev
@@ -215,6 +221,7 @@ export function useCompositionCanvas(
       nodeType: NodeType
       title: string
       description?: string
+      coverUrl?: string | null
       positionX: number
       positionY: number
     }): Promise<RoadmapNode | null> => {
@@ -356,15 +363,24 @@ export function useCompositionCanvas(
         await service.updateNode(id, input, role)
         await refreshNodes()
         // Keep the owner header in sync if the owner itself was edited.
+        // `keyResults` is dropped on purpose: the input carries plain strings
+        // while a node carries the stored rows, and `refreshNodes` above has
+        // already brought back the real ones.
         if (id === ownerId) {
-          setOwnerNode((prev) => (prev ? { ...prev, ...input } : prev))
+          const { keyResults: _keyResults, ...meta } = input
+          setOwnerNode((prev) => (prev ? { ...prev, ...meta } : prev))
         }
-        // Sync publish state to Notion document if available
-        if (input.isPublished !== undefined && onSyncPublish) {
+        // Sync publish state to Notion document if available. The document
+        // only has a boolean, so Private collapses to "not published" — the
+        // same lossy translation as everywhere else this boundary is crossed.
+        if (input.publishStatus !== undefined && onSyncPublish) {
           const node = allNodes.find((n) => n.id === id)
           const notionKey = node?.notionPageId || node?.slug
           if (notionKey) {
-            await onSyncPublish(notionKey, input.isPublished).catch(console.error)
+            await onSyncPublish(
+              notionKey,
+              reachesLearners(input.publishStatus)
+            ).catch(console.error)
           }
         }
         const node = allNodes.find((n) => n.id === id)

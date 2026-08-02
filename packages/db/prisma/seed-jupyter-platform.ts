@@ -14,7 +14,7 @@ const roadmap = {
     "Toàn bộ tính năng của nền tảng Jupyter: từ tạo và chỉnh sửa notebook đến thực thi code, trực quan hóa và xuất bản — mỗi bài là một notebook tương tác.",
   thumbnailUrl:
     "https://placehold.co/600x338/0ea5e9/ffffff?text=Jupyter+Platform",
-  isPublished: true,
+  publishStatus: "PUBLISHED",
 }
 
 interface SeedNode {

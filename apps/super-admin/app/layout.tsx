@@ -1,7 +1,12 @@
 import { Geist_Mono, Inter } from "next/font/google"
 import { ClerkLoaded, ClerkProvider, UserButton } from "@clerk/nextjs"
 
-import { devAuthRole, ReloadOnBackForward, RoadmapApolloProvider, ThemeToggle } from "@workspace/core"
+import {
+  devAuthRole,
+  ReloadOnBackForward,
+  RoadmapApolloProvider,
+  ThemeToggle,
+} from "@workspace/core"
 
 import "@workspace/ui/globals.css"
 import { ThemeProvider } from "@/components/theme-provider"
@@ -24,7 +29,8 @@ export default async function RootLayout({
   const isAuthed = await getIsAuthenticated()
   const devBypass = devAuthRole(
     process.env.NODE_ENV,
-    process.env.NEXT_PUBLIC_DEV_AUTH_ROLE
+    process.env.NEXT_PUBLIC_DEV_AUTH_ROLE,
+    process.env.NEXT_PUBLIC_ENABLE_DEV_AUTH_BYPASS
   )
 
   const tree = (
@@ -50,17 +56,15 @@ export default async function RootLayout({
             </a>
             <div className="flex items-center gap-2">
               <ThemeToggle />
-              {devBypass !== null ? (
+              {isAuthed ? (
+                <ClerkLoaded>
+                  <UserButton />
+                </ClerkLoaded>
+              ) : devBypass !== null ? (
                 <span className="rounded-md border px-3 py-1 text-sm font-medium text-muted-foreground">
                   dev: {devBypass}
                 </span>
-              ) : (
-                isAuthed && (
-                  <ClerkLoaded>
-                    <UserButton />
-                  </ClerkLoaded>
-                )
-              )}
+              ) : null}
             </div>
           </header>
           <RoadmapApolloProvider>{children}</RoadmapApolloProvider>
@@ -71,5 +75,9 @@ export default async function RootLayout({
 
   // `dynamic`: render Clerk at request time so the statically prerendered
   // /_not-found boundary doesn't call auth() without middleware context.
-  return devBypass ? tree : <ClerkProvider dynamic>{tree}</ClerkProvider>
+  return process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY ? (
+    <ClerkProvider dynamic>{tree}</ClerkProvider>
+  ) : (
+    tree
+  )
 }

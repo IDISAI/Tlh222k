@@ -11,10 +11,35 @@ import { setContext } from "@apollo/client/link/context"
 import { devAuthRole } from "../../navigation"
 import { RoadmapServiceError, type RoadmapErrorCode } from "../types"
 
+// Matches Vercel's own git-branch alias slugging closely enough for normal
+// branch names (lowercase, non-alnum runs collapsed to one hyphen, trimmed).
+function slugifyBranch(branch: string): string {
+  return branch
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+}
+
+// On a Vercel Preview deployment, NEXT_PUBLIC_SVC_API_URL is one static value
+// shared by every branch (Vercel env vars aren't per-branch), so it can only
+// point at one fixed backend — normally prod. That silently serves an OLDER
+// GraphQL schema to a feature branch that added fields, producing
+// GRAPHQL_VALIDATION_FAILED instead of a clear "wrong backend" signal.
+// NEXT_PUBLIC_SVC_API_PREVIEW_URL_TEMPLATE (with a `{branch}` placeholder)
+// lets Preview route to THIS branch's own svc-api preview deployment instead.
+function previewSvcApiUrl(): string | undefined {
+  if (process.env.NEXT_PUBLIC_VERCEL_ENV !== "preview") return undefined
+  const template = process.env.NEXT_PUBLIC_SVC_API_PREVIEW_URL_TEMPLATE
+  const branch = process.env.NEXT_PUBLIC_VERCEL_GIT_COMMIT_REF
+  if (!template || !branch) return undefined
+  return template.replace("{branch}", slugifyBranch(branch))
+}
+
 // NEXT_PUBLIC_SVC_ROADMAP_URL is the legacy name kept as a fallback after the
 // svc-roadmap → svc-api rename, so existing .env.local / Vercel envs still work.
 export function svcApiUrl(): string {
   return (
+    previewSvcApiUrl() ??
     process.env.NEXT_PUBLIC_SVC_API_URL ??
     process.env.NEXT_PUBLIC_SVC_ROADMAP_URL ??
     ""
@@ -27,6 +52,13 @@ export function roadmapBackendEnabled(): boolean {
 }
 
 function endpoint(): string {
+  if (
+    typeof window !== "undefined" &&
+    process.env.NEXT_PUBLIC_VERCEL_ENV === "preview" &&
+    svcApiUrl()
+  ) {
+    return "/api/graphql"
+  }
   return `${svcApiUrl().replace(/\/$/, "")}/graphql`
 }
 
@@ -73,7 +105,10 @@ async function getClerkToken(): Promise<string | null> {
     if (clerk.loaded === false && typeof clerk.load === "function") {
       // Race clerk.load() against the remaining budget so a degraded Clerk
       // connection can't freeze queries indefinitely.
-      await Promise.race([clerk.load(), sleep(Math.max(0, deadline - Date.now()))])
+      await Promise.race([
+        clerk.load(),
+        sleep(Math.max(0, deadline - Date.now())),
+      ])
     }
     const token = await Promise.race([
       Promise.resolve(clerk.session?.getToken?.() ?? null),
@@ -96,14 +131,28 @@ function makeClient(): ApolloClient<NormalizedCacheObject> {
   })
 
   const authLink = setContext(async (_operation, prevContext) => {
-    const headers = (prevContext.headers ?? {}) as Record<string, string>
+    let headers = (prevContext.headers ?? {}) as Record<string, string>
     const devRole = devAuthRole(
       process.env.NODE_ENV,
-      process.env.NEXT_PUBLIC_DEV_AUTH_ROLE
+      process.env.NEXT_PUBLIC_DEV_AUTH_ROLE,
+      process.env.NEXT_PUBLIC_ENABLE_DEV_AUTH_BYPASS
     )
-    const token = devRole ? `dev:${devRole}` : await getClerkToken()
+    const token = (await getClerkToken()) ?? (devRole ? `dev:${devRole}` : null)
+    // The branch-specific svc-api preview picked by previewSvcApiUrl() sits
+    // behind Vercel Deployment Protection. A browser tab clears that via the
+    // visitor's own Vercel SSO session, but this server-to-server call (SSR /
+    // route handler) has none — so it needs the automation bypass secret.
+    // Server-only: never send a bypass secret from browser-side code.
+    if (typeof window === "undefined" && previewSvcApiUrl()) {
+      const bypassSecret = process.env.SVC_API_AUTOMATION_BYPASS_SECRET
+      if (bypassSecret) {
+        headers = { ...headers, "x-vercel-protection-bypass": bypassSecret }
+      }
+    }
     return {
-      headers: token ? { ...headers, authorization: `Bearer ${token}` } : headers,
+      headers: token
+        ? { ...headers, authorization: `Bearer ${token}` }
+        : headers,
     }
   })
 

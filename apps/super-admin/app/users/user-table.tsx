@@ -19,7 +19,7 @@ export interface ManagedUser {
   role: UserRole
 }
 
-const ROLES: UserRole[] = ["viewer", "admin", "super-admin"]
+const ROLES: UserRole[] = ["viewer", "aio", "admin", "super-admin"]
 
 // The browser sees /super-admin/* through the web host. The host strips that
 // prefix before forwarding API requests to this root-built child app.

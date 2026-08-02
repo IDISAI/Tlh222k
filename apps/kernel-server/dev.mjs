@@ -3,30 +3,40 @@ import { readFileSync } from "node:fs"
 import { dirname, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 
+import { hasHealthySvcApi, turboDevArgs } from "./dev-support.mjs"
+
 const kernelDir = dirname(fileURLToPath(import.meta.url))
 const repoRoot = resolve(kernelDir, "../..")
 
-// Load root .env file manually
-try {
-  const envContent = readFileSync(resolve(repoRoot, ".env"), "utf8")
-  for (const line of envContent.split(/\r?\n/)) {
-    const trimmed = line.trim()
-    if (!trimmed || trimmed.startsWith("#")) continue
-    const idx = trimmed.indexOf("=")
-    if (idx > -1) {
-      const key = trimmed.slice(0, idx).trim()
-      const value = trimmed.slice(idx + 1).trim()
-      if (process.env[key] === undefined) {
-        process.env[key] = value
+// Load root .env / .env.local manually (.env.local wins over .env, matching
+// Next.js precedence — this is the file the root env doc tells people to
+// actually put ENABLE_DEV_AUTH_BYPASS in). Real shell-exported vars still win
+// over both: only fill keys the shell didn't already set.
+const shellEnvKeys = new Set(Object.keys(process.env))
+for (const name of [".env", ".env.local"]) {
+  try {
+    const envContent = readFileSync(resolve(repoRoot, name), "utf8")
+    for (const line of envContent.split(/\r?\n/)) {
+      const trimmed = line.trim()
+      if (!trimmed || trimmed.startsWith("#")) continue
+      const idx = trimmed.indexOf("=")
+      if (idx > -1) {
+        const key = trimmed.slice(0, idx).trim()
+        const value = trimmed.slice(idx + 1).trim()
+        if (!shellEnvKeys.has(key)) process.env[key] = value
       }
     }
+  } catch (e) {
+    // Ignore if file doesn't exist
   }
-} catch (e) {
-  // Ignore if file doesn't exist
 }
 
 const kernelServerUrl =
   process.env.NEXT_PUBLIC_KERNEL_SERVER_URL || "http://localhost:3006"
+// JS-only local development always starts svc-api on 3005. Without this
+// public value, web/admin silently select the mock RoadmapService and users
+// see two different Field datasets in the same dev session.
+const svcApiUrl = process.env.NEXT_PUBLIC_SVC_API_URL || "http://localhost:3005"
 
 const enableBypass = process.env.ENABLE_DEV_AUTH_BYPASS === "true"
 const devAuthRoleVal = enableBypass
@@ -37,12 +47,24 @@ const devAuthRoleVal = enableBypass
 // only the apps they need (e.g. admin + svc-api) instead of the whole stack.
 const turboFilters = process.argv.filter((a) => a.startsWith("--filter"))
 
+const requestsSvcApi =
+  turboFilters.length === 0 || turboFilters.includes("--filter=svc-api")
+let reuseSvcApi = false
+
+// `pnpm dev:js` may restart while a previous svc-api remains live. Reuse only
+// verified GraphQL API; otherwise Turbo exits on EADDRINUSE and kills all UIs.
+if (!process.argv.includes("--dry-run") && !process.argv.includes("--check") && requestsSvcApi) {
+  reuseSvcApi = await hasHealthySvcApi(svcApiUrl)
+  if (reuseSvcApi) console.log(`Reusing healthy svc-api at ${svcApiUrl}`)
+}
+
 const commands = [
   {
     command: "pnpm",
-    args: ["turbo", "dev", ...turboFilters],
+    args: turboDevArgs(turboFilters, reuseSvcApi),
     env: {
       NEXT_PUBLIC_KERNEL_SERVER_URL: kernelServerUrl,
+      NEXT_PUBLIC_SVC_API_URL: svcApiUrl,
       NEXT_PUBLIC_DEV_AUTH_ROLE: devAuthRoleVal,
     },
   },

@@ -1,5 +1,5 @@
-import { redirect } from "next/navigation"
+import { FieldExplorer } from "@/components/fields/field-explorer"
 
 export default function Home() {
-  redirect("/roadmaps")
+  return <FieldExplorer />
 }

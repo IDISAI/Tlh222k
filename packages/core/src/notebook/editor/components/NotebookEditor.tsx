@@ -84,8 +84,10 @@ interface NotebookEditorProps {
 
 const service = new NotebookService()
 
-// Shared with the web viewer: when set, notebooks live on kernel-server so the
-// admin editor and the web /learn viewer read/write the same store.
+// Execution only (Phase 3 sandbox) — NOT the notebook CRUD store. The web
+// /learn viewer reads published notebooks from Blob (via apiBaseUrl's API),
+// never from kernel-server, so kernel-server can't be the CRUD source of
+// truth: an editor writing there would be invisible to web.
 const KERNEL_SERVER_URL = process.env.NEXT_PUBLIC_KERNEL_SERVER_URL
 
 /**
@@ -125,10 +127,10 @@ export function NotebookEditor({
   const notebookStore = useMemo<NotebookStore>(
     () =>
       store ??
-      (KERNEL_SERVER_URL
-        ? new HttpNotebookStore(KERNEL_SERVER_URL, getToken)
-        : apiBaseUrl !== undefined
-          ? new HttpNotebookStore(apiBaseUrl, getToken)
+      (apiBaseUrl !== undefined
+        ? new HttpNotebookStore(apiBaseUrl, getToken)
+        : KERNEL_SERVER_URL
+          ? new HttpNotebookStore(KERNEL_SERVER_URL, getToken)
           : new LocalNotebookStore()),
     [store, getToken, apiBaseUrl]
   )
@@ -290,7 +292,7 @@ export function NotebookEditor({
       )}
 
       {/* Same frame as the web viewer: TOC left, notebook centre, panel right. */}
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      <div className="min-h-0 flex-1 overflow-y-auto pb-48">
         <NotebookWorkspace
           toc={toc}
           activeSlug={activeSlug}

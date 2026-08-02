@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { Button } from "@workspace/ui/components/button"
 import {
   Dialog,
@@ -12,30 +12,59 @@ import {
 } from "@workspace/ui/components/dialog"
 import { Input } from "@workspace/ui/components/input"
 import { Label } from "@workspace/ui/components/label"
+import { RequiredMark } from "@workspace/ui/components/required-mark"
 import { toast } from "@workspace/ui/components/sonner"
 import { Textarea } from "@workspace/ui/components/textarea"
 
 import { cn } from "@workspace/ui/lib/utils"
 
 import { RoadmapService } from "../../api"
+import { ENTITLEMENT_LABELS } from "../../access-labels"
+import { ROADMAP_VISIBILITIES } from "../../access-policy"
+import { nextFreeSlot } from "../utils/spread-overlaps"
+import { SLUG_FAILURE_MESSAGES, validateRoadmapSlug } from "../../slug-policy"
 import {
   MAX_DESCRIPTION_LENGTH,
   MAX_TITLE_LENGTH,
   type CallerRole,
+  type Level,
   type RoadmapNode,
+  type Visibility,
 } from "../../types"
 import { serviceErrorMessage } from "../utils/toast-messages"
+import { CoverUploadField } from "./CoverUploadField"
+import { FieldPicker } from "./FieldPicker"
 
 /** A roadmap is a role or a skill (a role/skill node IS a roadmap block). */
 const ROADMAP_KINDS = [
-  { value: "role" as const, label: "Role" },
-  { value: "skill" as const, label: "Skill" },
+  { value: "role" as const, label: "Lộ trình" },
+  { value: "skill" as const, label: "Kỹ năng" },
 ]
+
+/** The bare slug the server will store — what the uniqueness check judges. */
+function slugFromTitle(title: string) {
+  return title
+    .trim()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/đ/g, "d")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+}
+
+/** The same slug dressed as the URL it becomes, for the read-only field. */
+function createSlugPreview(title: string) {
+  const slug = slugFromTitle(title)
+  return slug ? `/roadmaps/${slug}` : "/roadmaps/..."
+}
 
 interface CreateRoadmapDialogProps {
   role: CallerRole
   onClose: () => void
   onCreated: (node: RoadmapNode) => void
+  /** Validates and persists a roadmap block's cover image, returning its URL. */
+  uploadCover: (file: File) => Promise<string>
 }
 
 /** "+ Tạo roadmap mới" (Req 1.1) — creates an unpublished draft. */
@@ -43,13 +72,60 @@ export function CreateRoadmapDialog({
   role,
   onClose,
   onCreated,
+  uploadCover,
 }: CreateRoadmapDialogProps) {
   const service = useMemo(() => new RoadmapService(), [])
   const [title, setTitle] = useState("")
   const [description, setDescription] = useState("")
   const [nodeType, setNodeType] = useState<"role" | "skill">("role")
+  const [fieldIds, setFieldIds] = useState<string[]>([])
+  const [level, setLevel] = useState<Level | "">("")
+  const [visibility, setVisibility] = useState<Visibility>("FREE")
+  const [coverUrl, setCoverUrl] = useState("")
+  const [tagsInput, setTagsInput] = useState("")
   const [error, setError] = useState("")
   const [busy, setBusy] = useState(false)
+  // Slugs already in use, so a collision is caught while the editor is still
+  // looking at the field. Without it the only feedback is the database's
+  // unique-index error after submit, which names a column, not a roadmap.
+  const [takenSlugs, setTakenSlugs] = useState<string[]>([])
+  // Where the existing blocks sit, so a new one is not dropped on top of them.
+  const [placedBlocks, setPlacedBlocks] = useState<
+    { id: string; positionX: number; positionY: number }[]
+  >([])
+
+  useEffect(() => {
+    let cancelled = false
+    service
+      .listNodes()
+      .then((nodes) => {
+        if (cancelled) return
+        setTakenSlugs(
+          nodes.filter((node) => !node.isDeleted).map((node) => node.slug)
+        )
+        setPlacedBlocks(
+          nodes
+            .filter((node) => !node.isDeleted)
+            .map((node) => ({
+              id: node.id,
+              positionX: node.positionX,
+              positionY: node.positionY,
+            }))
+        )
+      })
+      // A failed lookup must not block creating a roadmap: the server still
+      // rejects a duplicate, this check is only the earlier, kinder one.
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [service, role])
+
+  // Validate the bare slug, not the "/roadmaps/…" preview — the slashes in the
+  // preview would fail the pattern no matter what the editor typed.
+  const slugCheck = validateRoadmapSlug(slugFromTitle(title), takenSlugs)
+  const slugError =
+    title.trim() && !slugCheck.ok ? SLUG_FAILURE_MESSAGES[slugCheck.code] : ""
 
   const handleTitle = (value: string) => {
     setTitle(value)
@@ -61,18 +137,41 @@ export function CreateRoadmapDialog({
       setError("Tên roadmap không được để trống")
       return
     }
+    if (!slugCheck.ok) {
+      setError(SLUG_FAILURE_MESSAGES[slugCheck.code])
+      return
+    }
     setBusy(true)
     try {
       // A roadmap IS a role/skill block (LEGO): one standalone node that owns
       // itself. No container roadmap, no separate root node — createBlock adds
       // it to the store so it lists in both the table and the Kho sidebar.
+      // Every block used to be created at (0, 0), so a canvas of twenty
+      // roadmaps rendered as one card with nineteen hidden underneath it. The
+      // viewer now spreads such piles at render time, but new blocks should
+      // land somewhere real rather than relying on that.
+      const slot = nextFreeSlot(
+        placedBlocks.map((block) => ({
+          id: block.id,
+          x: block.positionX,
+          y: block.positionY,
+        }))
+      )
       const node = await service.createBlock(
         {
           nodeType,
           title: title.trim(),
           description: description.trim() || undefined,
-          positionX: 0,
-          positionY: 0,
+          positionX: slot.x,
+          positionY: slot.y,
+          fieldIds,
+          level: level || null,
+          visibility,
+          coverUrl: coverUrl.trim() || null,
+          tags: tagsInput
+            .split(",")
+            .map((tag) => tag.trim())
+            .filter(Boolean),
         },
         role
       )
@@ -92,27 +191,59 @@ export function CreateRoadmapDialog({
         if (!open) onClose()
       }}
     >
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="max-h-[92vh] min-w-0 overflow-x-hidden overflow-y-auto border-border/80 bg-background p-0 sm:max-w-[540px] [&>*]:min-w-0">
         <DialogHeader>
-          <DialogTitle>Tạo roadmap mới</DialogTitle>
-          <DialogDescription>
-            Roadmap mới sẽ ở trạng thái chưa xuất bản cho đến khi bạn bật xuất
-            bản trong builder.
-          </DialogDescription>
+          <div className="border-b px-6 pt-6 pb-4">
+            <DialogTitle className="text-2xl">Tạo roadmap</DialogTitle>
+            <DialogDescription className="mt-1.5 text-sm">
+              Bản nháp được lưu tự động, xuất bản khi bạn sẵn sàng.
+            </DialogDescription>
+          </div>
         </DialogHeader>
 
-        <div className="space-y-4">
+        <div className="min-w-0 space-y-5 px-6 pb-2">
           <div className="space-y-1.5">
-            <Label htmlFor="rm-title">Tên roadmap *</Label>
+            <Label htmlFor="rm-title">
+              Tiêu đề
+              <RequiredMark />
+            </Label>
             <Input
               id="rm-title"
               autoFocus
               value={title}
               maxLength={MAX_TITLE_LENGTH}
-              placeholder="VD: Lập trình Web"
+              aria-required="true"
+              placeholder="vd: Lộ trình Frontend 2026"
               onChange={(e) => handleTitle(e.target.value)}
             />
             {error && <p className="text-xs text-destructive">{error}</p>}
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="rm-slug">Slug</Label>
+            <Input
+              id="rm-slug"
+              value={createSlugPreview(title)}
+              readOnly
+              aria-label="Slug được tạo từ tiêu đề"
+              aria-invalid={Boolean(slugError)}
+              className="bg-muted font-mono text-muted-foreground"
+            />
+            {slugError && (
+              <p className="text-xs text-destructive">{slugError}</p>
+            )}
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="rm-description">Mô tả ngắn</Label>
+            <Textarea
+              id="rm-description"
+              rows={3}
+              value={description}
+              maxLength={MAX_DESCRIPTION_LENGTH}
+              placeholder="Một hoặc hai câu hiển thị trên thẻ và trang chi tiết"
+              onChange={(e) => setDescription(e.target.value)}
+            />
           </div>
 
           <div className="space-y-1.5">
@@ -134,23 +265,100 @@ export function CreateRoadmapDialog({
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="rm-description">Mô tả (tùy chọn)</Label>
-            <Textarea
-              id="rm-description"
-              rows={3}
-              value={description}
-              maxLength={MAX_DESCRIPTION_LENGTH}
-              onChange={(e) => setDescription(e.target.value)}
+            <Label>Lĩnh vực</Label>
+            <FieldPicker
+              role={role}
+              value={fieldIds}
+              onChange={setFieldIds}
+              disabled={busy}
             />
           </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className="space-y-1.5">
+              <Label htmlFor="rm-level">Cấp độ</Label>
+              <select
+                id="rm-level"
+                value={level}
+                onChange={(event) => setLevel(event.target.value as Level | "")}
+                className="h-10 w-full rounded-md border bg-background px-3 text-sm"
+              >
+                <option value="">Chưa chọn</option>
+                <option value="BASIC">Cơ bản</option>
+                <option value="INTERMEDIATE">Trung cấp</option>
+                <option value="ADVANCED">Nâng cao</option>
+              </select>
+            </label>
+            <label className="space-y-1.5">
+              <Label htmlFor="rm-visibility">Quyền xem</Label>
+              <select
+                id="rm-visibility"
+                value={visibility}
+                onChange={(event) =>
+                  setVisibility(event.target.value as Visibility)
+                }
+                className="h-10 w-full rounded-md border bg-background px-3 text-sm"
+              >
+                {ROADMAP_VISIBILITIES.map((value) => (
+                  <option key={value} value={value}>
+                    {ENTITLEMENT_LABELS[value]}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label>Người phụ trách</Label>
+            {/* No picker: the person in charge is whoever creates the block,
+                stamped server-side from the auth context. Nothing to choose. */}
+            <p className="rounded-md border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
+              Bạn — người tạo roadmap này
+            </p>
+          </div>
+
+          <CoverUploadField
+            id="rm-cover"
+            label="Ảnh bìa"
+            imageUrl={coverUrl || null}
+            aspectClassName="aspect-video"
+            placeholderHint="Bấm để chọn ảnh JPG, PNG hoặc WebP"
+            helpText="Dưới 3 MB. Ảnh sẽ tự crop cho vừa khung khi hiển thị."
+            disabled={busy}
+            accept="image/jpeg,image/webp,image/png"
+            upload={uploadCover}
+            onUploaded={setCoverUrl}
+          />
+
+          <div className="space-y-1.5">
+            <Label htmlFor="rm-tags">Thẻ</Label>
+            <Input
+              id="rm-tags"
+              value={tagsInput}
+              onChange={(event) => setTagsInput(event.target.value)}
+              placeholder="frontend, web, scripting"
+            />
+            <p className="text-xs text-muted-foreground">
+              Cách nhau bằng dấu phẩy.
+            </p>
+          </div>
+
+          <p className="text-xs text-muted-foreground">
+            Roadmap được tạo ở trạng thái bản nháp. Bạn có thể chỉnh sửa node và
+            xuất bản từ workspace.
+          </p>
         </div>
 
-        <DialogFooter>
-          <Button type="button" variant="ghost" onClick={onClose}>
+        <DialogFooter className="border-t bg-background px-6 py-4 sm:justify-between">
+          <Button type="button" variant="outline" onClick={onClose}>
             Hủy
           </Button>
-          <Button type="button" disabled={busy} onClick={() => void handleCreate()}>
-            {busy ? "Đang tạo..." : "Tạo roadmap"}
+          <Button
+            type="button"
+            disabled={busy || !title.trim()}
+            onClick={() => void handleCreate()}
+          >
+            {busy ? "Đang tạo..." : "Tạo bản nháp"}
           </Button>
         </DialogFooter>
       </DialogContent>

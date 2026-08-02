@@ -10,6 +10,7 @@ export type RoadmapErrorCode =
   | "NOT_FOUND"
   | "TIMEOUT"
   | "INVALID_URL"
+  | "VALIDATION"
 
 /**
  * Throwable that becomes a `GraphQLError` with `extensions.code`, so the

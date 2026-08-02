@@ -6,6 +6,7 @@
     "CI",
     "PORT",
     "DATABASE_URL",
+    "DIRECT_URL",
     "CLERK_SECRET_KEY",
     "FRONTEND_ORIGINS",
     "NEXT_PUBLIC_SVC_ROADMAP_URL",
@@ -29,6 +30,7 @@
         "NEXT_PUBLIC_SVC_ROADMAP_URL",
         "NEXT_PUBLIC_SVC_API_URL",
         "DATABASE_URL",
+        "DIRECT_URL",
         "CLERK_SECRET_KEY",
         "FRONTEND_ORIGINS"
       ]
