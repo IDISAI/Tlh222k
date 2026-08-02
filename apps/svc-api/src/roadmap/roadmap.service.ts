@@ -1575,6 +1575,46 @@ export class RoadmapService implements OnModuleInit {
               })
             }
           }
+          if (input.publishStatus === "PUBLISHED") {
+            const [members, edges] = await Promise.all([
+              tx.compositionMembership.findMany({
+                where: { ownerId: id, scope: "DRAFT" },
+              }),
+              tx.compositionEdge.findMany({
+                where: { ownerId: id, scope: "DRAFT" },
+              }),
+            ])
+            await tx.compositionEdge.deleteMany({
+              where: { ownerId: id, scope: "PUBLISHED" },
+            })
+            await tx.compositionMembership.deleteMany({
+              where: { ownerId: id, scope: "PUBLISHED" },
+            })
+            for (const member of members) {
+              await tx.compositionMembership.create({
+                data: {
+                  ownerId: id,
+                  nodeId: member.nodeId,
+                  scope: "PUBLISHED",
+                  positionX: member.positionX,
+                  positionY: member.positionY,
+                  isRequired: member.isRequired,
+                },
+              })
+            }
+            for (const edge of edges) {
+              await tx.compositionEdge.create({
+                data: {
+                  ownerId: id,
+                  sourceId: edge.sourceId,
+                  targetId: edge.targetId,
+                  scope: "PUBLISHED",
+                  kind: edge.kind,
+                },
+              })
+            }
+          }
+
           return u
         },
         needsTreeGuard ? TREE_TRANSACTION_OPTIONS : FIELD_TRANSACTION_OPTIONS
@@ -1765,7 +1805,7 @@ export class RoadmapService implements OnModuleInit {
     })
     if (!owner) throw new RoadmapError("NOT_FOUND")
 
-    const [members, edges] = await Promise.all([
+    let [members, edges] = await Promise.all([
       this.prisma.compositionMembership.findMany({
         where: { ownerId, scope },
         orderBy: [{ createdAt: "asc" }, { nodeId: "asc" }],
@@ -1775,6 +1815,23 @@ export class RoadmapService implements OnModuleInit {
         orderBy: [{ createdAt: "asc" }, { id: "asc" }],
       }),
     ])
+
+    if (scope === "PUBLISHED" && members.length === 0 && edges.length === 0) {
+      const [draftMembers, draftEdges] = await Promise.all([
+        this.prisma.compositionMembership.findMany({
+          where: { ownerId, scope: "DRAFT" },
+          orderBy: [{ createdAt: "asc" }, { nodeId: "asc" }],
+        }),
+        this.prisma.compositionEdge.findMany({
+          where: { ownerId, scope: "DRAFT" },
+          orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+        }),
+      ])
+      if (draftMembers.length > 0 || draftEdges.length > 0) {
+        members = draftMembers
+        edges = draftEdges
+      }
+    }
 
     return {
       ownerId,
