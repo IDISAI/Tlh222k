@@ -1835,6 +1835,19 @@ export class RoadmapService implements OnModuleInit {
     user: CurrentUser | null
   ): Promise<boolean> {
     assertCanWrite(user)
+    // When the owner is dragged on its own canvas (LEGO: each canvas is
+    // independent), there is no CompositionMembership row for (ownerId,
+    // ownerId). The ownerX/Y are seeded from Node.positionX/Y by
+    // derive-composition, so we update the Node directly — mirroring the
+    // mock-store branch in packages/core/src/roadmap/roadmap.service.ts.
+    if (nodeId === ownerId) {
+      const updated = await this.prisma.node.updateMany({
+        where: { id: ownerId },
+        data: { positionX, positionY },
+      })
+      if (updated.count === 0) throw new RoadmapError("NOT_FOUND")
+      return true
+    }
     const result = await this.prisma.compositionMembership.updateMany({
       where: { ownerId, nodeId, scope: "DRAFT" },
       data: { positionX, positionY },
