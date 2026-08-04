@@ -1844,27 +1844,33 @@ export class RoadmapService implements OnModuleInit {
       await tx.compositionMembership.deleteMany({
         where: { ownerId, scope: "PUBLISHED" },
       })
-      for (const member of members) {
-        await tx.compositionMembership.create({
-          data: {
+      // createMany + skipDuplicates rather than a create-per-row loop: DRAFT
+      // is meant to be unique per (ownerId, nodeId/sourceId+targetId, scope),
+      // but a stray duplicate here must not 500 the whole publish — better to
+      // silently drop the extra copy than crash mid-transaction.
+      if (members.length > 0) {
+        await tx.compositionMembership.createMany({
+          data: members.map((member) => ({
             ownerId,
             nodeId: member.nodeId,
             scope: "PUBLISHED",
             positionX: member.positionX,
             positionY: member.positionY,
             isRequired: member.isRequired,
-          },
+          })),
+          skipDuplicates: true,
         })
       }
-      for (const edge of edges) {
-        await tx.compositionEdge.create({
-          data: {
+      if (edges.length > 0) {
+        await tx.compositionEdge.createMany({
+          data: edges.map((edge) => ({
             ownerId,
             sourceId: edge.sourceId,
             targetId: edge.targetId,
             scope: "PUBLISHED",
             kind: edge.kind,
-          },
+          })),
+          skipDuplicates: true,
         })
       }
       await this.notifyFollowers(tx, ownerId, publishedAt)
@@ -1926,20 +1932,27 @@ export class RoadmapService implements OnModuleInit {
     // not end up with disconnected-looking cards. Skipped if a wire already
     // exists between the two (either direction) so re-adding a member never
     // clobbers a kind/direction someone deliberately set.
-    const existingEdge = await this.prisma.compositionEdge.findFirst({
-      where: {
-        ownerId,
-        scope: "DRAFT",
-        OR: [
-          { sourceId: ownerId, targetId: nodeId },
-          { sourceId: nodeId, targetId: ownerId },
-        ],
-      },
+    const reverseEdge = await this.prisma.compositionEdge.findFirst({
+      where: { ownerId, scope: "DRAFT", sourceId: nodeId, targetId: ownerId },
       select: { id: true },
     })
-    if (!existingEdge) {
-      await this.prisma.compositionEdge.create({
-        data: { ownerId, sourceId: ownerId, targetId: nodeId, scope: "DRAFT", kind: "solid" },
+    if (!reverseEdge) {
+      // upsert, not findFirst-then-create: two overlapping addMember calls
+      // (e.g. a fast double drag) hitting the same forward key concurrently
+      // must not race into a unique-constraint crash — upsert is atomic.
+      await this.prisma.compositionEdge.upsert({
+        where: {
+          ownerId_sourceId_targetId_scope: {
+            ownerId,
+            sourceId: ownerId,
+            targetId: nodeId,
+            scope: "DRAFT",
+          },
+        },
+        create: { ownerId, sourceId: ownerId, targetId: nodeId, scope: "DRAFT", kind: "solid" },
+        // Already exists — leave its kind alone rather than stomping a
+        // hand-set value back to "solid".
+        update: {},
       })
     }
     await this.republishIfLive(ownerId)
@@ -2115,21 +2128,26 @@ export class RoadmapService implements OnModuleInit {
       await tx.compositionMembership.deleteMany({
         where: { ownerId, scope: "DRAFT" },
       })
-      for (const member of members) {
-        await tx.compositionMembership.create({
-          data: {
+      if (members.length > 0) {
+        await tx.compositionMembership.createMany({
+          data: members.map((member) => ({
             ownerId,
             nodeId: member.nodeId,
             scope: "DRAFT",
             positionX: member.x,
             positionY: member.y,
             isRequired: member.isRequired ?? true,
-          },
+          })),
+          skipDuplicates: true,
         })
       }
-      for (const edge of edges) {
-        await tx.compositionEdge.create({
-          data: { ownerId, scope: "DRAFT", ...edge },
+      if (edges.length > 0) {
+        // skipDuplicates: the caller-supplied edge list isn't deduped by
+        // (sourceId, targetId) upstream (only member ids are), so a repeated
+        // pair must not 500 the whole restore.
+        await tx.compositionEdge.createMany({
+          data: edges.map((edge) => ({ ownerId, scope: "DRAFT", ...edge })),
+          skipDuplicates: true,
         })
       }
     })
@@ -2161,27 +2179,29 @@ export class RoadmapService implements OnModuleInit {
       await tx.compositionMembership.deleteMany({
         where: { ownerId, scope: "PUBLISHED" },
       })
-      for (const member of members) {
-        await tx.compositionMembership.create({
-          data: {
+      if (members.length > 0) {
+        await tx.compositionMembership.createMany({
+          data: members.map((member) => ({
             ownerId,
             nodeId: member.nodeId,
             scope: "PUBLISHED",
             positionX: member.positionX,
             positionY: member.positionY,
             isRequired: member.isRequired,
-          },
+          })),
+          skipDuplicates: true,
         })
       }
-      for (const edge of edges) {
-        await tx.compositionEdge.create({
-          data: {
+      if (edges.length > 0) {
+        await tx.compositionEdge.createMany({
+          data: edges.map((edge) => ({
             ownerId,
             sourceId: edge.sourceId,
             targetId: edge.targetId,
             scope: "PUBLISHED",
             kind: edge.kind,
-          },
+          })),
+          skipDuplicates: true,
         })
       }
       // Inside the same transaction as the composition copy. The contract asks
@@ -2337,27 +2357,29 @@ export class RoadmapService implements OnModuleInit {
       await tx.compositionMembership.deleteMany({
         where: { ownerId, scope: "DRAFT" },
       })
-      for (const member of members) {
-        await tx.compositionMembership.create({
-          data: {
+      if (members.length > 0) {
+        await tx.compositionMembership.createMany({
+          data: members.map((member) => ({
             ownerId,
             nodeId: member.nodeId,
             scope: "DRAFT",
             positionX: member.positionX,
             positionY: member.positionY,
             isRequired: member.isRequired,
-          },
+          })),
+          skipDuplicates: true,
         })
       }
-      for (const edge of edges) {
-        await tx.compositionEdge.create({
-          data: {
+      if (edges.length > 0) {
+        await tx.compositionEdge.createMany({
+          data: edges.map((edge) => ({
             ownerId,
             sourceId: edge.sourceId,
             targetId: edge.targetId,
             scope: "DRAFT",
             kind: edge.kind,
-          },
+          })),
+          skipDuplicates: true,
         })
       }
     })
