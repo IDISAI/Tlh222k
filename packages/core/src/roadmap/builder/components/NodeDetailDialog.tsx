@@ -38,7 +38,7 @@ import {
 import { toast } from "@workspace/ui/components/sonner"
 import { cn } from "@workspace/ui/lib/utils"
 
-import type { ArticleType, RoadmapNode } from "../../types"
+import type { ArticleType, Composition, RoadmapNode } from "../../types"
 import { ancestorPath } from "../../utils/node-ancestors"
 import {
   navigationBlockedMessage,
@@ -152,6 +152,14 @@ function ArticleCreateForm({
 interface NodeDetailDialogProps {
   node: RoadmapNode | null
   nodes: RoadmapNode[]
+  /**
+   * The currently-loaded canvas's composition, if `node` happens to be that
+   * canvas's owner. Composition membership (not `parentId`) is the real LEGO
+   * canvas relation for role/skill/chapter children, so without this "Node
+   * con" reads 0 for a block whose children were placed by dragging them onto
+   * its canvas rather than the legacy parent-link flow.
+   */
+  composition?: Composition | null
   onClose: () => void
   /** Omitted / ignored in read-only (viewer) mode. */
   onEdit?: (node: RoadmapNode) => void
@@ -196,6 +204,7 @@ interface NodeDetailDialogProps {
 export function NodeDetailDialog({
   node,
   nodes,
+  composition,
   onClose,
   onEdit,
   readOnly = false,
@@ -212,7 +221,15 @@ export function NodeDetailDialog({
   const parent = node.parentId
     ? (nodes.find((n) => n.id === node.parentId) ?? null)
     : null
-  const childCount = childrenOf(nodes, node.id).length
+  // Composition membership is the real canvas relation for role/skill/chapter
+  // children; `parentId` still only carries article leaves. `composition` is
+  // only ever the loaded canvas's own data, so it only applies when `node` IS
+  // that canvas's owner — otherwise fall back to the parentId-only count.
+  const childCount =
+    childrenOf(nodes, node.id).length +
+    (composition && composition.ownerId === node.id
+      ? composition.members.length
+      : 0)
   // Where this node sits: role › skill › chapter › article.
   const trail = ancestorPath(nodes, node)
   const navUrl = nodeNavigationUrl(node, {

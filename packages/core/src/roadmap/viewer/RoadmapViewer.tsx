@@ -323,6 +323,7 @@ export function RoadmapViewer({
       <NodeDetailDialog
         node={selectedNode}
         nodes={nodes}
+        composition={graph?.composition}
         onClose={() => setSelectedId(null)}
         readOnly
         hideNavigate={selectedNode?.id === ownerId}
