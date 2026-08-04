@@ -1872,12 +1872,12 @@ export class RoadmapService implements OnModuleInit {
   }
 
   /**
-   * Re-syncs PUBLISHED composition right after a structural edit (member or
-   * edge add/remove/change), but only for a block that already reaches
-   * learners — a still-DRAFT block has nothing to sync until its first
-   * `publishComposition`. Deliberately NOT called from `moveCompositionMember`
-   * — a drag fires this per gesture, and turning every nudge into a DB write
-   * plus a follower-notification query would be a self-inflicted hot path.
+   * Re-syncs PUBLISHED composition right after an edit (member/edge add,
+   * remove, change, or reposition), but only for a block that already
+   * reaches learners — a still-DRAFT block has nothing to sync until its
+   * first `publishComposition`. Safe to call from `moveCompositionMember`
+   * too: React Flow reports a drag once on drag-STOP, not per frame, so this
+   * is one write per gesture, not a hot path.
    */
   private async republishIfLive(ownerId: string): Promise<void> {
     const owner = await this.prisma.node.findUnique({
@@ -1972,6 +1972,12 @@ export class RoadmapService implements OnModuleInit {
       data: { positionX, positionY },
     })
     if (result.count === 0) throw new RoadmapError("NOT_FOUND")
+    // Fires once per drag gesture (React Flow calls this on drag-STOP, not
+    // per frame — see CompositionCanvas's onNodeDragStop), so re-syncing
+    // PUBLISHED here is a single write, not a hot path. Without it, a member
+    // repositioned after the canvas's first publish keeps showing its
+    // original drop position on the web viewer forever.
+    await this.republishIfLive(ownerId)
     return true
   }
 
