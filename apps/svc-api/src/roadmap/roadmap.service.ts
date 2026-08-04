@@ -1920,6 +1920,28 @@ export class RoadmapService implements OnModuleInit {
       },
       update: { positionX, positionY, isRequired },
     })
+    // Draw the default owner→block wire so a dropped-in member reads as
+    // connected right away, matching the old tree UX where parent→child
+    // always rendered a line — an admin who never opens the edge menu should
+    // not end up with disconnected-looking cards. Skipped if a wire already
+    // exists between the two (either direction) so re-adding a member never
+    // clobbers a kind/direction someone deliberately set.
+    const existingEdge = await this.prisma.compositionEdge.findFirst({
+      where: {
+        ownerId,
+        scope: "DRAFT",
+        OR: [
+          { sourceId: ownerId, targetId: nodeId },
+          { sourceId: nodeId, targetId: ownerId },
+        ],
+      },
+      select: { id: true },
+    })
+    if (!existingEdge) {
+      await this.prisma.compositionEdge.create({
+        data: { ownerId, sourceId: ownerId, targetId: nodeId, scope: "DRAFT", kind: "solid" },
+      })
+    }
     await this.republishIfLive(ownerId)
     return this.composition(ownerId, "DRAFT", user)
   }

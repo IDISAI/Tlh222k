@@ -777,6 +777,17 @@ export class RoadmapService {
     if (!comp.members.some((m) => m.nodeId === nodeId)) {
       comp.members.push({ nodeId, x: position.x, y: position.y })
     }
+    // Default owner→block wire, mirroring the real backend's addCompositionMember
+    // — skipped if a wire already exists between the two (either direction) so
+    // re-adding a member never clobbers a kind someone set by hand.
+    const hasEdge = comp.edges.some(
+      (e) =>
+        (e.sourceId === ownerId && e.targetId === nodeId) ||
+        (e.sourceId === nodeId && e.targetId === ownerId)
+    )
+    if (!hasEdge) {
+      comp.edges.push({ id: newId("edge"), sourceId: ownerId, targetId: nodeId, kind: "solid" })
+    }
     persistStore()
     emitRoadmapUpdate(ownerId)
     return clone(comp)

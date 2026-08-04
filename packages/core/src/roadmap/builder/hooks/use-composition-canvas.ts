@@ -178,10 +178,12 @@ export function useCompositionCanvas(
   const addMember = useCallback(
     async (nodeId: string, position: { x: number; y: number }) => {
       try {
+        // service.addMember also draws the default owner→block wire (see
+        // RoadmapService/RoadmapApi.addMember), so this one call covers both
+        // drag-from-sidebar and createBlock's internal addMember.
         const comp = await service.addMember(ownerId, nodeId, position, role)
         setComposition(comp)
         pushHistory(comp)
-        // No need to refreshNodes - composition already updated, membership change doesn't affect allNodes
         toast.success("Đã thêm vào canvas")
       } catch (error) {
         toast.error(serviceErrorMessage(error))
