@@ -312,8 +312,8 @@ function CompositionCanvasInner({
   )
 
   const contextValue = useMemo(
-    () => ({ nodes: canvas.allNodes, isDragging }),
-    [canvas.allNodes, isDragging]
+    () => ({ nodes: canvas.allNodes, isDragging, composition: canvas.composition }),
+    [canvas.allNodes, isDragging, canvas.composition]
   )
 
   return (
@@ -413,6 +413,7 @@ function CompositionCanvasInner({
         node={detailNode}
         nodes={canvas.allNodes}
         composition={canvas.composition}
+        publishedComposition={canvas.publishedComposition}
         onClose={() => setDetailNode(null)}
         onEdit={setEditNode}
         builderBasePath={builderBasePath}

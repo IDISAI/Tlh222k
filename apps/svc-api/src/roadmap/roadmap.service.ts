@@ -1824,6 +1824,77 @@ export class RoadmapService implements OnModuleInit {
     }
   }
 
+  /**
+   * Copy DRAFT composition into PUBLISHED and notify followers, without
+   * touching the node's own publishStatus or firstPublishedAt — that part is
+   * `publishComposition`'s job (first publish). This is the "already live"
+   * half of the same contract: "every op persists immediately — there is no
+   * batch Lưu step" means a learner should see a block the moment it is
+   * dragged onto an already-published canvas, not only after the admin
+   * reopens the publish popover and clicks it again.
+   */
+  private async syncPublishedComposition(ownerId: string): Promise<void> {
+    const publishedAt = new Date()
+    await this.prisma.$transaction(async (tx) => {
+      const [members, edges] = await Promise.all([
+        tx.compositionMembership.findMany({ where: { ownerId, scope: "DRAFT" } }),
+        tx.compositionEdge.findMany({ where: { ownerId, scope: "DRAFT" } }),
+      ])
+      await tx.compositionEdge.deleteMany({ where: { ownerId, scope: "PUBLISHED" } })
+      await tx.compositionMembership.deleteMany({
+        where: { ownerId, scope: "PUBLISHED" },
+      })
+      // createMany + skipDuplicates rather than a create-per-row loop: DRAFT
+      // is meant to be unique per (ownerId, nodeId/sourceId+targetId, scope),
+      // but a stray duplicate here must not 500 the whole publish — better to
+      // silently drop the extra copy than crash mid-transaction.
+      if (members.length > 0) {
+        await tx.compositionMembership.createMany({
+          data: members.map((member) => ({
+            ownerId,
+            nodeId: member.nodeId,
+            scope: "PUBLISHED",
+            positionX: member.positionX,
+            positionY: member.positionY,
+            isRequired: member.isRequired,
+          })),
+          skipDuplicates: true,
+        })
+      }
+      if (edges.length > 0) {
+        await tx.compositionEdge.createMany({
+          data: edges.map((edge) => ({
+            ownerId,
+            sourceId: edge.sourceId,
+            targetId: edge.targetId,
+            scope: "PUBLISHED",
+            kind: edge.kind,
+          })),
+          skipDuplicates: true,
+        })
+      }
+      await this.notifyFollowers(tx, ownerId, publishedAt)
+    })
+  }
+
+  /**
+   * Re-syncs PUBLISHED composition right after an edit (member/edge add,
+   * remove, change, or reposition), but only for a block that already
+   * reaches learners — a still-DRAFT block has nothing to sync until its
+   * first `publishComposition`. Safe to call from `moveCompositionMember`
+   * too: React Flow reports a drag once on drag-STOP, not per frame, so this
+   * is one write per gesture, not a hot path.
+   */
+  private async republishIfLive(ownerId: string): Promise<void> {
+    const owner = await this.prisma.node.findUnique({
+      where: { id: ownerId },
+      select: { publishStatus: true, isDeleted: true },
+    })
+    if (!owner || owner.isDeleted) return
+    if (normalizePublishStatus(owner.publishStatus) !== "PUBLISHED") return
+    await this.syncPublishedComposition(ownerId)
+  }
+
   async addCompositionMember(
     ownerId: string,
     nodeId: string,
@@ -1855,6 +1926,36 @@ export class RoadmapService implements OnModuleInit {
       },
       update: { positionX, positionY, isRequired },
     })
+    // Draw the default owner→block wire so a dropped-in member reads as
+    // connected right away, matching the old tree UX where parent→child
+    // always rendered a line — an admin who never opens the edge menu should
+    // not end up with disconnected-looking cards. Skipped if a wire already
+    // exists between the two (either direction) so re-adding a member never
+    // clobbers a kind/direction someone deliberately set.
+    const reverseEdge = await this.prisma.compositionEdge.findFirst({
+      where: { ownerId, scope: "DRAFT", sourceId: nodeId, targetId: ownerId },
+      select: { id: true },
+    })
+    if (!reverseEdge) {
+      // upsert, not findFirst-then-create: two overlapping addMember calls
+      // (e.g. a fast double drag) hitting the same forward key concurrently
+      // must not race into a unique-constraint crash — upsert is atomic.
+      await this.prisma.compositionEdge.upsert({
+        where: {
+          ownerId_sourceId_targetId_scope: {
+            ownerId,
+            sourceId: ownerId,
+            targetId: nodeId,
+            scope: "DRAFT",
+          },
+        },
+        create: { ownerId, sourceId: ownerId, targetId: nodeId, scope: "DRAFT", kind: "solid" },
+        // Already exists — leave its kind alone rather than stomping a
+        // hand-set value back to "solid".
+        update: {},
+      })
+    }
+    await this.republishIfLive(ownerId)
     return this.composition(ownerId, "DRAFT", user)
   }
 
@@ -1884,6 +1985,12 @@ export class RoadmapService implements OnModuleInit {
       data: { positionX, positionY },
     })
     if (result.count === 0) throw new RoadmapError("NOT_FOUND")
+    // Fires once per drag gesture (React Flow calls this on drag-STOP, not
+    // per frame — see CompositionCanvas's onNodeDragStop), so re-syncing
+    // PUBLISHED here is a single write, not a hot path. Without it, a member
+    // repositioned after the canvas's first publish keeps showing its
+    // original drop position on the web viewer forever.
+    await this.republishIfLive(ownerId)
     return true
   }
 
@@ -1905,6 +2012,7 @@ export class RoadmapService implements OnModuleInit {
         where: { ownerId, nodeId, scope: "DRAFT" },
       }),
     ])
+    await this.republishIfLive(ownerId)
     return this.composition(ownerId, "DRAFT", user)
   }
 
@@ -1938,6 +2046,7 @@ export class RoadmapService implements OnModuleInit {
       create: { ownerId, sourceId, targetId, scope: "DRAFT", kind },
       update: { kind },
     })
+    await this.republishIfLive(ownerId)
     return {
       id: edge.id,
       sourceId: edge.sourceId,
@@ -1961,6 +2070,7 @@ export class RoadmapService implements OnModuleInit {
       where: { id: edgeId },
       data: { kind },
     })
+    await this.republishIfLive(ownerId)
     return {
       id: edge.id,
       sourceId: edge.sourceId,
@@ -1978,6 +2088,7 @@ export class RoadmapService implements OnModuleInit {
     await this.prisma.compositionEdge.deleteMany({
       where: { id: edgeId, ownerId, scope: "DRAFT" },
     })
+    await this.republishIfLive(ownerId)
     return this.composition(ownerId, "DRAFT", user)
   }
 
@@ -2017,24 +2128,30 @@ export class RoadmapService implements OnModuleInit {
       await tx.compositionMembership.deleteMany({
         where: { ownerId, scope: "DRAFT" },
       })
-      for (const member of members) {
-        await tx.compositionMembership.create({
-          data: {
+      if (members.length > 0) {
+        await tx.compositionMembership.createMany({
+          data: members.map((member) => ({
             ownerId,
             nodeId: member.nodeId,
             scope: "DRAFT",
             positionX: member.x,
             positionY: member.y,
             isRequired: member.isRequired ?? true,
-          },
+          })),
+          skipDuplicates: true,
         })
       }
-      for (const edge of edges) {
-        await tx.compositionEdge.create({
-          data: { ownerId, scope: "DRAFT", ...edge },
+      if (edges.length > 0) {
+        // skipDuplicates: the caller-supplied edge list isn't deduped by
+        // (sourceId, targetId) upstream (only member ids are), so a repeated
+        // pair must not 500 the whole restore.
+        await tx.compositionEdge.createMany({
+          data: edges.map((edge) => ({ ownerId, scope: "DRAFT", ...edge })),
+          skipDuplicates: true,
         })
       }
     })
+    await this.republishIfLive(ownerId)
     return this.composition(ownerId, "DRAFT", user)
   }
 
@@ -2062,27 +2179,29 @@ export class RoadmapService implements OnModuleInit {
       await tx.compositionMembership.deleteMany({
         where: { ownerId, scope: "PUBLISHED" },
       })
-      for (const member of members) {
-        await tx.compositionMembership.create({
-          data: {
+      if (members.length > 0) {
+        await tx.compositionMembership.createMany({
+          data: members.map((member) => ({
             ownerId,
             nodeId: member.nodeId,
             scope: "PUBLISHED",
             positionX: member.positionX,
             positionY: member.positionY,
             isRequired: member.isRequired,
-          },
+          })),
+          skipDuplicates: true,
         })
       }
-      for (const edge of edges) {
-        await tx.compositionEdge.create({
-          data: {
+      if (edges.length > 0) {
+        await tx.compositionEdge.createMany({
+          data: edges.map((edge) => ({
             ownerId,
             sourceId: edge.sourceId,
             targetId: edge.targetId,
             scope: "PUBLISHED",
             kind: edge.kind,
-          },
+          })),
+          skipDuplicates: true,
         })
       }
       // Inside the same transaction as the composition copy. The contract asks
@@ -2238,27 +2357,29 @@ export class RoadmapService implements OnModuleInit {
       await tx.compositionMembership.deleteMany({
         where: { ownerId, scope: "DRAFT" },
       })
-      for (const member of members) {
-        await tx.compositionMembership.create({
-          data: {
+      if (members.length > 0) {
+        await tx.compositionMembership.createMany({
+          data: members.map((member) => ({
             ownerId,
             nodeId: member.nodeId,
             scope: "DRAFT",
             positionX: member.positionX,
             positionY: member.positionY,
             isRequired: member.isRequired,
-          },
+          })),
+          skipDuplicates: true,
         })
       }
-      for (const edge of edges) {
-        await tx.compositionEdge.create({
-          data: {
+      if (edges.length > 0) {
+        await tx.compositionEdge.createMany({
+          data: edges.map((edge) => ({
             ownerId,
             sourceId: edge.sourceId,
             targetId: edge.targetId,
             scope: "DRAFT",
             kind: edge.kind,
-          },
+          })),
+          skipDuplicates: true,
         })
       }
     })

@@ -745,7 +745,10 @@ export class RoadmapService {
    */
   async getComposition(
     ownerId: string,
-    opts: { callerRole: CallerRole }
+    // `scope` accepted for interface parity with the backend-backed
+    // `RoadmapApi` (DRAFT vs PUBLISHED); the mock has no publish pipeline, so
+    // there is only ever one composition per owner.
+    opts: { callerRole: CallerRole; scope?: "DRAFT" | "PUBLISHED" }
   ): Promise<Composition> {
     assertCanWrite(opts.callerRole)
     await delay()
@@ -773,6 +776,17 @@ export class RoadmapService {
     const comp = this.mutableComposition(ownerId)
     if (!comp.members.some((m) => m.nodeId === nodeId)) {
       comp.members.push({ nodeId, x: position.x, y: position.y })
+    }
+    // Default owner→block wire, mirroring the real backend's addCompositionMember
+    // — skipped if a wire already exists between the two (either direction) so
+    // re-adding a member never clobbers a kind someone set by hand.
+    const hasEdge = comp.edges.some(
+      (e) =>
+        (e.sourceId === ownerId && e.targetId === nodeId) ||
+        (e.sourceId === nodeId && e.targetId === ownerId)
+    )
+    if (!hasEdge) {
+      comp.edges.push({ id: newId("edge"), sourceId: ownerId, targetId: nodeId, kind: "solid" })
     }
     persistStore()
     emitRoadmapUpdate(ownerId)
@@ -895,6 +909,15 @@ export class RoadmapService {
         nodeId: id,
         x: input.positionX,
         y: input.positionY,
+      })
+      // Default owner→block wire, matching addMember — a block created
+      // directly on a canvas ("chuột phải → tạo") is the same "something
+      // landed here" moment as one dragged in.
+      comp.edges.push({
+        id: newId("edge"),
+        sourceId: input.ownerId,
+        targetId: id,
+        kind: "solid",
       })
     }
     persistStore()

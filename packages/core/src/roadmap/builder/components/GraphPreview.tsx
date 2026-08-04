@@ -12,7 +12,7 @@ import {
 import { useTheme } from "next-themes"
 
 import type { RoadmapNode } from "../../types"
-import { childrenOf } from "./builder-context"
+import { childrenOf, directChildrenOf, useBuilderCanvasContext } from "./builder-context"
 
 interface GraphPreviewProps {
   root: RoadmapNode
@@ -32,9 +32,13 @@ const ROW_H = 90
 export function GraphPreview({ root, nodes }: GraphPreviewProps) {
   const { resolvedTheme } = useTheme()
   const colorMode: ColorMode = resolvedTheme === "dark" ? "dark" : "light"
+  const { composition } = useBuilderCanvasContext()
 
   const { flowNodes, flowEdges } = useMemo(() => {
-    const level1 = childrenOf(nodes, root.id)
+    // Composition membership, not parentId, is how a role/skill/chapter's
+    // direct children actually attach since the LEGO rewrite — parentId-only
+    // `childrenOf` would silently drop them from this preview.
+    const level1 = directChildrenOf(nodes, composition, root.id)
     const pos = new Map<string, { x: number; y: number }>()
     const ordered: RoadmapNode[] = []
 
@@ -113,7 +117,7 @@ export function GraphPreview({ root, nodes }: GraphPreviewProps) {
     }
 
     return { flowNodes: nodesOut, flowEdges: edgesOut }
-  }, [root.id, nodes])
+  }, [root.id, nodes, composition])
 
   return (
     // nodrag/nowheel: interactions inside the preview must not drag the host

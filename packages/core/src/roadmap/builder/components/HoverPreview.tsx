@@ -8,7 +8,7 @@ import { cn } from "@workspace/ui/lib/utils"
 import type { RoadmapNode } from "../../types"
 import { truncateDescription } from "../../utils/truncate-description"
 import { NODE_TYPE_ACCENT, NODE_TYPE_ICONS } from "../utils/node-type-styles"
-import { childrenOf } from "./builder-context"
+import { directChildCount, useBuilderCanvasContext } from "./builder-context"
 import { GraphPreview } from "./GraphPreview"
 
 interface HoverPreviewProps {
@@ -36,7 +36,8 @@ export function HoverPreview({
   className,
 }: HoverPreviewProps) {
   const Icon = NODE_TYPE_ICONS[node.nodeType]
-  const children = childrenOf(nodes, node.id)
+  const { composition } = useBuilderCanvasContext()
+  const childCount = directChildCount(nodes, composition, node.id)
   const isBranch =
     node.nodeType === "role" ||
     node.nodeType === "skill" ||
@@ -93,12 +94,12 @@ export function HoverPreview({
           </div>
         ) : (
           <p className="text-xs text-muted-foreground">
-            Node con trực tiếp: {children.length}
+            Node con trực tiếp: {childCount}
           </p>
         )}
 
         {isBranch &&
-          (children.length > 0 ? (
+          (childCount > 0 ? (
             <GraphPreview root={node} nodes={nodes} />
           ) : (
             <p className="flex items-center gap-1.5 text-sm text-muted-foreground italic">

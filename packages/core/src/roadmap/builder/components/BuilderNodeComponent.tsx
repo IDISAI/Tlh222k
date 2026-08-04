@@ -16,8 +16,23 @@ import { cn } from "@workspace/ui/lib/utils"
 
 import type { BuilderFlowNode } from "../types"
 import { LEVEL_LABELS } from "../../level"
+import { normalizePublishStatus, type PublishStatus } from "../../publish-status"
 import { useBuilderCanvasContext } from "./builder-context"
 import { HoverPreview } from "./HoverPreview"
+
+/** Vietnamese wording for the raw block-level publish status shown on the
+ * canvas card — the admin's only always-visible answer to "is this live?"
+ * without opening the detail panel or the publish popover. */
+const PUBLISH_STATUS_LABEL: Record<PublishStatus, string> = {
+  DRAFT: "Bản nháp",
+  PUBLISHED: "Đã xuất bản",
+  PRIVATE: "Riêng tư",
+}
+const PUBLISH_STATUS_DOT: Record<PublishStatus, string> = {
+  DRAFT: "bg-muted-foreground",
+  PUBLISHED: "bg-emerald-500",
+  PRIVATE: "bg-amber-500",
+}
 
 /** Hover intent timings (Req 5.1/5.2/5.6). */
 const SHOW_DELAY_MS = 300
@@ -183,6 +198,15 @@ export const BuilderNodeComponent = memo(function BuilderNodeComponent({
           <p className="mt-2 min-h-10 text-base leading-5 font-semibold">
             {node.title}
           </p>
+          <span className="mt-1.5 inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+            <span
+              className={cn(
+                "size-1.5 rounded-full",
+                PUBLISH_STATUS_DOT[normalizePublishStatus(node.publishStatus)]
+              )}
+            />
+            {PUBLISH_STATUS_LABEL[normalizePublishStatus(node.publishStatus)]}
+          </span>
           <div className="mt-3 aspect-[16/8] overflow-hidden rounded-lg border border-border bg-muted">
             {node.coverUrl ? (
               <img

@@ -22,6 +22,7 @@ import {
   CoverUploadField,
   fieldDeleteEligibility,
   fieldPublishEligibility,
+  NodeDetailDialog,
   orphanedFieldMemberIds,
   reorderFieldMemberIds,
   RoadmapService,
@@ -34,7 +35,7 @@ import {
   type RoadmapNode,
 } from "@workspace/core"
 
-import { BASE_PATH } from "@/lib/paths"
+import { BASE_PATH, ROADMAPS_PATH } from "@/lib/paths"
 import {
   deleteFieldCover,
   replaceFieldCover,
@@ -79,6 +80,7 @@ export function FieldWorkspace({ id, role }: { id: string; role: CallerRole }) {
   >("all")
   const pickerDialogRef = useRef<HTMLDivElement>(null)
   const [draggingNodeId, setDraggingNodeId] = useState<string | null>(null)
+  const [selectedNode, setSelectedNode] = useState<RoadmapNode | null>(null)
   const [lastDetached, setLastDetached] = useState<RoadmapNode | null>(null)
   const [deleting, setDeleting] = useState(false)
   const [savedSnapshot, setSavedSnapshot] = useState("")
@@ -691,6 +693,7 @@ ${orphanTitles.length} roadmap sẽ không còn thuộc lĩnh vực nào và bi�
                       void moveMembershipTo(draggingNodeId, node.id)
                     setDraggingNodeId(null)
                   }}
+                  onOpenDetail={() => setSelectedNode(node)}
                   onRemove={() => void toggle(node)}
                   onMoveUp={
                     reorderable && index > 0
@@ -736,6 +739,17 @@ ${orphanTitles.length} roadmap sẽ không còn thuộc lĩnh vực nào và bi�
           </div>
         </section>
       </div>
+
+      <NodeDetailDialog
+        node={selectedNode}
+        nodes={nodes}
+        onClose={() => setSelectedNode(null)}
+        builderBasePath={ROADMAPS_PATH}
+        // Editing happens on the block's own canvas ("Mở canvas" below) — no
+        // onEdit wired here, so the button would otherwise sit there doing
+        // nothing when clicked.
+        readOnly
+      />
 
       {pickerOpen &&
         (() => {
@@ -1008,6 +1022,7 @@ function RoadmapCard({
   onDragStart,
   onDragEnd,
   onDrop,
+  onOpenDetail,
   onRemove,
   onMoveUp,
   onMoveDown,
@@ -1019,6 +1034,7 @@ function RoadmapCard({
   onDragStart: () => void
   onDragEnd: () => void
   onDrop: () => void
+  onOpenDetail: () => void
   onRemove: () => void
   onMoveUp?: () => void
   onMoveDown?: () => void
@@ -1043,6 +1059,15 @@ function RoadmapCard({
       onDragEnd={onDragEnd}
       onDragOver={(event) => reorderable && event.preventDefault()}
       onDrop={onDrop}
+      onClick={onOpenDetail}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault()
+          onOpenDetail()
+        }
+      }}
       className={cn(
         "relative w-[240px] overflow-hidden rounded-2xl border bg-card p-2 shadow-sm",
         reorderable && "cursor-grab active:cursor-grabbing",
@@ -1059,7 +1084,10 @@ function RoadmapCard({
       </span>
       <button
         type="button"
-        onClick={onRemove}
+        onClick={(event) => {
+          event.stopPropagation()
+          onRemove()
+        }}
         aria-label={`Bỏ ${node.title}`}
         className="absolute top-3 right-3 z-10 grid size-7 place-items-center rounded-full bg-black/55 text-white hover:bg-black"
       >
@@ -1093,7 +1121,10 @@ function RoadmapCard({
           <button
             type="button"
             disabled={!onMoveUp}
-            onClick={onMoveUp}
+            onClick={(event) => {
+              event.stopPropagation()
+              onMoveUp?.()
+            }}
             aria-label={`Đưa ${node.title} lên`}
             className="grid size-7 place-items-center disabled:cursor-not-allowed disabled:opacity-35"
           >
@@ -1102,7 +1133,10 @@ function RoadmapCard({
           <button
             type="button"
             disabled={!onMoveDown}
-            onClick={onMoveDown}
+            onClick={(event) => {
+              event.stopPropagation()
+              onMoveDown?.()
+            }}
             aria-label={`Đưa ${node.title} xuống`}
             className="grid size-7 place-items-center border-l disabled:cursor-not-allowed disabled:opacity-35"
           >
