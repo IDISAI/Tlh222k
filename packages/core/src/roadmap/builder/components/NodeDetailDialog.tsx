@@ -160,6 +160,12 @@ interface NodeDetailDialogProps {
    * its canvas rather than the legacy parent-link flow.
    */
   composition?: Composition | null
+  /**
+   * The same canvas's PUBLISHED (learner-visible) composition, when known.
+   * Only meaningful alongside `composition` (DRAFT) in the admin builder —
+   * lets the panel say "this exists here, but the web doesn't show it yet."
+   */
+  publishedComposition?: Composition | null
   onClose: () => void
   /** Omitted / ignored in read-only (viewer) mode. */
   onEdit?: (node: RoadmapNode) => void
@@ -205,6 +211,7 @@ export function NodeDetailDialog({
   node,
   nodes,
   composition,
+  publishedComposition,
   onClose,
   onEdit,
   readOnly = false,
@@ -230,6 +237,23 @@ export function NodeDetailDialog({
     (composition && composition.ownerId === node.id
       ? composition.members.length
       : 0)
+  // Draft-only members: on the canvas, but never copied into PUBLISHED
+  // composition, so the web viewer does not show them (see
+  // RoadmapService.republishIfLive). Only meaningful when both scopes were
+  // fetched for THIS node's own canvas — i.e. the admin builder, not the
+  // read-only web viewer, which only ever has PUBLISHED to begin with.
+  const unpublishedMemberCount =
+    composition &&
+    publishedComposition &&
+    composition.ownerId === node.id &&
+    publishedComposition.ownerId === node.id
+      ? composition.members.filter(
+          (member) =>
+            !publishedComposition.members.some(
+              (p) => p.nodeId === member.nodeId
+            )
+        ).length
+      : 0
   // Where this node sits: role › skill › chapter › article.
   const trail = ancestorPath(nodes, node)
   const navUrl = nodeNavigationUrl(node, {
@@ -535,6 +559,14 @@ export function NodeDetailDialog({
               <span className="font-medium text-foreground">{childCount}</span>
             </p>
           </div>
+          {unpublishedMemberCount > 0 && (
+            <p className="flex items-center gap-1.5 rounded-md bg-amber-500/10 px-2.5 py-1.5 text-xs text-amber-600 dark:text-amber-400">
+              <AlertTriangle className="size-3.5 shrink-0" />
+              {unpublishedMemberCount === 1
+                ? "1 node con chưa xuất hiện trên web — chỉnh sửa canvas hoặc bấm Xuất bản lại để đồng bộ."
+                : `${unpublishedMemberCount} node con chưa xuất hiện trên web — chỉnh sửa canvas hoặc bấm Xuất bản lại để đồng bộ.`}
+            </p>
+          )}
         </div>
 
         <SheetFooter className="border-t dark:border-zinc-800">

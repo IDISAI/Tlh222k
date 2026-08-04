@@ -745,7 +745,10 @@ export class RoadmapService {
    */
   async getComposition(
     ownerId: string,
-    opts: { callerRole: CallerRole }
+    // `scope` accepted for interface parity with the backend-backed
+    // `RoadmapApi` (DRAFT vs PUBLISHED); the mock has no publish pipeline, so
+    // there is only ever one composition per owner.
+    opts: { callerRole: CallerRole; scope?: "DRAFT" | "PUBLISHED" }
   ): Promise<Composition> {
     assertCanWrite(opts.callerRole)
     await delay()

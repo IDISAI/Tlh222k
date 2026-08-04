@@ -244,7 +244,10 @@ function ViewerCanvasInner({
   useEffect(() => setRfNodes(computedNodes), [computedNodes, setRfNodes])
   useEffect(() => setRfEdges(computedEdges), [computedEdges, setRfEdges])
 
-  const contextValue = useMemo(() => ({ nodes, isDragging: false }), [nodes])
+  const contextValue = useMemo(
+    () => ({ nodes, isDragging: false, composition }),
+    [nodes, composition]
+  )
 
   if (!mounted) return <div className={className ?? "h-full w-full"} />
 

@@ -438,12 +438,13 @@ export class RoadmapApi {
 
   async getComposition(
     ownerId: string,
-    opts: { callerRole: CallerRole }
+    opts: { callerRole: CallerRole; scope?: "DRAFT" | "PUBLISHED" }
   ): Promise<Composition> {
     const scope =
-      opts.callerRole === "admin" || opts.callerRole === "super-admin"
+      opts.scope ??
+      (opts.callerRole === "admin" || opts.callerRole === "super-admin"
         ? "DRAFT"
-        : "PUBLISHED"
+        : "PUBLISHED")
     const data = await gql<{ composition: Composition }>(
       `query ($ownerId: ID!, $scope: CompositionScope!) {
         composition(ownerId: $ownerId, scope: $scope) {

@@ -55,6 +55,11 @@ export function useCompositionCanvas(
 
   const [ownerNode, setOwnerNode] = useState<RoadmapNode | null>(null)
   const [composition, setComposition] = useState<Composition | null>(null)
+  // The live (learner-visible) canvas, fetched alongside the DRAFT one so the
+  // builder can flag members/edges that only exist in DRAFT — an admin has no
+  // other way to tell "I dragged this in" from "the web actually shows this".
+  const [publishedComposition, setPublishedComposition] =
+    useState<Composition | null>(null)
   const [allNodes, setAllNodes] = useState<RoadmapNode[]>([])
   const [loading, setLoading] = useState(true)
   const [notFound, setNotFound] = useState(false)
@@ -75,15 +80,19 @@ export function useCompositionCanvas(
 
   const load = useCallback(async () => {
     try {
-      const [all, comp] = await Promise.all([
+      const [all, comp, published] = await Promise.all([
         service.listNodes(),
         service.getComposition(ownerId, { callerRole: role }),
+        service
+          .getComposition(ownerId, { callerRole: role, scope: "PUBLISHED" })
+          .catch(() => null),
       ])
       const owner = all.find((n) => n.id === ownerId && !n.isDeleted) ?? null
       if (!owner) setNotFound(true)
       else {
         setOwnerNode(owner)
         setComposition(comp)
+        setPublishedComposition(published)
         // Seed undo history from initial load
         historyRef.current = [comp]
         historyIdxRef.current = 0
@@ -130,6 +139,10 @@ export function useCompositionCanvas(
     setComposition(comp)
     pushHistory(comp)
     // No need to call refreshNodes here - let callers decide if they need it
+    service
+      .getComposition(ownerId, { callerRole: role, scope: "PUBLISHED" })
+      .then(setPublishedComposition)
+      .catch(() => setPublishedComposition(null))
   }, [service, ownerId, role, pushHistory])
 
   const undo = useCallback(async () => {
@@ -400,6 +413,7 @@ export function useCompositionCanvas(
     role,
     ownerNode,
     composition,
+    publishedComposition,
     allNodes,
     memberNodes,
     edges: composition?.edges ?? [],
