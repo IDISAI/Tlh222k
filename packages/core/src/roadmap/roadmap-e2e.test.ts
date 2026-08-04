@@ -58,7 +58,8 @@ describe("roadmap E2E (LEGO composition)", () => {
       expect.arrayContaining([react.id, css.id])
     )
 
-    // Phase 3 — wire owner→react (solid) and react→css (dashed).
+    // Phase 3 — wire owner→react (solid; addEdge upserts onto the wire that
+    // createBlock already auto-drew) and react→css (dashed, a new wire).
     await svc.addEdge(frontend.id, frontend.id, react.id, "solid", ROLE)
     const eReactCss = await svc.addEdge(
       frontend.id,
@@ -68,7 +69,9 @@ describe("roadmap E2E (LEGO composition)", () => {
       ROLE
     )
     comp = await svc.getComposition(frontend.id, { callerRole: ROLE })
-    expect(comp.edges).toHaveLength(2)
+    // 3 wires: owner→react and owner→css were auto-drawn the moment each
+    // became a member (createBlock / addMember), plus the explicit react→css.
+    expect(comp.edges).toHaveLength(3)
 
     // Phase 3 — change a wire's kind.
     await svc.updateEdgeKind(frontend.id, eReactCss.id, "solid", ROLE)
@@ -80,7 +83,9 @@ describe("roadmap E2E (LEGO composition)", () => {
     comp = await svc.removeFromCanvas(frontend.id, react.id, ROLE)
     expect(comp.members.map((m) => m.nodeId)).not.toContain(react.id)
     expect(comp.members.map((m) => m.nodeId)).toContain(css.id)
-    expect(comp.edges).toHaveLength(0) // both edges touched react
+    // owner→react and react→css both touched react and drop with it; only
+    // the auto-drawn owner→css wire (never touched react) survives.
+    expect(comp.edges).toHaveLength(1)
     all = await svc.listNodes()
     expect(all.find((n) => n.id === react.id)?.isDeleted).toBeFalsy()
 

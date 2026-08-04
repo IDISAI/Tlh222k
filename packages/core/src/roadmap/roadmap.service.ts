@@ -910,6 +910,15 @@ export class RoadmapService {
         x: input.positionX,
         y: input.positionY,
       })
+      // Default owner→block wire, matching addMember — a block created
+      // directly on a canvas ("chuột phải → tạo") is the same "something
+      // landed here" moment as one dragged in.
+      comp.edges.push({
+        id: newId("edge"),
+        sourceId: input.ownerId,
+        targetId: id,
+        kind: "solid",
+      })
     }
     persistStore()
     emitRoadmapUpdate(input.ownerId ?? id)

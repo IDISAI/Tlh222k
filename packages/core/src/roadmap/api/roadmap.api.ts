@@ -609,10 +609,15 @@ export class RoadmapApi {
     nodeId: string,
     role: CallerRole
   ): Promise<boolean> {
-    const node = (await this.listNodes()).find(
-      (candidate) => candidate.id === nodeId
-    )
-    if (node?.parentId === null) return this.deleteRoadmap(node.roadmapId, role)
+    // LEGO: every role/skill block has parentId === null (composition
+    // membership replaced the parentId tree), so the old "no parent → it's a
+    // whole roadmap container, delete via deleteRoadmap" branch that used to
+    // live here now matches EVERY top-level block. deleteRoadmap hard-deletes
+    // the Roadmap row, and Node.roadmapId cascades on that FK — for a
+    // self-owned block (roadmapId === its own id) or any block created
+    // directly on its canvas (which inherits its roadmapId), that silently
+    // wiped every other block sharing the same roadmapId along with it. A
+    // single block delete must only ever remove that one node.
     return this.deleteNode(nodeId, role)
   }
 
