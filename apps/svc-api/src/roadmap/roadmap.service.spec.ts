@@ -41,6 +41,9 @@ function harness() {
     document: {
       updateMany: vi.fn(),
     },
+    compositionMembership: {
+      groupBy: vi.fn(async () => []),
+    },
   }
   const prisma = {
     ...tx,

@@ -412,6 +412,7 @@ function CompositionCanvasInner({
       <NodeDetailDialog
         node={detailNode}
         nodes={canvas.allNodes}
+        composition={canvas.composition}
         onClose={() => setDetailNode(null)}
         onEdit={setEditNode}
         builderBasePath={builderBasePath}

@@ -1057,6 +1057,16 @@ export class RoadmapService implements OnModuleInit {
         childCount.set(n.parentId, (childCount.get(n.parentId) ?? 0) + 1)
       }
     }
+    // Role/skill/chapter children are placed via the composition canvas, not
+    // `parentId` — without this, every block built the LEGO way (i.e. almost
+    // all of them) shows "0 node" on its public card even though its canvas is
+    // full. See `compositionMemberCounts`.
+    for (const [ownerId, count] of await this.compositionMemberCounts(
+      all.map((n) => n.id),
+      "PUBLISHED"
+    )) {
+      childCount.set(ownerId, (childCount.get(ownerId) ?? 0) + count)
+    }
 
     // Learners per block, rolled up its subtree: someone working a chapter deep
     // inside a role has started that role. Counted as distinct people, so one
@@ -1169,9 +1179,25 @@ export class RoadmapService implements OnModuleInit {
       orderBy: { order: "asc" },
       include: { keyResults: { orderBy: { position: "asc" } } },
     })
+    // Composition membership covers role/skill/chapter placement, but article
+    // leaves are never canvas blocks — they still hang off their chapter via
+    // `parentId` (see NodeDetailDialog's "Bài viết" panel). Without this pass
+    // a published article is invisible on the web viewer even though the
+    // canvas above it is fully published, because nothing here ever queries
+    // `parentId`.
+    const articleNodes = await this.prisma.node.findMany({
+      where: {
+        parentId: { in: compositionNodes.map((item) => item.id) },
+        isDeleted: false,
+        nodeType: "article",
+      },
+      orderBy: { order: "asc" },
+      include: { keyResults: { orderBy: { position: "asc" } } },
+    })
+    const allCompositionNodes = [...compositionNodes, ...articleNodes]
     const visibleNodes = canAccessInternal(user)
-      ? compositionNodes
-      : compositionNodes.filter(
+      ? allCompositionNodes
+      : allCompositionNodes.filter(
           (item) => normalizeVisibility(item.visibility) !== "INTERNAL"
         )
     const visibleNodeIds = new Set(visibleNodes.map((item) => item.id))
@@ -1208,11 +1234,16 @@ export class RoadmapService implements OnModuleInit {
       nodeCount: visibleNodes.length,
       learnerCount: visibleLearners,
     }
+    const compositionCounts = await this.compositionMemberCounts(
+      visibleNodes.map((item) => item.id),
+      "PUBLISHED"
+    )
     return await this.buildGraph(
       synthetic,
       visibleNodes,
       {},
-      visibleComposition
+      visibleComposition,
+      compositionCounts
     )
   }
 
@@ -2737,14 +2768,41 @@ export class RoadmapService implements OnModuleInit {
     return slug
   }
 
+  /**
+   * Direct member count per owner from the real LEGO relation. Composition
+   * membership (not `parentId`) is what the canvas actually persists for
+   * role/skill/chapter blocks since the composition-table rewrite — `parentId`
+   * only still carries article children — so any "N node" / "Node con" count
+   * that only walks `parentId` silently reads 0 for a block whose children
+   * were added by dragging them onto its canvas.
+   */
+  private async compositionMemberCounts(
+    ownerIds: string[],
+    scope: "DRAFT" | "PUBLISHED"
+  ): Promise<Map<string, number>> {
+    if (ownerIds.length === 0) return new Map()
+    const rows = await this.prisma.compositionMembership.groupBy({
+      by: ["ownerId"],
+      where: { ownerId: { in: ownerIds }, scope },
+      _count: { nodeId: true },
+    })
+    return new Map(rows.map((r) => [r.ownerId, r._count.nodeId]))
+  }
+
   private async attachComputed(
     nodes: DbNodeWithFields[],
-    progress: Record<string, NodeStatus>
+    progress: Record<string, NodeStatus>,
+    extraChildCounts?: Map<string, number>
   ): Promise<NodeDto[]> {
     const childCount = new Map<string, number>()
     for (const n of nodes) {
       if (n.parentId && !n.isDeleted) {
         childCount.set(n.parentId, (childCount.get(n.parentId) ?? 0) + 1)
+      }
+    }
+    if (extraChildCounts) {
+      for (const [ownerId, count] of extraChildCounts) {
+        childCount.set(ownerId, (childCount.get(ownerId) ?? 0) + count)
       }
     }
     return nodes.map((n) =>
@@ -2756,12 +2814,13 @@ export class RoadmapService implements OnModuleInit {
     roadmap: RoadmapDto,
     nodes: DbNode[],
     progress: Record<string, NodeStatus>,
-    composition?: CompositionDto
+    composition?: CompositionDto,
+    extraChildCounts?: Map<string, number>
   ): Promise<GraphDto> {
     return {
       roadmap,
       nodes: await this.withAuthorNames(
-        await this.attachComputed(nodes, progress)
+        await this.attachComputed(nodes, progress, extraChildCounts)
       ),
       composition,
     }
@@ -2807,9 +2866,13 @@ export class RoadmapService implements OnModuleInit {
   }
 
   private async childrenCount(nodeId: string): Promise<number> {
-    return this.prisma.node.count({
-      where: { parentId: nodeId, isDeleted: false },
-    })
+    const [parentIdCount, compositionCounts] = await Promise.all([
+      this.prisma.node.count({ where: { parentId: nodeId, isDeleted: false } }),
+      // DRAFT: this runs right after an admin mutation, so it should reflect
+      // what they just did on the canvas, not last publish's snapshot.
+      this.compositionMemberCounts([nodeId], "DRAFT"),
+    ])
+    return parentIdCount + (compositionCounts.get(nodeId) ?? 0)
   }
 
   private async progressMap(
