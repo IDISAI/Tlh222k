@@ -1824,6 +1824,71 @@ export class RoadmapService implements OnModuleInit {
     }
   }
 
+  /**
+   * Copy DRAFT composition into PUBLISHED and notify followers, without
+   * touching the node's own publishStatus or firstPublishedAt — that part is
+   * `publishComposition`'s job (first publish). This is the "already live"
+   * half of the same contract: "every op persists immediately — there is no
+   * batch Lưu step" means a learner should see a block the moment it is
+   * dragged onto an already-published canvas, not only after the admin
+   * reopens the publish popover and clicks it again.
+   */
+  private async syncPublishedComposition(ownerId: string): Promise<void> {
+    const publishedAt = new Date()
+    await this.prisma.$transaction(async (tx) => {
+      const [members, edges] = await Promise.all([
+        tx.compositionMembership.findMany({ where: { ownerId, scope: "DRAFT" } }),
+        tx.compositionEdge.findMany({ where: { ownerId, scope: "DRAFT" } }),
+      ])
+      await tx.compositionEdge.deleteMany({ where: { ownerId, scope: "PUBLISHED" } })
+      await tx.compositionMembership.deleteMany({
+        where: { ownerId, scope: "PUBLISHED" },
+      })
+      for (const member of members) {
+        await tx.compositionMembership.create({
+          data: {
+            ownerId,
+            nodeId: member.nodeId,
+            scope: "PUBLISHED",
+            positionX: member.positionX,
+            positionY: member.positionY,
+            isRequired: member.isRequired,
+          },
+        })
+      }
+      for (const edge of edges) {
+        await tx.compositionEdge.create({
+          data: {
+            ownerId,
+            sourceId: edge.sourceId,
+            targetId: edge.targetId,
+            scope: "PUBLISHED",
+            kind: edge.kind,
+          },
+        })
+      }
+      await this.notifyFollowers(tx, ownerId, publishedAt)
+    })
+  }
+
+  /**
+   * Re-syncs PUBLISHED composition right after a structural edit (member or
+   * edge add/remove/change), but only for a block that already reaches
+   * learners — a still-DRAFT block has nothing to sync until its first
+   * `publishComposition`. Deliberately NOT called from `moveCompositionMember`
+   * — a drag fires this per gesture, and turning every nudge into a DB write
+   * plus a follower-notification query would be a self-inflicted hot path.
+   */
+  private async republishIfLive(ownerId: string): Promise<void> {
+    const owner = await this.prisma.node.findUnique({
+      where: { id: ownerId },
+      select: { publishStatus: true, isDeleted: true },
+    })
+    if (!owner || owner.isDeleted) return
+    if (normalizePublishStatus(owner.publishStatus) !== "PUBLISHED") return
+    await this.syncPublishedComposition(ownerId)
+  }
+
   async addCompositionMember(
     ownerId: string,
     nodeId: string,
@@ -1855,6 +1920,7 @@ export class RoadmapService implements OnModuleInit {
       },
       update: { positionX, positionY, isRequired },
     })
+    await this.republishIfLive(ownerId)
     return this.composition(ownerId, "DRAFT", user)
   }
 
@@ -1905,6 +1971,7 @@ export class RoadmapService implements OnModuleInit {
         where: { ownerId, nodeId, scope: "DRAFT" },
       }),
     ])
+    await this.republishIfLive(ownerId)
     return this.composition(ownerId, "DRAFT", user)
   }
 
@@ -1938,6 +2005,7 @@ export class RoadmapService implements OnModuleInit {
       create: { ownerId, sourceId, targetId, scope: "DRAFT", kind },
       update: { kind },
     })
+    await this.republishIfLive(ownerId)
     return {
       id: edge.id,
       sourceId: edge.sourceId,
@@ -1961,6 +2029,7 @@ export class RoadmapService implements OnModuleInit {
       where: { id: edgeId },
       data: { kind },
     })
+    await this.republishIfLive(ownerId)
     return {
       id: edge.id,
       sourceId: edge.sourceId,
@@ -1978,6 +2047,7 @@ export class RoadmapService implements OnModuleInit {
     await this.prisma.compositionEdge.deleteMany({
       where: { id: edgeId, ownerId, scope: "DRAFT" },
     })
+    await this.republishIfLive(ownerId)
     return this.composition(ownerId, "DRAFT", user)
   }
 
@@ -2035,6 +2105,7 @@ export class RoadmapService implements OnModuleInit {
         })
       }
     })
+    await this.republishIfLive(ownerId)
     return this.composition(ownerId, "DRAFT", user)
   }
 
